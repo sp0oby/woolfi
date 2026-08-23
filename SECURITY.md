@@ -8,7 +8,7 @@ WoolFi is pre-launch, unaudited DeFi infrastructure handling real value. The way
 
 Instead, use GitHub's private vulnerability reporting:
 
-1. Go to <https://github.com/urufu-labs/woolfi/security/advisories/new>
+1. Go to <https://github.com/sp0oby/woolfi/security/advisories/new>
 2. Describe the issue with enough detail that we can reproduce it. A proof-of-concept transaction, foundry test, or trace is ideal.
 3. Include a contact you check regularly so we can coordinate timing.
 

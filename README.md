@@ -1,6 +1,6 @@
 # WoolFi by Urufu Labs
 
-[![CI](https://github.com/urufu-labs/woolfi/actions/workflows/ci.yml/badge.svg)](https://github.com/urufu-labs/woolfi/actions/workflows/ci.yml)
+[![CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml/badge.svg)](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml)
 [![Spec](https://img.shields.io/badge/spec-v1.0--draft-1f6feb?labelColor=0d1117)](./PROJECT_SPEC.md)
 [![Solidity](https://img.shields.io/badge/solidity-0.8.26-363636?labelColor=0d1117)](./foundry.toml)
 [![License](https://img.shields.io/badge/license-BUSL--1.1%20%2F%20MIT-0aa?labelColor=0d1117)](#license)
@@ -55,7 +55,7 @@ The frontend is configured exclusively for Robinhood Chain and presents the exac
 |---|---|
 | Spec | [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) v1.0-draft |
 | Source | Solidity 0.8.26, Foundry, BUSL-1.1 hook, MIT elsewhere |
-| Tests | 181 passing &middot; 100k invariant calls clean &middot; [CI](https://github.com/urufu-labs/woolfi/actions/workflows/ci.yml) |
+| Tests | 181 passing &middot; 100k invariant calls clean &middot; [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
 | Network | Robinhood Chain |
 | Catalog | Exact 18 pools; all currently pending |
 | Audit | Not done; bug bounty pending audit |
@@ -101,7 +101,7 @@ WoolFi v1 is administered by a multisig. It can authorize pools, update supporte
 Prerequisites: [Foundry](https://book.getfoundry.sh/), Node 20+, and a Robinhood Chain RPC URL.
 
 ```bash
-git clone https://github.com/urufu-labs/woolfi.git
+git clone https://github.com/sp0oby/woolfi.git
 cd woolfi
 forge install
 forge build

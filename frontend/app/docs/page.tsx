@@ -107,12 +107,12 @@ Audit              Pending`}
         <Section label="Source">
           <ul className="space-y-2 font-mono text-[13px]">
             <SourceLink
-              href="https://github.com/urufu-labs/woolfi/blob/main/PROJECT_SPEC.md"
+              href="https://github.com/sp0oby/woolfi/blob/main/PROJECT_SPEC.md"
               label="PROJECT_SPEC.md"
               hint="canonical specification"
             />
             <SourceLink
-              href="https://github.com/urufu-labs/woolfi"
+              href="https://github.com/sp0oby/woolfi"
               label="Source on GitHub"
               hint="contracts + tests"
             />

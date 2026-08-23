@@ -12,11 +12,11 @@ For a high-level project overview start with [README.md](./README.md). The full 
 - Frontend polish and accessibility fixes.
 - Oracle adapter implementations against `IPriceOracle` or `IMarketHoursOracle`.
 
-If you are considering a larger change - new mechanic, new mechanism, breaking API change - please [open a Discussion](https://github.com/urufu-labs/woolfi/discussions) first. We will tell you whether the change fits the spec, whether the spec needs to change first, and what the test bar will be.
+If you are considering a larger change - new mechanic, new mechanism, breaking API change - please [open a Discussion](https://github.com/sp0oby/woolfi/discussions) first. We will tell you whether the change fits the spec, whether the spec needs to change first, and what the test bar will be.
 
 ## Reporting bugs
 
-For non-security bugs, [open an issue](https://github.com/urufu-labs/woolfi/issues/new) with:
+For non-security bugs, [open an issue](https://github.com/sp0oby/woolfi/issues/new) with:
 
 - A short title.
 - The expected vs actual behavior.
@@ -31,7 +31,7 @@ For **security bugs**, follow [SECURITY.md](./SECURITY.md) instead. Do not open 
 Prerequisites: [Foundry](https://book.getfoundry.sh/), Node 20+.
 
 ```bash
-git clone https://github.com/urufu-labs/woolfi.git
+git clone https://github.com/sp0oby/woolfi.git
 cd woolfi
 git submodule update --init --recursive
 forge build

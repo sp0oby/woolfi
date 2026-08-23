@@ -11,7 +11,7 @@ export function Footer() {
       </p>
       <nav className="mt-6 flex flex-wrap items-baseline gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
         <a
-          href="https://github.com/urufu-labs/woolfi"
+          href="https://github.com/sp0oby/woolfi"
           target="_blank"
           rel="noreferrer"
           className="hover:text-ink transition-colors"
@@ -19,7 +19,7 @@ export function Footer() {
           GitHub ↗
         </a>
         <a
-          href="https://github.com/urufu-labs/woolfi/blob/main/PROJECT_SPEC.md"
+          href="https://github.com/sp0oby/woolfi/blob/main/PROJECT_SPEC.md"
           target="_blank"
           rel="noreferrer"
           className="hover:text-ink transition-colors"
