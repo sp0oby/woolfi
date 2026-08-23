@@ -11,9 +11,9 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {TwineHook} from "../../src/TwineHook.sol";
-import {TwinePositionManager} from "../../src/TwinePositionManager.sol";
-import {TwineUnderwritingVault} from "../../src/TwineUnderwritingVault.sol";
+import {WoolFiHook} from "../../src/WoolFiHook.sol";
+import {WoolFiPositionManager} from "../../src/WoolFiPositionManager.sol";
+import {WoolFiUnderwritingVault} from "../../src/WoolFiUnderwritingVault.sol";
 import {STRAND} from "../../src/STRAND.sol";
 import {RebalanceKeeper} from "../../src/RebalanceKeeper.sol";
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
@@ -22,9 +22,9 @@ import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
 contract RebalanceKeeperTest is Deployers {
     using PoolIdLibrary for PoolKey;
 
-    TwineHook hook;
-    TwinePositionManager pm;
-    TwineUnderwritingVault vault;
+    WoolFiHook hook;
+    WoolFiPositionManager pm;
+    WoolFiUnderwritingVault vault;
     STRAND strand;
     RebalanceKeeper keeper;
     MockPriceOracle oracle0;
@@ -46,8 +46,8 @@ contract RebalanceKeeperTest is Deployers {
                 | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
         );
         address hookAddr = address(flags | (uint160(0x4444) << 144));
-        deployCodeTo("TwineHook.sol:TwineHook", abi.encode(manager, address(this)), hookAddr);
-        hook = TwineHook(hookAddr);
+        deployCodeTo("WoolFiHook.sol:WoolFiHook", abi.encode(manager, address(this)), hookAddr);
+        hook = WoolFiHook(hookAddr);
 
         oracle0 = new MockPriceOracle(1e18);
         oracle1 = new MockPriceOracle(1e18);
@@ -64,7 +64,7 @@ contract RebalanceKeeperTest is Deployers {
 
         hook.authorizePool(
             poolKey,
-            TwineHook.AuthParams({
+            WoolFiHook.AuthParams({
                 oracle0: oracle0,
                 oracle1: oracle1,
                 marketHours: marketHours,
@@ -77,9 +77,9 @@ contract RebalanceKeeperTest is Deployers {
         manager.initialize(poolKey, SQRT_PRICE_1_1);
 
         // PM + vault + fee routing wired
-        pm = new TwinePositionManager(manager, address(this));
+        pm = new WoolFiPositionManager(manager, address(this));
         strand = new STRAND(address(this));
-        vault = new TwineUnderwritingVault(
+        vault = new WoolFiUnderwritingVault(
             address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer
         );
         hook.setVault(poolKey, address(vault), 2000);
@@ -136,6 +136,6 @@ contract RebalanceKeeperTest is Deployers {
 
     function testRevert_constructor_zeroAddress() public {
         vm.expectRevert(RebalanceKeeper.ZeroAddress.selector);
-        new RebalanceKeeper(TwineHook(address(0)), pm);
+        new RebalanceKeeper(WoolFiHook(address(0)), pm);
     }
 }

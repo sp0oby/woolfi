@@ -1,6 +1,6 @@
-# Contributing to Twine
+# Contributing to WoolFi by Urufu Labs
 
-Thank you for considering a contribution. Twine is a small, opinionated codebase - clarity beats cleverness, tests are non-negotiable, and the spec is the source of truth. This document tells you how to land a change cleanly.
+Thank you for considering a contribution. WoolFi is a small, opinionated codebase - clarity beats cleverness, tests are non-negotiable, and the spec is the source of truth. This document tells you how to land a change cleanly.
 
 For a high-level project overview start with [README.md](./README.md). The full reference is [PROJECT_SPEC.md](./PROJECT_SPEC.md); the build plan is [TODO.md](./TODO.md).
 
@@ -12,15 +12,16 @@ For a high-level project overview start with [README.md](./README.md). The full 
 - Frontend polish and accessibility fixes.
 - Oracle adapter implementations against `IPriceOracle` or `IMarketHoursOracle`.
 
-If you are considering a larger change - new mechanic, new mechanism, breaking API change - please [open a Discussion](https://github.com/sp0oby/twine/discussions) first. We will tell you whether the change fits the spec, whether the spec needs to change first, and what the test bar will be.
+If you are considering a larger change - new mechanic, new mechanism, breaking API change - please [open a Discussion](https://github.com/urufu-labs/woolfi/discussions) first. We will tell you whether the change fits the spec, whether the spec needs to change first, and what the test bar will be.
 
 ## Reporting bugs
 
-For non-security bugs, [open an issue](https://github.com/sp0oby/twine/issues/new) with:
+For non-security bugs, [open an issue](https://github.com/urufu-labs/woolfi/issues/new) with:
 
 - A short title.
 - The expected vs actual behavior.
-- A minimal reproduction - a failing Foundry test is the gold standard; a transaction hash on Base Sepolia is also great.
+- A minimal reproduction - a failing Foundry test is the gold standard; for deployment-path issues,
+  include a clearly identified testnet, fork, or Robinhood transaction hash.
 - The environment (Foundry version, Node version if frontend, browser if a UI bug).
 
 For **security bugs**, follow [SECURITY.md](./SECURITY.md) instead. Do not open public issues for security reports.
@@ -30,8 +31,8 @@ For **security bugs**, follow [SECURITY.md](./SECURITY.md) instead. Do not open 
 Prerequisites: [Foundry](https://book.getfoundry.sh/), Node 20+.
 
 ```bash
-git clone https://github.com/sp0oby/twine.git
-cd twine
+git clone https://github.com/urufu-labs/woolfi.git
+cd woolfi
 git submodule update --init --recursive
 forge build
 forge test
@@ -108,7 +109,7 @@ Boundary conditions are explicit tests, not "we'll catch it in fuzz." Off-by-one
 
 ## License of contributions
 
-By submitting a PR you agree your contribution is licensed under the same terms as the file you are modifying - BUSL-1.1 for the hook (`src/TwineHook.sol`, with a two-year MIT conversion matching Uniswap v4) and MIT for everything else.
+By submitting a PR you agree your contribution is licensed under the same terms as the file you are modifying - BUSL-1.1 for the hook (`src/WoolFiHook.sol`, with a two-year MIT conversion matching Uniswap v4) and MIT for everything else.
 
 ## Code of conduct
 

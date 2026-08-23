@@ -2,14 +2,14 @@
 pragma solidity 0.8.26;
 
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+import {IPriceOracleMetadata} from "../interfaces/IPriceOracle.sol";
 
 /// @title ChainlinkOracleAdapter
 /// @notice Wraps a single Chainlink price feed as an {IPriceOracle}, enforcing staleness and
 ///         validity checks and normalizing the answer to 1e18 (PROJECT_SPEC.md §6.1).
 /// @dev One adapter instance per feed. Feed address, heartbeat, and decimals are immutable —
 ///      changing a feed means deploying a new adapter and re-pointing the hook via governance.
-contract ChainlinkOracleAdapter is IPriceOracle {
+contract ChainlinkOracleAdapter is IPriceOracleMetadata {
     /// @notice The wrapped Chainlink aggregator.
     AggregatorV3Interface public immutable feed;
     /// @notice Expected max seconds between feed updates, per the feed's published heartbeat.
@@ -45,9 +45,26 @@ contract ChainlinkOracleAdapter is IPriceOracle {
         feedDecimals = dec;
     }
 
-    /// @inheritdoc IPriceOracle
+    /// @notice Return the latest validated WAD price.
     function getPrice() external view returns (uint256 priceWad) {
+        (priceWad,) = _priceData();
+    }
+
+    /// @inheritdoc IPriceOracleMetadata
+    function getPriceData() external view returns (uint256 priceWad, uint256 updatedAt) {
+        return _priceData();
+    }
+
+    /// @notice Rejects a non-positive or timestamp-invalid print without applying heartbeat age.
+    function requireRuntimeGuards() external view {
         (, int256 answer,, uint256 updatedAt,) = feed.latestRoundData();
+        if (answer <= 0) revert InvalidPrice(answer);
+        if (updatedAt == 0 || updatedAt > block.timestamp) revert StalePrice(updatedAt, heartbeat * STALENESS_FACTOR);
+    }
+
+    function _priceData() private view returns (uint256 priceWad, uint256 updatedAt) {
+        int256 answer;
+        (, answer,, updatedAt,) = feed.latestRoundData();
         if (answer <= 0) revert InvalidPrice(answer);
 
         uint256 maxStaleness = heartbeat * STALENESS_FACTOR;

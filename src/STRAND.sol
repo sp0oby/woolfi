@@ -5,7 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title STRAND
-/// @notice The Twine protocol token. Fixed-cap ERC-20 with owner-controlled minting (for the
+/// @notice Legacy-named WoolFi protocol token. Fixed-cap ERC-20 with owner-controlled minting (for the
 ///         distribution schedule) and permissionless burning (PROJECT_SPEC.md §7).
 /// @dev No inflation beyond {MAX_SUPPLY}. The owner (governance/multisig) mints into the
 ///      distribution buckets; once minted there is no further supply expansion.

@@ -2,12 +2,13 @@
 
 import {useEffect, useState} from "react";
 import {parseUnits} from "viem";
-import {useAccount, useChainId, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
+import {useAccount, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
 import {erc20Abi, swapRouterAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
 import {poolKeyFor} from "@/lib/poolKey";
-import {getDeployment} from "@/lib/twine";
+import {useSelectedPool} from "@/hooks/useSelectedPool";
+import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {useAllowance, usePoolReads, useUserReads} from "@/hooks/usePool";
 import {useSwapQuote} from "@/hooks/useSwapQuote";
@@ -16,15 +17,14 @@ import {Field, PanelFootnote, StatRow, TxStatus} from "./atoms";
 const ZERO_BYTES = "0x" as const;
 
 /**
- * Swap UI wired to {TwineSwapRouter}. User-set slippage tolerance (% bps); we pass
+ * Swap UI wired to {WoolFiSwapRouter}. User-set slippage tolerance (% bps); we pass
  * `amountOutMinimum = amountIn * (10000 - slippageBps) / 10000` as a first-cut bound. A future
  * pass will quote the asymmetric fee from the hook for a tighter min-out.
  */
 export function SwapPanel() {
-  const chainId = useChainId();
-  const deployment = getDeployment(chainId);
+  const {pool, deployment} = useSelectedPool();
   const {address} = useAccount();
-  const {drift} = usePoolReads();
+  const {drift, safety} = usePoolReads();
   const user = useUserReads(address);
 
   const [zeroForOne, setZeroForOne] = useState(true);
@@ -35,12 +35,12 @@ export function SwapPanel() {
   const [slippage, setSlippage] = useState("1.0");
 
   if (!deployment) {
-    return <PanelFootnote>No Twine deployment found for this chain.</PanelFootnote>;
+    return <PanelFootnote>{pool.base.symbol} / {pool.quote.symbol} is fully catalogued, but trading stays disabled until its verified oracle and protocol deployment are live.</PanelFootnote>;
   }
   if (!deployment.swapRouter) {
     return (
       <div className="space-y-5">
-        <Field label="You pay" token={zeroForOne ? "token0" : "token1"} value={amountIn} onChange={setAmountIn} editable />
+        <Field label="You pay" token={zeroForOne ? deployment.token0Symbol : deployment.token1Symbol} value={amountIn} onChange={setAmountIn} editable />
         <PanelFootnote>
           Swap router not yet deployed on this chain. Run{" "}
           <span className="text-ink">forge script script/DeployRouter.s.sol --broadcast</span> and
@@ -52,9 +52,10 @@ export function SwapPanel() {
 
   return (
     <Live
-      deployment={deployment as NonNullable<ReturnType<typeof getDeployment>> & {swapRouter: `0x${string}`}}
+      deployment={deployment as WoolFiDeployment & {swapRouter: `0x${string}`}}
       address={address}
       drift={drift}
+      safety={safety}
       user={user}
       zeroForOne={zeroForOne}
       setZeroForOne={setZeroForOne}
@@ -70,6 +71,7 @@ function Live({
   deployment,
   address,
   drift,
+  safety,
   user,
   zeroForOne,
   setZeroForOne,
@@ -78,9 +80,10 @@ function Live({
   slippage,
   setSlippage,
 }: {
-  deployment: NonNullable<ReturnType<typeof getDeployment>> & {swapRouter: `0x${string}`};
+  deployment: WoolFiDeployment & {swapRouter: `0x${string}`};
   address: `0x${string}` | undefined;
   drift: bigint | undefined;
+  safety: ReturnType<typeof usePoolReads>["safety"];
   user: ReturnType<typeof useUserReads>;
   zeroForOne: boolean;
   setZeroForOne: (fn: (d: boolean) => boolean) => void;
@@ -91,8 +94,8 @@ function Live({
 }) {
   const key = poolKeyFor(deployment);
   const tokenIn = zeroForOne ? deployment.token0 : deployment.token1;
-  const tokenInLabel = zeroForOne ? "token0" : "token1";
-  const tokenOutLabel = zeroForOne ? "token1" : "token0";
+  const tokenInLabel = zeroForOne ? deployment.token0Symbol : deployment.token1Symbol;
+  const tokenOutLabel = zeroForOne ? deployment.token1Symbol : deployment.token0Symbol;
   const balanceIn = zeroForOne ? user.bal0 : user.bal1;
 
   const amountInWei = parseAmount(amountIn, 18);
@@ -140,14 +143,6 @@ function Live({
     account: address,
   });
 
-  const ready =
-    !!address &&
-    !!amountInWei &&
-    amountInWei > 0n &&
-    slippageBps !== undefined &&
-    !busy &&
-    (needsApproval || quote !== undefined);
-
   // corrective when the swap pushes the pool toward fair price
   let direction = "-";
   if (drift !== undefined) {
@@ -155,6 +150,15 @@ function Live({
     else if ((drift > 0n && zeroForOne) || (drift < 0n && !zeroForOne)) direction = "corrective";
     else direction = "adversarial";
   }
+  const blockedByBreak = safety?.structurallyBroken === true && direction === "adversarial";
+  const ready =
+    !!address &&
+    !!amountInWei &&
+    amountInWei > 0n &&
+    slippageBps !== undefined &&
+    !busy &&
+    !blockedByBreak &&
+    (needsApproval || quote !== undefined);
 
   function onClick() {
     if (!amountInWei || !address || slippageBps === undefined) return;
@@ -243,7 +247,9 @@ function Live({
       ) : null}
 
       <button type="button" disabled={!ready} onClick={onClick} className={btnCls(!ready)}>
-        {!address
+        {blockedByBreak
+          ? "Adversarial swap blocked"
+          : !address
           ? "Connect wallet"
           : !amountInWei || amountInWei === 0n
             ? "Enter an amount"
@@ -264,7 +270,7 @@ function Live({
       <TxStatus hash={swapTx ?? approveTx} />
 
       <PanelFootnote>
-        Swap routes through {`{TwineSwapRouter}`}. The Twine hook decides the asymmetric fee in
+        Swap routes through {`{WoolFiSwapRouter}`}. The WoolFi hook decides the asymmetric fee in
         beforeSwap - corrective swaps are discounted, adversarial swaps are surcharged.
       </PanelFootnote>
     </div>

@@ -13,17 +13,17 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {TwineHook} from "../../src/TwineHook.sol";
-import {TwinePositionManager} from "../../src/TwinePositionManager.sol";
-import {TwineUnderwritingVault} from "../../src/TwineUnderwritingVault.sol";
-import {TwineGovernor} from "../../src/TwineGovernor.sol";
+import {WoolFiHook} from "../../src/WoolFiHook.sol";
+import {WoolFiPositionManager} from "../../src/WoolFiPositionManager.sol";
+import {WoolFiUnderwritingVault} from "../../src/WoolFiUnderwritingVault.sol";
+import {WoolFiGovernor} from "../../src/WoolFiGovernor.sol";
 import {RebalanceKeeper} from "../../src/RebalanceKeeper.sol";
 import {STRAND} from "../../src/STRAND.sol";
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
 import {HookMiner} from "../../script/lib/HookMiner.sol";
 
-/// @notice Full end-to-end lifecycle of the Twine protocol in one scripted scenario. Walks every
+/// @notice Full end-to-end lifecycle of the WoolFi protocol in one scripted scenario. Walks every
 ///         mechanic in realistic sequence and asserts the state-combination invariants the focused
 ///         tests don't reach (e.g. fee routing after a drawdown, LP burn out of band, governance
 ///         handoff after extensive activity).
@@ -32,10 +32,10 @@ contract LifecycleTest is Deployers {
     using StateLibrary for IPoolManager;
 
     // ----- system contracts -----
-    TwineHook hook;
-    TwinePositionManager pm;
-    TwineUnderwritingVault vault;
-    TwineGovernor governor;
+    WoolFiHook hook;
+    WoolFiPositionManager pm;
+    WoolFiUnderwritingVault vault;
+    WoolFiGovernor governor;
     RebalanceKeeper keeper;
     STRAND strand;
     MockPriceOracle oracle0;
@@ -92,15 +92,15 @@ contract LifecycleTest is Deployers {
             Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
         );
-        bytes memory hookInit = abi.encodePacked(type(TwineHook).creationCode, abi.encode(manager, address(this)));
+        bytes memory hookInit = abi.encodePacked(type(WoolFiHook).creationCode, abi.encode(manager, address(this)));
         (address minedHook,) = HookMiner.find(flags, hookInit);
         (, bytes32 salt) = HookMiner.find(flags, hookInit);
         address deployed = HookMiner.deploy(salt, hookInit);
         require(deployed == minedHook, "deploy mismatch");
-        hook = TwineHook(deployed);
+        hook = WoolFiHook(deployed);
 
-        pm = new TwinePositionManager(manager, multisig);
-        governor = new TwineGovernor(deployed, multisig);
+        pm = new WoolFiPositionManager(manager, multisig);
+        governor = new WoolFiGovernor(deployed, multisig);
         hook.setGovernor(address(governor));
         keeper = new RebalanceKeeper(hook, pm);
 
@@ -124,7 +124,7 @@ contract LifecycleTest is Deployers {
         vm.startPrank(multisig);
         governor.authorizePool(
             poolKey,
-            TwineHook.AuthParams({
+            WoolFiHook.AuthParams({
                 oracle0: oracle0,
                 oracle1: oracle1,
                 marketHours: marketHours,
@@ -137,7 +137,7 @@ contract LifecycleTest is Deployers {
         vm.stopPrank();
         manager.initialize(poolKey, SQRT_PRICE_1_1);
 
-        vault = new TwineUnderwritingVault(
+        vault = new WoolFiUnderwritingVault(
             address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer
         );
 
@@ -258,7 +258,7 @@ contract LifecycleTest is Deployers {
         // =================================================================
         oracle0.setPrice(1.08e18); // drift ≈ -741 bps : out of band, well below 1500 hard threshold
         // a swap runs without break and the asymmetric fee logic kicks in (mechanic itself is
-        // already proven in TwineHookTest; here we only verify the integration doesn't blow up)
+        // already proven in WoolFiHookTest; here we only verify the integration doesn't blow up)
         swap(poolKey, true, -1e16, ZERO_BYTES);
         assertFalse(hook.poolConfig(poolId).structuralBreak);
 
@@ -270,7 +270,7 @@ contract LifecycleTest is Deployers {
             IPoolManager.ModifyLiquidityParams memory bad =
                 IPoolManager.ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: 1e15, salt: 0});
             vm.prank(address(manager));
-            vm.expectRevert(TwineHook.NotFullRange.selector);
+            vm.expectRevert(WoolFiHook.NotFullRange.selector);
             hook.beforeAddLiquidity(address(this), poolKey, bad, "");
         }
 
@@ -302,7 +302,7 @@ contract LifecycleTest is Deployers {
                 salt: 0
             });
             vm.prank(address(manager));
-            vm.expectRevert(TwineHook.MarketClosed.selector);
+            vm.expectRevert(WoolFiHook.MarketClosed.selector);
             hook.beforeAddLiquidity(address(this), poolKey, params, "");
         }
         oracle0.setPrice(1.2e18); // drift beyond hard threshold...
@@ -336,7 +336,7 @@ contract LifecycleTest is Deployers {
         vault.requestUnstake(300e18);
         // cannot unstake before cooldown elapses
         vm.prank(staker1);
-        vm.expectRevert(TwineUnderwritingVault.CooldownActive.selector);
+        vm.expectRevert(WoolFiUnderwritingVault.CooldownActive.selector);
         vault.unstake();
 
         skip(vault.COOLDOWN());
@@ -385,7 +385,7 @@ contract LifecycleTest is Deployers {
 
         // old governor contract can no longer manage the hook
         vm.prank(multisig);
-        vm.expectRevert(TwineHook.NotGovernor.selector);
+        vm.expectRevert(WoolFiHook.NotGovernor.selector);
         governor.pauseHook();
 
         // new governor can: pause via direct hook call (the new on-chain gov is `newGov`)
@@ -397,7 +397,7 @@ contract LifecycleTest is Deployers {
             IPoolManager.SwapParams memory sp =
                 IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1e14, sqrtPriceLimitX96: MIN_PRICE_LIMIT});
             vm.prank(address(manager));
-            vm.expectRevert(TwineHook.Paused.selector);
+            vm.expectRevert(WoolFiHook.Paused.selector);
             hook.beforeSwap(address(this), poolKey, sp, "");
         }
         // unpause for the final invariants
@@ -430,5 +430,57 @@ contract LifecycleTest is Deployers {
 
         // buyback sink received its 10% cut on each fee realization
         assertGt(_t0().balanceOf(buyback), 0);
+    }
+
+    function test_hookSafetyLifecycle_reopenSkewBreakRecoveryResolve() public {
+        vm.prank(lp1);
+        pm.mint(poolKey, 100e18, 100e18, lp1);
+
+        vm.prank(multisig);
+        governor.setPoolSafety(poolKey, WoolFiHook.SafetyParams({stabilizationSeconds: 300, maxOracleSkew: 60}));
+
+        marketHours.setOpen(false);
+        skip(2 days);
+        marketHours.setOpen(true);
+        {
+            IPoolManager.ModifyLiquidityParams memory add = IPoolManager.ModifyLiquidityParams({
+                tickLower: TickMath.minUsableTick(60),
+                tickUpper: TickMath.maxUsableTick(60),
+                liquidityDelta: 1e15,
+                salt: 0
+            });
+            uint256 start = marketHours.currentSessionStart();
+            vm.prank(address(manager));
+            vm.expectRevert(abi.encodeWithSelector(WoolFiHook.StabilizationActive.selector, start, start + 300));
+            hook.beforeAddLiquidity(address(this), poolKey, add, "");
+        }
+
+        skip(300);
+        oracle0.setPriceData(1.2e18, block.timestamp);
+        oracle1.setPriceData(1e18, block.timestamp - 61);
+        swap(poolKey, true, -1e15, ZERO_BYTES);
+        assertFalse(hook.poolConfig(poolId).structuralBreak);
+
+        oracle1.setPriceData(1e18, block.timestamp);
+        swap(poolKey, true, -1e15, ZERO_BYTES);
+        WoolFiHook.WoolFiConfig memory broken = hook.poolConfig(poolId);
+        assertTrue(broken.structuralBreak);
+        assertEq(broken.cachedFairPriceWad, 1.2e18);
+
+        oracle0.setStale(true);
+        {
+            IPoolManager.SwapParams memory adversarial =
+                IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1e15, sqrtPriceLimitX96: MIN_PRICE_LIMIT});
+            vm.prank(address(manager));
+            vm.expectRevert(WoolFiHook.AdversarialSwapDuringBreak.selector);
+            hook.beforeSwap(address(this), poolKey, adversarial, "");
+        }
+        swap(poolKey, false, -1e15, ZERO_BYTES);
+
+        vm.prank(multisig);
+        governor.resolveStructuralBreak(poolKey);
+        broken = hook.poolConfig(poolId);
+        assertFalse(broken.structuralBreak);
+        assertEq(broken.cachedFairPriceWad, 0);
     }
 }

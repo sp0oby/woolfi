@@ -27,6 +27,21 @@ contract DualOracleAdapterTest is Test {
         assertEq(adapter.getPrice(), 100e18);
     }
 
+    function test_getPriceData_returnsPrimaryMetadata() public {
+        skip(10);
+        primary.setPriceData(100e18, block.timestamp - 1);
+        backup.setPriceData(100e18, block.timestamp - 2);
+        (uint256 price, uint256 updatedAt) = adapter.getPriceData();
+        assertEq(price, 100e18);
+        assertEq(updatedAt, block.timestamp - 1);
+    }
+
+    function testRevert_getPriceData_doesNotSilentlyFailOverUnsafeError() public {
+        primary.setStale(true);
+        vm.expectRevert(MockPriceOracle.MockStale.selector);
+        adapter.getPriceData();
+    }
+
     function test_getPrice_acceptsExactlyAtDeviationBoundary() public {
         // |102-100|/100 = 2% exactly -> within threshold (strict `>` check)
         backup.setPrice(102e18);

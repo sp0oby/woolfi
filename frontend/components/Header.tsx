@@ -6,7 +6,7 @@ export function Header() {
   return (
     <header className="mx-auto max-w-2xl px-6 pt-10 flex items-baseline justify-between">
       <Link href="/" className="font-mono text-sm tracking-tight">
-        TWINE
+        WOOLFI <span className="text-[10px] text-muted">by Urufu Labs</span>
       </Link>
       <nav className="flex items-baseline gap-4 font-mono text-xs uppercase tracking-[0.18em] text-muted">
         <Link href="/app" className="hover:text-ink transition-colors">

@@ -1,12 +1,12 @@
 /**
- * Minimal Twine event ABIs for the indexer.
+ * Minimal WoolFi event ABIs for the indexer.
  *
  * Only the events we actually consume are listed — extend per `src/index.ts` as the dashboard
  * grows. Sourced from the Solidity contracts in `../../src/`; keep these in sync when contract
  * events change (or wire ponder to read from `../../out/*.json` once the contracts are deployed).
  */
 
-export const twineHookAbi = [
+export const woolfiHookAbi = [
   {
     type: "event",
     name: "SwapProcessed",
@@ -33,9 +33,39 @@ export const twineHookAbi = [
     inputs: [{indexed: true, name: "id", type: "bytes32"}],
     anonymous: false,
   },
+  {
+    type: "event",
+    name: "StructuralBreakTargetCached",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "fairPriceWad", type: "uint256"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "OracleSkewObserved",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "updatedAt0", type: "uint256"},
+      {indexed: false, name: "updatedAt1", type: "uint256"},
+      {indexed: false, name: "maxSkew", type: "uint32"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "PoolSafetyUpdated",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "stabilizationSeconds", type: "uint32"},
+      {indexed: false, name: "maxOracleSkew", type: "uint32"},
+    ],
+    anonymous: false,
+  },
 ] as const;
 
-export const twinePositionManagerAbi = [
+export const woolfiPositionManagerAbi = [
   {
     type: "event",
     name: "Mint",
@@ -74,7 +104,7 @@ export const twinePositionManagerAbi = [
   },
 ] as const;
 
-export const twineUnderwritingVaultAbi = [
+export const woolfiUnderwritingVaultAbi = [
   {
     type: "event",
     name: "Staked",

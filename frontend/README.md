@@ -1,16 +1,17 @@
-# Twine - frontend
+# WoolFi frontend
 
-Splash page (`/`) and pre-launch app skeleton (`/app`). Pre-rendered, no client-side state yet -
-the dashboard becomes live once a Twine pool is deployed and an indexer is wired.
+Next.js interface for WoolFi's Uniswap v4 multi-pool market on Robinhood Chain. The catalog covers
+Robinhood Stock Token/USDG, Stock Token/WETH, stock-token spread, and WETH/USDG pools. Pools are
+shown as pending until their verified oracles and production deployments are ready.
 
 ## Stack
 
 - Next.js 14 (App Router)
 - Tailwind CSS 3.4
-- Inter + JetBrains Mono via `next/font`
+- wagmi + viem
 
-No `shadcn/ui`, no animation libraries, no analytics. Intentional restraint - type and spacing
-carry the page.
+No mock data is used in the application. Live pool state comes from Robinhood Chain; unavailable
+or pending state is displayed explicitly.
 
 ## Run
 
@@ -21,17 +22,19 @@ npm run dev    # localhost:3000
 
 ## Style guardrails
 
-Black canvas (`#0a0a0a`), off-white text (`#ededed`), one accent (muted gray for dividers and
-secondary text). Headlines in sans, all data and structural labels in mono. No gradients, no
-glow, no fake stats - the status panel shows real build state and the app dashboard shows `-`
-until live data is available.
+Black canvas, off-white text, restrained accents, sans headlines, and mono data labels. Keep copy
+pool-aware: never imply one canonical pair or one market-hours schedule.
 
 ## Routes
 
-- `/` - splash. Explains the protocol and the flagship MSTRX/cbBTC pair.
-- `/app` - pool dashboard placeholder. Layout is real; values are `-` until a pool is live.
+- `/` - Robinhood Chain product overview and catalog status.
+- `/app` - searchable multi-pool dashboard with pending/live states.
+- `/docs` - hook, pool category, market-hours, disclosure, and underwriting overview.
+- `/governance` - v1 multisig administration.
 
-## Linking out
+## Product rules
 
-The "Read" section on the splash uses placeholder `#` hrefs. Wire them to the GitHub repo and the
-hosted spec once URLs exist.
+- Robinhood Stock Tokens provide economic exposure, not ownership of underlying securities.
+- Issuer terms and geographic restrictions apply; do not claim every holder completed KYC.
+- URU is the underwriting asset. Do not describe URU as a governance voting token.
+- Market hours are pool-specific. WETH/USDG is always open.

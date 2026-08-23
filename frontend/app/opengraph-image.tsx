@@ -1,12 +1,12 @@
 import {ImageResponse} from "next/og";
 
 export const runtime = "edge";
-export const alt = "Twine";
+export const alt = "WoolFi";
 export const size = {width: 1200, height: 630};
 export const contentType = "image/png";
 
 /**
- * Twine OG image. Black canvas, the logo on the left, the wordmark on the right, the URL in
+ * WoolFi OG image. Black canvas, the logo on the left, the wordmark on the right, the URL in
  * tiny mono at the bottom. No marketing copy - the link preview should feel like a name plate.
  *
  * Satori (Next.js OG runtime) doesn't have access to our Tailwind/Inter setup, so we draw the
@@ -42,7 +42,7 @@ export default async function OG() {
             display: "flex",
           }}
         >
-          twine
+          woolfi
         </div>
       </div>
     ),

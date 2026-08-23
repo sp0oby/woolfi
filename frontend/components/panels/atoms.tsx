@@ -89,7 +89,7 @@ export function PanelFootnote({children}: {children: React.ReactNode}) {
 
 /**
  * Honest transaction status for an in-flight write. Renders nothing until a tx hash exists.
- * After that: short hash, pending/confirmed label, and a BaseScan link when we know the chain.
+ * After that: short hash, pending/confirmed label, and an explorer link when available.
  */
 export function TxStatus({hash}: {hash: `0x${string}` | undefined}) {
   const chainId = useChainId();
@@ -114,7 +114,7 @@ export function TxStatus({hash}: {hash: `0x${string}` | undefined}) {
   );
 }
 
-/** Single-line, no-border tx indicator. Fits inside narrow cards like the mint faucet cells. */
+/** Single-line, no-border transaction indicator for compact panels. */
 export function TxStatusInline({hash}: {hash: `0x${string}` | undefined}) {
   const chainId = useChainId();
   const wait = useWaitForTransactionReceipt({hash, query: {enabled: !!hash}});

@@ -1,8 +1,9 @@
 import {ponder} from "ponder:registry";
-import {swap, structuralBreak, lpMovement, feeRouting, vaultEvent} from "ponder:schema";
+import {swap, structuralBreak, oracleSkew, poolSafety, lpMovement, feeRouting, vaultEvent} from "ponder:schema";
+import {poolIdForVault} from "../vaults";
 
 /**
- * Event handlers for Twine. Each handler is idempotent on (tx hash, log index) so re-orgs
+ * Event handlers for WoolFi. Each handler is idempotent on (tx hash, log index) so re-orgs
  * are safe. Drift is stored as a signed bigint in the same bps units the hook emits.
  */
 
@@ -10,7 +11,11 @@ function eventId(event: {transaction: {hash: string}; log: {logIndex: number}}) 
   return `${event.transaction.hash}-${event.log.logIndex}`;
 }
 
-ponder.on("TwineHook:SwapProcessed", async ({event, context}) => {
+function vaultIdentity(address: `0x${string}`) {
+  return {vault: address, poolId: poolIdForVault(address)};
+}
+
+ponder.on("WoolFiHook:SwapProcessed", async ({event, context}) => {
   await context.db.insert(swap).values({
     id: eventId(event),
     poolId: event.args.id,
@@ -22,7 +27,7 @@ ponder.on("TwineHook:SwapProcessed", async ({event, context}) => {
   });
 });
 
-ponder.on("TwineHook:StructuralBreakTriggered", async ({event, context}) => {
+ponder.on("WoolFiHook:StructuralBreakTriggered", async ({event, context}) => {
   await context.db.insert(structuralBreak).values({
     id: eventId(event),
     poolId: event.args.id,
@@ -30,10 +35,46 @@ ponder.on("TwineHook:StructuralBreakTriggered", async ({event, context}) => {
     timestamp: event.block.timestamp,
     driftBps: event.args.driftBps,
     resolved: false,
+    cachedFairPriceWad: null,
   });
 });
 
-ponder.on("TwineHook:StructuralBreakResolved", async ({event, context}) => {
+ponder.on("WoolFiHook:StructuralBreakTargetCached", async ({event, context}) => {
+  await context.db.insert(structuralBreak).values({
+    id: eventId(event),
+    poolId: event.args.id,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    driftBps: 0n,
+    resolved: false,
+    cachedFairPriceWad: event.args.fairPriceWad,
+  });
+});
+
+ponder.on("WoolFiHook:OracleSkewObserved", async ({event, context}) => {
+  await context.db.insert(oracleSkew).values({
+    id: eventId(event),
+    poolId: event.args.id,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    updatedAt0: event.args.updatedAt0,
+    updatedAt1: event.args.updatedAt1,
+    maxSkew: Number(event.args.maxSkew),
+  });
+});
+
+ponder.on("WoolFiHook:PoolSafetyUpdated", async ({event, context}) => {
+  await context.db.insert(poolSafety).values({
+    id: eventId(event),
+    poolId: event.args.id,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    stabilizationSeconds: Number(event.args.stabilizationSeconds),
+    maxOracleSkew: Number(event.args.maxOracleSkew),
+  });
+});
+
+ponder.on("WoolFiHook:StructuralBreakResolved", async ({event, context}) => {
   // Mark the most recent unresolved break for this pool as resolved.
   // (Logged as a separate row keyed by tx so re-orgs are idempotent.)
   await context.db.insert(structuralBreak).values({
@@ -43,10 +84,11 @@ ponder.on("TwineHook:StructuralBreakResolved", async ({event, context}) => {
     timestamp: event.block.timestamp,
     driftBps: 0n,
     resolved: true,
+    cachedFairPriceWad: null,
   });
 });
 
-ponder.on("TwinePositionManager:Mint", async ({event, context}) => {
+ponder.on("WoolFiPositionManager:Mint", async ({event, context}) => {
   await context.db.insert(lpMovement).values({
     id: eventId(event),
     // PM emits the share id (uint256 of the poolId bytes32) — cast back to hex for consistency
@@ -61,7 +103,7 @@ ponder.on("TwinePositionManager:Mint", async ({event, context}) => {
   });
 });
 
-ponder.on("TwinePositionManager:Burn", async ({event, context}) => {
+ponder.on("WoolFiPositionManager:Burn", async ({event, context}) => {
   await context.db.insert(lpMovement).values({
     id: eventId(event),
     poolId: `0x${event.args.id.toString(16).padStart(64, "0")}` as `0x${string}`,
@@ -75,7 +117,7 @@ ponder.on("TwinePositionManager:Burn", async ({event, context}) => {
   });
 });
 
-ponder.on("TwinePositionManager:FeesRouted", async ({event, context}) => {
+ponder.on("WoolFiPositionManager:FeesRouted", async ({event, context}) => {
   await context.db.insert(feeRouting).values({
     id: eventId(event),
     poolId: `0x${event.args.id.toString(16).padStart(64, "0")}` as `0x${string}`,
@@ -88,9 +130,10 @@ ponder.on("TwinePositionManager:FeesRouted", async ({event, context}) => {
   });
 });
 
-ponder.on("TwineUnderwritingVault:Staked", async ({event, context}) => {
+ponder.on("WoolFiUnderwritingVault:Staked", async ({event, context}) => {
   await context.db.insert(vaultEvent).values({
     id: eventId(event),
+    ...vaultIdentity(event.log.address),
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
     kind: "stake",
@@ -101,9 +144,10 @@ ponder.on("TwineUnderwritingVault:Staked", async ({event, context}) => {
   });
 });
 
-ponder.on("TwineUnderwritingVault:Unstaked", async ({event, context}) => {
+ponder.on("WoolFiUnderwritingVault:Unstaked", async ({event, context}) => {
   await context.db.insert(vaultEvent).values({
     id: eventId(event),
+    ...vaultIdentity(event.log.address),
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
     kind: "unstake",
@@ -114,9 +158,10 @@ ponder.on("TwineUnderwritingVault:Unstaked", async ({event, context}) => {
   });
 });
 
-ponder.on("TwineUnderwritingVault:Drawdown", async ({event, context}) => {
+ponder.on("WoolFiUnderwritingVault:Drawdown", async ({event, context}) => {
   await context.db.insert(vaultEvent).values({
     id: eventId(event),
+    ...vaultIdentity(event.log.address),
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
     kind: "drawdown",

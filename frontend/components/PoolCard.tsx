@@ -4,17 +4,51 @@ import {DriftBand} from "@/components/DriftBand";
 import {usePoolReads} from "@/hooks/usePool";
 import {useRoutedFees} from "@/hooks/useRoutedFees";
 import {fmtAmount} from "@/lib/format";
+import {useSelectedPool} from "@/hooks/useSelectedPool";
 
 export function PoolCard() {
-  const {drift, totalShares, vaultStaked, fairPriceWad, config, deployment} = usePoolReads();
-  const {fee0, fee1} = useRoutedFees();
-  const broken = config?.structuralBreak === true;
+  const {pool} = useSelectedPool();
+  const {drift, totalShares, vaultStaked, fairPriceWad, config, safety, deployment} = usePoolReads();
+  const {fee0, fee1, stale} = useRoutedFees();
+  const broken = safety?.structurallyBroken === true || config?.structuralBreak === true;
+  const stateLabel = broken
+    ? "broken"
+    : safety?.stabilizing
+      ? "stabilizing"
+      : safety?.oracleSkewed
+        ? "skewed"
+        : config
+          ? "ok"
+          : "-";
+
+  if (!deployment) {
+    return (
+      <div className="mt-10 border border-line px-6 py-5">
+        <div className="flex items-center justify-between gap-4 font-mono text-[11px] uppercase tracking-[0.2em]">
+          <span className="text-ink">{pool.base.symbol} / {pool.quote.symbol}</span>
+          <span className="text-amber-200/85">Pending</span>
+        </div>
+        <p className="mt-3 text-[13px] leading-relaxed text-muted">{pool.readinessRequirement}</p>
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
+          {pool.tradingHours.replace("-", " ")} · tick spacing {pool.risk.tickSpacing} · base fee {pool.risk.baseFeeBps} bps
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-10 border border-line">
       {broken ? (
         <div className="px-6 py-2 border-b border-line bg-white/[0.03] font-mono text-[11px] uppercase tracking-[0.22em] text-amber-200/90">
-          Structural break - fees are flat
+          Structural break · corrective-only
+        </div>
+      ) : safety?.stabilizing ? (
+        <div className="px-6 py-2 border-b border-line bg-white/[0.03] font-mono text-[11px] uppercase tracking-[0.22em] text-amber-200/90">
+          Opening stabilization
+        </div>
+      ) : safety?.oracleSkewed ? (
+        <div className="px-6 py-2 border-b border-line bg-white/[0.03] font-mono text-[11px] uppercase tracking-[0.22em] text-amber-200/90">
+          Oracle skew · flat fee
         </div>
       ) : null}
       <dl className="grid grid-cols-3 divide-x divide-line text-[13px]">
@@ -30,7 +64,7 @@ export function PoolCard() {
       />
       <dl className="grid grid-cols-3 divide-x divide-line text-[13px] border-t border-line">
         <StatCell label="Vault stake" value={fmtAmount(vaultStaked)} />
-        <StatCell label="State" value={config ? (config.structuralBreak ? "broken" : "ok") : "-"} />
+        <StatCell label="State" value={stateLabel} />
         <StatCell
           label="Recent fees"
           value={
@@ -38,7 +72,7 @@ export function PoolCard() {
               ? "-"
               : `${fmtAmount(fee0, 18, 2)} / ${fmtAmount(fee1, 18, 2)}`
           }
-          hint="routed, last ~14h"
+          hint={stale ? "indexer behind" : "routed from indexer"}
         />
       </dl>
     </div>

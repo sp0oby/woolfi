@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "robinhood-batch.schema.json",
+  "title": "WoolFi Robinhood coordinated deployment",
+  "type": "object",
+  "required": ["chainId", "nonAtomicTransactionsAcknowledged", "core", "defaultRisk", "defaultSafety", "gates", "assets", "pools"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "$schemaVersion": {"const": 1},
+    "chainId": {"const": 4663},
+    "nonAtomicTransactionsAcknowledged": {"type": "boolean"},
+    "core": {
+      "type": "object",
+      "required": [
+        "poolManager", "stakingToken", "hook", "positionManager", "governor", "multisig",
+        "treasury", "rebalancer", "buybackSink", "marketHours", "sequencerUptimeFeed",
+        "sequencerGracePeriod", "totalTreasuryAllocationCap"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "poolManager": {"$ref": "#/$defs/address"},
+        "stakingToken": {"$ref": "#/$defs/address"},
+        "hook": {"$ref": "#/$defs/address"},
+        "positionManager": {"$ref": "#/$defs/address"},
+        "governor": {"$ref": "#/$defs/address"},
+        "multisig": {"$ref": "#/$defs/address"},
+        "treasury": {"$ref": "#/$defs/address"},
+        "rebalancer": {"$ref": "#/$defs/address"},
+        "buybackSink": {"$ref": "#/$defs/address"},
+        "marketHours": {"$ref": "#/$defs/address"},
+        "sequencerUptimeFeed": {"$ref": "#/$defs/address"},
+        "sequencerGracePeriod": {"type": "integer", "minimum": 0},
+        "totalTreasuryAllocationCap": {"type": "integer", "minimum": 0}
+      }
+    },
+    "defaultRisk": {"$ref": "#/$defs/risk"},
+    "defaultSafety": {"$ref": "#/$defs/safety"},
+    "gates": {"$ref": "#/$defs/gates"},
+    "assets": {
+      "type": "object",
+      "minProperties": 16,
+      "maxProperties": 16,
+      "additionalProperties": {"$ref": "#/$defs/asset"}
+    },
+    "pools": {
+      "type": "array",
+      "minItems": 18,
+      "maxItems": 18,
+      "items": {"$ref": "#/$defs/pool"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "address": {"type": "string", "pattern": "^0x[0-9a-fA-F]{40}$"},
+    "asset": {
+      "type": "object",
+      "required": ["token", "oracle", "feed", "heartbeat"],
+      "additionalProperties": false,
+      "properties": {
+        "token": {"$ref": "#/$defs/address"},
+        "oracle": {"$ref": "#/$defs/address"},
+        "feed": {"$ref": "#/$defs/address"},
+        "heartbeat": {"type": "integer", "minimum": 0}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": ["stabilizationSeconds", "maxOracleSkew"],
+      "additionalProperties": false,
+      "properties": {
+        "stabilizationSeconds": {"type": "integer", "minimum": 0},
+        "maxOracleSkew": {"type": "integer", "minimum": 0}
+      }
+    },
+    "gates": {
+      "type": "object",
+      "required": [
+        "auditComplete", "multisigApproved", "uruCapsApproved", "oraclesVerified",
+        "initialLiquidityApproved", "keeperReady", "indexerReady", "frontendReviewed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "auditComplete": {"type": "boolean"},
+        "multisigApproved": {"type": "boolean"},
+        "uruCapsApproved": {"type": "boolean"},
+        "oraclesVerified": {"type": "boolean"},
+        "initialLiquidityApproved": {"type": "boolean"},
+        "keeperReady": {"type": "boolean"},
+        "indexerReady": {"type": "boolean"},
+        "frontendReviewed": {"type": "boolean"}
+      }
+    },
+    "risk": {
+      "type": "object",
+      "required": [
+        "tickSpacing", "kScaled", "baseFeeBps", "toleranceBps", "hardThresholdBps",
+        "drawdownBps", "vaultFeeBps", "buybackBps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tickSpacing": {"type": "integer", "minimum": 1},
+        "kScaled": {"type": "integer", "minimum": 1},
+        "baseFeeBps": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "toleranceBps": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "hardThresholdBps": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "drawdownBps": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "vaultFeeBps": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "buybackBps": {"type": "integer", "minimum": 1, "maximum": 10000}
+      }
+    },
+    "pool": {
+      "type": "object",
+      "required": ["slug", "base", "quote", "hoursPolicy", "sqrtPriceX96", "vaultAllocationCap", "initialLiquidity"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {"type": "string", "minLength": 1},
+        "base": {"type": "string", "minLength": 1},
+        "quote": {"type": "string", "minLength": 1},
+        "hoursPolicy": {"enum": ["equity-hours", "always-open"]},
+        "sqrtPriceX96": {"type": "integer", "minimum": 0},
+        "vaultAllocationCap": {"type": "integer", "minimum": 0},
+        "risk": {"$ref": "#/$defs/risk"},
+        "safety": {"$ref": "#/$defs/safety"},
+        "initialLiquidity": {
+          "type": "object",
+          "required": ["base", "quote", "slippageBps"],
+          "additionalProperties": false,
+          "properties": {
+            "base": {"type": "integer", "minimum": 0},
+            "quote": {"type": "integer", "minimum": 0},
+            "slippageBps": {"type": "integer", "minimum": 0, "maximum": 10000}
+          }
+        }
+      }
+    }
+  }
+}

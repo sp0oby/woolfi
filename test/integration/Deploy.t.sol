@@ -9,14 +9,16 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 
-import {TwineHook} from "../../src/TwineHook.sol";
-import {TwinePositionManager} from "../../src/TwinePositionManager.sol";
-import {TwineGovernor} from "../../src/TwineGovernor.sol";
-import {TwineUnderwritingVault} from "../../src/TwineUnderwritingVault.sol";
+import {WoolFiHook} from "../../src/WoolFiHook.sol";
+import {WoolFiPositionManager} from "../../src/WoolFiPositionManager.sol";
+import {WoolFiGovernor} from "../../src/WoolFiGovernor.sol";
+import {WoolFiUnderwritingVault} from "../../src/WoolFiUnderwritingVault.sol";
 import {STRAND} from "../../src/STRAND.sol";
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
+import {MockERC20} from "../../src/mocks/MockERC20.sol";
 
+import {Deploy} from "../../script/Deploy.s.sol";
 import {HookMiner} from "../../script/lib/HookMiner.sol";
 
 /// @notice Verifies the deploy scripts' underlying logic end-to-end: HookMiner produces an address
@@ -35,7 +37,7 @@ contract DeployTest is Deployers {
 
     function _deployCore()
         internal
-        returns (STRAND strand, TwineHook hook, TwinePositionManager pm, TwineGovernor gov)
+        returns (STRAND strand, WoolFiHook hook, WoolFiPositionManager pm, WoolFiGovernor gov)
     {
         strand = new STRAND(multisig);
 
@@ -43,35 +45,58 @@ contract DeployTest is Deployers {
             Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
         );
-        bytes memory hookInit = abi.encodePacked(type(TwineHook).creationCode, abi.encode(manager, address(this)));
+        bytes memory hookInit = abi.encodePacked(type(WoolFiHook).creationCode, abi.encode(manager, address(this)));
         (address minedHook, bytes32 salt) = HookMiner.find(flags, hookInit);
         address deployed = HookMiner.deploy(salt, hookInit);
         assertEq(deployed, minedHook); // mining math == the canonical factory's CREATE2
-        hook = TwineHook(deployed);
+        hook = WoolFiHook(deployed);
 
         assertEq(uint160(deployed) & ((uint160(1) << 14) - 1), uint160(flags)); // permission bits encoded
 
-        pm = new TwinePositionManager(manager, multisig);
-        gov = new TwineGovernor(address(hook), multisig);
+        pm = new WoolFiPositionManager(manager, multisig);
+        gov = new WoolFiGovernor(address(hook), address(this));
         hook.setGovernor(address(gov));
+        gov.setHookPositionManager(address(pm));
+        gov.transferOwnership(multisig);
     }
 
     function test_deploy_wiresEverything() public {
-        (STRAND strand, TwineHook hook, TwinePositionManager pm, TwineGovernor gov) = _deployCore();
+        (STRAND strand, WoolFiHook hook, WoolFiPositionManager pm, WoolFiGovernor gov) = _deployCore();
         assertEq(hook.governor(), address(gov));
+        assertEq(hook.positionManager(), address(pm));
         assertEq(gov.owner(), multisig);
         assertEq(pm.owner(), multisig);
         assertEq(strand.owner(), multisig);
         assertEq(address(gov.hook()), address(hook));
     }
 
+    function test_deployScript_usesExternalStakingToken() public {
+        MockERC20 stakingToken = new MockERC20("External URU Substitute", "URU", 18);
+        Deploy deploymentScript = new Deploy();
+
+        Deploy.Deployment memory dep =
+            deploymentScript.deployWoolFi(manager, address(stakingToken), address(deploymentScript), multisig);
+
+        assertEq(dep.stakingToken, address(stakingToken));
+        assertEq(WoolFiHook(dep.hook).governor(), dep.governor);
+        assertEq(WoolFiHook(dep.hook).positionManager(), dep.positionManager);
+        assertEq(WoolFiGovernor(dep.governor).owner(), multisig);
+        assertEq(WoolFiPositionManager(dep.positionManager).owner(), multisig);
+    }
+
+    function testRevert_deployScript_rejectsNonContractStakingToken() public {
+        Deploy deploymentScript = new Deploy();
+        vm.expectRevert("Deploy: STAKING_TOKEN has no code");
+        deploymentScript.deployWoolFi(manager, makeAddr("stakingToken"), address(deploymentScript), multisig);
+    }
+
     function test_createPool_authorizeInitializeAndWire() public {
-        (STRAND strand, TwineHook hook, TwinePositionManager pm, TwineGovernor gov) = _deployCore();
+        (STRAND strand, WoolFiHook hook, WoolFiPositionManager pm, WoolFiGovernor gov) = _deployCore();
 
         MockPriceOracle oracle0 = new MockPriceOracle(1e18);
         MockPriceOracle oracle1 = new MockPriceOracle(1e18);
         MockMarketHours mh = new MockMarketHours(true);
-        TwineUnderwritingVault vault = new TwineUnderwritingVault(
+        WoolFiUnderwritingVault vault = new WoolFiUnderwritingVault(
             address(strand),
             address(hook),
             Currency.unwrap(currency0),
@@ -92,7 +117,7 @@ contract DeployTest is Deployers {
         vm.startPrank(multisig);
         gov.authorizePool(
             key,
-            TwineHook.AuthParams({
+            WoolFiHook.AuthParams({
                 oracle0: oracle0,
                 oracle1: oracle1,
                 marketHours: mh,

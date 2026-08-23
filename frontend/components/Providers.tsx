@@ -7,6 +7,7 @@ import "@rainbow-me/rainbowkit/styles.css";
 import {useState} from "react";
 
 import {config} from "@/lib/wagmi";
+import {SelectedPoolProvider} from "@/hooks/useSelectedPool";
 
 /**
  * Client-side providers: wagmi (chain + connectors), react-query (cache), RainbowKit (wallet UI).
@@ -27,7 +28,7 @@ export function Providers({children}: {children: React.ReactNode}) {
             overlayBlur: "small",
           })}
         >
-          {children}
+          <SelectedPoolProvider>{children}</SelectedPoolProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

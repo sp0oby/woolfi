@@ -14,7 +14,7 @@ import {explorerTx} from "@/lib/wagmi";
  */
 export function RecentSwapsPanel() {
   const chainId = useChainId();
-  const {newest, loading, error, deployment} = useHookSwaps();
+  const {newest, loading, error, stale, deployment} = useHookSwaps();
 
   return (
     <section className="mt-20">
@@ -28,6 +28,11 @@ export function RecentSwapsPanel() {
         relative to the previous swap. "Asym" = the asymmetric fee was active.
       </p>
 
+      {stale ? (
+        <p className="mt-4 font-mono text-[12px] text-amber-100/90">
+          Indexer history is stale or unreachable. Live prices still come from the contracts.
+        </p>
+      ) : null}
       {!deployment ? (
         <p className="mt-4 font-mono text-[12px] text-muted">No deployment for this chain.</p>
       ) : error ? (
@@ -134,10 +139,8 @@ function RpcErrorHint({message}: {message: string}) {
       <p className="mt-1.5 normal-case break-words">{message.slice(0, 240)}{message.length > 240 ? "…" : ""}</p>
       {looksRateLimited ? (
         <p className="mt-2 text-amber-50/80">
-          Likely the public Base RPC throttling eth_getLogs. Set{" "}
-          <code className="text-white">NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL</code> in{" "}
-          <code className="text-white">frontend/.env.local</code> to a dedicated provider
-          (Alchemy / QuickNode / Infura) and restart the dev server.
+          Confirm <code className="text-white">NEXT_PUBLIC_INDEXER_URL</code> points at the
+          running Ponder API and that the indexer has caught up to the selected pool.
         </p>
       ) : null}
     </div>

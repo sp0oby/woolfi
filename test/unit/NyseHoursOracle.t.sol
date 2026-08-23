@@ -37,6 +37,15 @@ contract NyseHoursOracleTest is Test {
         // 2026-03-11 (Wed) 9:30 EDT = 13:30 UTC.
         vm.warp(_ts(2026, 3, 11, 13, 30));
         assertTrue(oracle.isMarketOpen(), "open at exactly 9:30 ET");
+        assertEq(oracle.currentSessionStart(), block.timestamp);
+    }
+
+    function test_currentSessionStart_isStableThroughoutSession() public {
+        uint256 openTs = _ts(2026, 4, 14, 13, 30);
+        vm.warp(openTs + 2 hours);
+        assertEq(oracle.currentSessionStart(), openTs);
+        vm.warp(_ts(2026, 4, 14, 20, 0));
+        assertEq(oracle.currentSessionStart(), 0);
     }
 
     function test_closed_oneSecondBeforeOpen() public {

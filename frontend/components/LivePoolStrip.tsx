@@ -1,6 +1,7 @@
 "use client";
 
 import {usePoolReads} from "@/hooks/usePool";
+import {useSelectedPool} from "@/hooks/useSelectedPool";
 import {fmtAmount} from "@/lib/format";
 
 /**
@@ -8,12 +9,22 @@ import {fmtAmount} from "@/lib/format";
  * Same data source as the dashboard's PoolCard - refreshes every 12 s.
  */
 export function LivePoolStrip() {
-  const {drift, fairPriceWad, vaultStaked, config, deployment} = usePoolReads();
+  const {pool} = useSelectedPool();
+  const {drift, fairPriceWad, vaultStaked, config, safety, deployment} = usePoolReads();
+  const state = safety?.structurallyBroken
+    ? "broken"
+    : safety?.stabilizing
+      ? "stabilizing"
+      : safety?.oracleSkewed
+        ? "skewed"
+        : config
+          ? "ok"
+          : "-";
 
   if (!deployment) {
     return (
       <p className="mt-5 font-mono text-[12px] leading-[1.75] text-muted border-l border-line pl-5">
-        Connect to Base Sepolia to read the pool state.
+        {pool.base.symbol} / {pool.quote.symbol} is curated and pending deployment on Robinhood Chain.
       </p>
     );
   }
@@ -23,7 +34,7 @@ export function LivePoolStrip() {
       <Cell label="Fair price" value={fmtAmount(fairPriceWad)} />
       <Cell label="Drift (bps)" value={drift !== undefined ? signedBps(drift) : "-"} />
       <Cell label="Vault stake" value={fmtAmount(vaultStaked)} />
-      <Cell label="State" value={config ? (config.structuralBreak ? "broken" : "ok") : "-"} />
+      <Cell label="State" value={state} />
     </dl>
   );
 }

@@ -9,7 +9,7 @@ import {type PoolKey} from "@/lib/poolKey";
 const ZERO_BYTES = "0x" as const;
 
 /**
- * Pre-flight quote for a swap via `TwineSwapRouter`. We `simulateContract` against the router
+ * Pre-flight quote for a swap via `WoolFiSwapRouter`. We `simulateContract` against the router
  * with `amountOutMinimum = 0` so the simulation never reverts on slippage - only on the actual
  * preconditions (allowance, pool state, oracle staleness, etc). The returned `amountOut` is the
  * exact value the next real swap would settle, which we use to compute a correct min-out.

@@ -13,6 +13,8 @@ import {IMarketHoursOracle} from "../interfaces/IMarketHoursOracle.sol";
 contract MultisigMarketHours is IMarketHoursOracle, Ownable {
     /// @notice Whether the equity market is currently open.
     bool public open;
+    /// @notice Start of the currently active session; zero while closed.
+    uint64 public sessionStart;
     /// @notice Block timestamp of the last `setOpen` call (monitoring + freshness checks).
     uint64 public lastUpdate;
 
@@ -21,11 +23,14 @@ contract MultisigMarketHours is IMarketHoursOracle, Ownable {
     constructor(address initialOwner, bool initiallyOpen) Ownable(initialOwner) {
         open = initiallyOpen;
         lastUpdate = uint64(block.timestamp);
+        sessionStart = initiallyOpen ? uint64(block.timestamp) : 0;
         emit MarketStatusUpdated(initiallyOpen, lastUpdate);
     }
 
     /// @notice Update the open/closed flag.
     function setOpen(bool _open) external onlyOwner {
+        if (_open && !open) sessionStart = uint64(block.timestamp);
+        if (!_open) sessionStart = 0;
         open = _open;
         lastUpdate = uint64(block.timestamp);
         emit MarketStatusUpdated(_open, lastUpdate);
@@ -34,5 +39,10 @@ contract MultisigMarketHours is IMarketHoursOracle, Ownable {
     /// @inheritdoc IMarketHoursOracle
     function isMarketOpen() external view returns (bool) {
         return open;
+    }
+
+    /// @inheritdoc IMarketHoursOracle
+    function currentSessionStart() external view returns (uint256) {
+        return open ? sessionStart : 0;
     }
 }

@@ -28,6 +28,12 @@ contract ChainlinkOracleAdapterTest is Test {
         assertEq(adapter.getPrice(), 100_000e18);
     }
 
+    function test_getPriceData_returnsValidatedTimestamp() public view {
+        (uint256 price, uint256 updatedAt) = adapter.getPriceData();
+        assertEq(price, 100_000e18);
+        assertEq(updatedAt, START);
+    }
+
     function test_getPrice_normalizes18Decimals() public {
         MockChainlinkFeed f = new MockChainlinkFeed(18, 400e18, block.timestamp);
         ChainlinkOracleAdapter a = new ChainlinkOracleAdapter(address(f), HEARTBEAT);
@@ -73,6 +79,17 @@ contract ChainlinkOracleAdapterTest is Test {
         feed.setAnswer(100_000e8, 0);
         vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.StalePrice.selector, 0, MAX_STALENESS));
         adapter.getPrice();
+    }
+
+    function test_requireRuntimeGuards_allowsStaleButValidPrint() public {
+        feed.setAnswer(100_000e8, block.timestamp - MAX_STALENESS - 1);
+        adapter.requireRuntimeGuards();
+    }
+
+    function testRevert_requireRuntimeGuards_invalidAnswer() public {
+        feed.setAnswer(0, block.timestamp);
+        vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.InvalidPrice.selector, int256(0)));
+        adapter.requireRuntimeGuards();
     }
 
     // -----------------------------------------------------------------

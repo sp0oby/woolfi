@@ -9,21 +9,40 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 contract MockChainlinkFeed is AggregatorV3Interface {
     uint8 private immutable _decimals;
     int256 public answer;
+    uint256 public startedAt;
     uint256 public updatedAt;
     uint80 public roundId;
+    uint80 public answeredInRound;
 
     constructor(uint8 dec, int256 _answer, uint256 _updatedAt) {
         _decimals = dec;
         answer = _answer;
+        startedAt = _updatedAt;
         updatedAt = _updatedAt;
         roundId = 1;
+        answeredInRound = 1;
     }
 
     /// @notice Set a new answer and its update timestamp, advancing the round.
     function setAnswer(int256 _answer, uint256 _updatedAt) external {
         answer = _answer;
+        startedAt = _updatedAt;
         updatedAt = _updatedAt;
         roundId++;
+        answeredInRound = roundId;
+    }
+
+    function setRoundData(int256 _answer, uint256 _startedAt, uint256 _updatedAt) external {
+        answer = _answer;
+        startedAt = _startedAt;
+        updatedAt = _updatedAt;
+        roundId++;
+        answeredInRound = roundId;
+    }
+
+    function setRoundIds(uint80 roundId_, uint80 answeredInRound_) external {
+        roundId = roundId_;
+        answeredInRound = answeredInRound_;
     }
 
     function decimals() external view override returns (uint8) {
@@ -39,10 +58,10 @@ contract MockChainlinkFeed is AggregatorV3Interface {
     }
 
     function getRoundData(uint80 _roundId) external view override returns (uint80, int256, uint256, uint256, uint80) {
-        return (_roundId, answer, updatedAt, updatedAt, _roundId);
+        return (_roundId, answer, startedAt, updatedAt, _roundId);
     }
 
     function latestRoundData() external view override returns (uint80, int256, uint256, uint256, uint80) {
-        return (roundId, answer, updatedAt, updatedAt, roundId);
+        return (roundId, answer, startedAt, updatedAt, answeredInRound);
     }
 }

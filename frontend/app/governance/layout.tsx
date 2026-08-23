@@ -6,7 +6,7 @@ import type {Metadata} from "next";
 export const metadata: Metadata = {
   title: "Governance",
   description:
-    "Who controls Twine today, what they can and can't do, and how STRAND-holder voting takes over once the protocol clears its audit.",
+    "How WoolFi's v1 multisig administers pools on Robinhood Chain, and what it cannot change.",
 };
 
 export default function GovernanceLayout({children}: {children: React.ReactNode}) {

@@ -1,5 +1,5 @@
 import {LPFeeLibraryDynamicFee} from "./constants";
-import type {TwineDeployment} from "./twine";
+import type {WoolFiDeployment} from "./woolfi";
 
 /** v4 PoolKey struct - same shape the contracts expect. */
 export type PoolKey = {
@@ -10,7 +10,7 @@ export type PoolKey = {
   hooks: `0x${string}`;
 };
 
-export function poolKeyFor(deployment: TwineDeployment): PoolKey {
+export function poolKeyFor(deployment: WoolFiDeployment): PoolKey {
   return {
     currency0: deployment.token0,
     currency1: deployment.token1,

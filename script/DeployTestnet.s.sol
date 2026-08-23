@@ -10,10 +10,10 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 
-import {TwineHook} from "../src/TwineHook.sol";
-import {TwinePositionManager} from "../src/TwinePositionManager.sol";
-import {TwineGovernor} from "../src/TwineGovernor.sol";
-import {TwineUnderwritingVault} from "../src/TwineUnderwritingVault.sol";
+import {WoolFiHook} from "../src/WoolFiHook.sol";
+import {WoolFiPositionManager} from "../src/WoolFiPositionManager.sol";
+import {WoolFiGovernor} from "../src/WoolFiGovernor.sol";
+import {WoolFiUnderwritingVault} from "../src/WoolFiUnderwritingVault.sol";
 import {STRAND} from "../src/STRAND.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockPriceOracle} from "../src/mocks/MockPriceOracle.sol";
@@ -22,14 +22,14 @@ import {TestnetStrandFaucet} from "../src/testnet/TestnetStrandFaucet.sol";
 
 import {HookMiner} from "./lib/HookMiner.sol";
 
-/// @notice One-shot testnet bootstrap: deploys mock tokens + oracles + the full Twine system,
+/// @notice One-shot mock/testnet bootstrap: deploys mock tokens + oracles + the full WoolFi system,
 ///         authorizes and initializes a single MSTRX/cbBTC pool, and writes the resulting
 ///         addresses to `frontend/lib/deployments/<chain>.json` so the dashboard can pick them up.
 /// @dev Reads optional `MULTISIG_ADDRESS` from env. When set, all Ownable contracts (STRAND,
-///      TwineGovernor, TwinePositionManager, MultisigMarketHours) plus the vault's `rebalancer`
+///      WoolFiGovernor, WoolFiPositionManager, MultisigMarketHours) plus the vault's `rebalancer`
 ///      land on the multisig directly — no post-deploy transfer required. When unset, falls back
 ///      to the deployer address (useful for fast iteration). The buyback sink stays on the
-///      deployer in both modes; switch it via `TwinePositionManager.setFeeConfig` post-deploy.
+///      deployer in both modes; switch it via `WoolFiPositionManager.setFeeConfig` post-deploy.
 contract DeployTestnet is Script {
     using PoolIdLibrary for PoolKey;
 
@@ -60,6 +60,9 @@ contract DeployTestnet is Script {
         console2.log("Deployer   ", deployer);
         console2.log("Multisig   ", multisig);
         console2.log("PoolManager", address(poolManager));
+        if (block.chainid == 4663) {
+            console2.log("WARNING: mock bootstrap only; use Deploy.s.sol for Robinhood production");
+        }
 
         vm.startBroadcast(pk);
         _deployMocks(deployer, multisig, dep);
@@ -80,8 +83,8 @@ contract DeployTestnet is Script {
     }
 
     function _deployMocks(address deployer, address multisig, Deployed memory dep) internal {
-        MockERC20 ta = new MockERC20("Twine Mock MSTRX", "tMSTRX", 18);
-        MockERC20 tb = new MockERC20("Twine Mock cbBTC", "tcbBTC", 18);
+        MockERC20 ta = new MockERC20("WoolFi Mock MSTRX", "tMSTRX", 18);
+        MockERC20 tb = new MockERC20("WoolFi Mock cbBTC", "tcbBTC", 18);
         // sort by address so currency0 < currency1
         if (address(ta) < address(tb)) {
             dep.token0 = address(ta);
@@ -107,10 +110,10 @@ contract DeployTestnet is Script {
                 | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
         );
         // Hook governor starts as the deployer so this script can wire pools below; we hand it
-        // to the TwineGovernor contract a few lines down. TwineGovernor and PM start owned by
+        // to the WoolFiGovernor contract a few lines down. WoolFiGovernor and PM start owned by
         // the deployer so the script can call setVault / setFeeConfig; ownership is handed to
         // the multisig at the end of run() once wiring is complete.
-        bytes memory hookInit = abi.encodePacked(type(TwineHook).creationCode, abi.encode(poolManager, deployer));
+        bytes memory hookInit = abi.encodePacked(type(WoolFiHook).creationCode, abi.encode(poolManager, deployer));
         // Seed the salt search with block.timestamp so re-running the script picks a different
         // starting point — avoids CREATE2 collisions when the same bytecode + deployer have
         // already produced a hook at the lowest-salt address.
@@ -118,12 +121,12 @@ contract DeployTestnet is Script {
         dep.hook = HookMiner.deploy(salt, hookInit);
         require(dep.hook == mined, "DeployTestnet: hook mine mismatch");
 
-        dep.pm = address(new TwinePositionManager(poolManager, deployer));
-        dep.governor = address(new TwineGovernor(dep.hook, deployer));
+        dep.pm = address(new WoolFiPositionManager(poolManager, deployer));
+        dep.governor = address(new WoolFiGovernor(dep.hook, deployer));
         // Wire the PM into the hook BEFORE handing the governor role over — once setGovernor
-        // runs, only the TwineGovernor contract can call setPositionManager.
-        TwineHook(dep.hook).setPositionManager(dep.pm);
-        TwineHook(dep.hook).setGovernor(dep.governor);
+        // runs, only the WoolFiGovernor contract can call setPositionManager.
+        WoolFiHook(dep.hook).setPositionManager(dep.pm);
+        WoolFiHook(dep.hook).setGovernor(dep.governor);
     }
 
     function _createPool(address deployer, address multisig, IPoolManager poolManager, Deployed memory dep) internal {
@@ -136,10 +139,10 @@ contract DeployTestnet is Script {
         });
         dep.poolId = PoolId.unwrap(key.toId());
 
-        TwineGovernor(dep.governor)
+        WoolFiGovernor(dep.governor)
             .authorizePool(
                 key,
-                TwineHook.AuthParams({
+                WoolFiHook.AuthParams({
                 oracle0: MockPriceOracle(dep.oracle0),
                 oracle1: MockPriceOracle(dep.oracle1),
                 marketHours: MultisigMarketHours(dep.marketHours),
@@ -153,15 +156,15 @@ contract DeployTestnet is Script {
 
         // Vault rebalancer is immutable; set it to the multisig at construction so seized STRAND
         // on a structural-break drawdown lands in multisig custody.
-        dep.vault = address(new TwineUnderwritingVault(dep.strand, dep.hook, dep.token0, dep.token1, multisig));
-        TwineGovernor(dep.governor).setVault(key, dep.vault, 2000);
+        dep.vault = address(new WoolFiUnderwritingVault(dep.strand, dep.hook, dep.token0, dep.token1, multisig));
+        WoolFiGovernor(dep.governor).setVault(key, dep.vault, 2000);
         // Buyback sink → multisig; multisig later runs the off-chain market-buy-and-burn.
-        TwinePositionManager(dep.pm).setFeeConfig(key, dep.vault, 2000, multisig, 1000);
+        WoolFiPositionManager(dep.pm).setFeeConfig(key, dep.vault, 2000, multisig, 1000);
 
         // Ownership handoff: deployer keeps no privileges after the script finishes.
         if (multisig != deployer) {
-            TwineGovernor(dep.governor).transferOwnership(multisig);
-            TwinePositionManager(dep.pm).setOwner(multisig);
+            WoolFiGovernor(dep.governor).transferOwnership(multisig);
+            WoolFiPositionManager(dep.pm).setOwner(multisig);
         }
     }
 
@@ -177,7 +180,7 @@ contract DeployTestnet is Script {
 
     function _logAndPersist(Deployed memory dep, address poolManagerAddr) internal {
         console2.log("");
-        console2.log("=== Twine Testnet Deployment ===");
+        console2.log("=== WoolFi Testnet Deployment ===");
         console2.log("token0       ", dep.token0);
         console2.log("token1       ", dep.token1);
         console2.log("oracle0      ", dep.oracle0);
@@ -190,7 +193,13 @@ contract DeployTestnet is Script {
         console2.log("vault        ", dep.vault);
         console2.log("strandFaucet ", dep.strandFaucet);
 
-        string memory chainName = block.chainid == 84532 ? "base-sepolia" : block.chainid == 8453 ? "base" : "unknown";
+        string memory chainName = block.chainid == 84532
+            ? "base-sepolia"
+            : block.chainid == 8453
+                ? "base-mainnet-mock"
+                : block.chainid == 46630
+                    ? "robinhood-testnet"
+                    : block.chainid == 4663 ? "robinhood-mainnet-mock" : "unknown";
         string memory path = string.concat("frontend/lib/deployments/", chainName, ".json");
 
         string memory body = string.concat(

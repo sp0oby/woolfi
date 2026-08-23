@@ -1,43 +1,45 @@
 import {http} from "wagmi";
-import {base, baseSepolia} from "wagmi/chains";
 import {getDefaultConfig} from "@rainbow-me/rainbowkit";
+import {defineChain} from "viem";
+
+export const robinhood = defineChain({
+  id: 4663,
+  name: "Robinhood Chain",
+  nativeCurrency: {name: "Ether", symbol: "ETH", decimals: 18},
+  rpcUrls: {
+    default: {http: ["https://rpc.mainnet.chain.robinhood.com"]},
+  },
+  blockExplorers: {
+    default: {name: "Blockscout", url: "https://robinhoodchain.blockscout.com"},
+  },
+});
+
+export type ConfiguredChainId = typeof robinhood.id;
 
 /**
  * WalletConnect project id (from cloud.walletconnect.com). Optional - RainbowKit still works
  * with injected/browser wallets if this isn't set, just without WC modal support.
  */
-const projectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "twine-dev";
+const projectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "woolfi-dev";
 
-/**
- * Optional dedicated RPCs. When unset we fall back to the public Base node, which is fine for
- * basic reads but rate-limits and clamps `eth_getLogs` ranges - set these from .env.local to use
- * Alchemy / QuickNode / Infura instead. Required for the ZScoreChart + RecentSwapsPanel to work
- * reliably (they scan ~150k blocks of SwapProcessed events).
- */
-const baseSepoliaRpc = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL;
-const baseRpc = process.env.NEXT_PUBLIC_BASE_RPC_URL;
+const robinhoodRpc = process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL;
 
 export const config = getDefaultConfig({
-  appName: "Twine",
+  appName: "WoolFi",
   projectId,
-  // baseSepolia first so wagmi defaults useChainId() to the testnet where Twine is actually deployed.
-  // Base mainnet stays in the list so users can switch once a mainnet deployment exists.
-  chains: [baseSepolia, base],
+  chains: [robinhood],
   transports: {
-    [base.id]: http(baseRpc),
-    [baseSepolia.id]: http(baseSepoliaRpc),
+    [robinhood.id]: http(robinhoodRpc),
   },
   ssr: true,
 });
 
 export const chainNameById: Record<number, string> = {
-  [base.id]: "Base",
-  [baseSepolia.id]: "Base Sepolia",
+  [robinhood.id]: "Robinhood Chain",
 };
 
 const explorerById: Record<number, string> = {
-  [base.id]: "https://basescan.org",
-  [baseSepolia.id]: "https://sepolia.basescan.org",
+  [robinhood.id]: "https://robinhoodchain.blockscout.com",
 };
 
 export function explorerTx(chainId: number | undefined, hash: `0x${string}`): string | undefined {

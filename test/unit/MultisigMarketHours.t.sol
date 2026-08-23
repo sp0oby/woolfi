@@ -19,6 +19,7 @@ contract MultisigMarketHoursTest is Test {
         assertTrue(mh.isMarketOpen());
         assertEq(mh.lastUpdate(), uint64(block.timestamp));
         assertEq(mh.owner(), owner);
+        assertEq(mh.currentSessionStart(), block.timestamp);
     }
 
     function test_constructor_initiallyClosed() public {
@@ -31,6 +32,16 @@ contract MultisigMarketHoursTest is Test {
         mh.setOpen(false);
         assertFalse(mh.isMarketOpen());
         assertEq(mh.lastUpdate(), uint64(block.timestamp));
+        assertEq(mh.currentSessionStart(), 0);
+    }
+
+    function test_reopen_recordsCurrentSessionStart() public {
+        mh.setOpen(false);
+        skip(1 days);
+        mh.setOpen(true);
+        assertEq(mh.currentSessionStart(), block.timestamp);
+        skip(1 hours);
+        assertEq(mh.currentSessionStart(), block.timestamp - 1 hours);
     }
 
     function testRevert_setOpen_notOwner() public {

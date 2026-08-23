@@ -4,8 +4,8 @@ pragma solidity 0.8.26;
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @title SpreadMath
-/// @notice Pure math primitives for Twine's price-peg invariant and asymmetric fee curve.
-/// @dev Twine pegs a full-range v4 pool's internal price to an oracle-derived fair price
+/// @notice Pure math primitives for WoolFi's price-peg invariant and asymmetric fee curve.
+/// @dev WoolFi pegs a full-range v4 pool's internal price to an oracle-derived fair price
 ///      (see PROJECT_SPEC.md §3.1, v0.2). All prices are compared in "human" token1-per-token0
 ///      terms scaled to 1e18 (WAD). Fees and drift are expressed in basis points (bps); the hook
 ///      is responsible for converting fee bps into v4's pip units (1 bps = 100 pips) at the boundary.

@@ -9,4 +9,9 @@ pragma solidity 0.8.26;
 interface IMarketHoursOracle {
     /// @notice True when the relevant equity market (e.g. NYSE) is currently open for trading.
     function isMarketOpen() external view returns (bool);
+
+    /// @notice Start timestamp of the active trading session, or zero when no session is active.
+    /// @dev This lets hooks derive post-open stabilization without storing a fragile observed
+    ///      closed-to-open transition of their own.
+    function currentSessionStart() external view returns (uint256);
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+import {IPriceOracle, IPriceOracleMetadata} from "../interfaces/IPriceOracle.sol";
 
 /// @title DualOracleAdapter
 /// @notice Wraps two {IPriceOracle}s (primary + backup) and enforces an inter-source deviation cap.
@@ -14,7 +14,7 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 ///      Failover is silent (no event) because {IPriceOracle.getPrice} is `view`. Off-chain monitoring
 ///      observes failover by reading the two sources directly; the revert cases (both stale, deviation)
 ///      surface on-chain.
-contract DualOracleAdapter is IPriceOracle {
+contract DualOracleAdapter is IPriceOracleMetadata {
     /// @notice The preferred price source.
     IPriceOracle public immutable primary;
     /// @notice The backup price source used for the deviation check and as a fallback.
@@ -62,5 +62,24 @@ contract DualOracleAdapter is IPriceOracle {
         // |hi - lo| / lo > maxDeviationBps / BPS  iff  (hi - lo) * BPS > lo * maxDeviationBps
         if ((hi - lo) * BPS > lo * maxDeviationBps) revert PriceDeviation(p, b);
         return p;
+    }
+
+    /// @notice Runtime guards for both wrapped sources.
+    function requireRuntimeGuards() external view {
+        primary.requireRuntimeGuards();
+        backup.requireRuntimeGuards();
+    }
+
+    /// @inheritdoc IPriceOracleMetadata
+    /// @dev Timestamp-aware consumers require both sources to validate. Errors are deliberately
+    ///      allowed to bubble here: a stale/invalid/corporate-action/sequencer failure must not be
+    ///      converted into the hook's benign timestamp-skew degradation mode.
+    function getPriceData() external view returns (uint256 priceWad, uint256 updatedAt) {
+        (uint256 p, uint256 pUpdatedAt) = IPriceOracleMetadata(address(primary)).getPriceData();
+        (uint256 b,) = IPriceOracleMetadata(address(backup)).getPriceData();
+        uint256 hi = p > b ? p : b;
+        uint256 lo = p > b ? b : p;
+        if ((hi - lo) * BPS > lo * maxDeviationBps) revert PriceDeviation(p, b);
+        return (p, pUpdatedAt);
     }
 }

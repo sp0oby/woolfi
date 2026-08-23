@@ -21,7 +21,7 @@ import {IMarketHoursOracle} from "../interfaces/IMarketHoursOracle.sol";
 ///        - Changes to DST rules. The Sunshine Protection Act has been floated; if Congress
 ///          eliminates DST, the multisig calls `setDstWindow` to clear or shift transitions.
 ///
-///      Anyone can `addHolidaysBulk` / `setHoliday` if owner — the owner is the Twine multisig
+///      Anyone can `addHolidaysBulk` / `setHoliday` if owner — the owner is the WoolFi multisig
 ///      so calendar maintenance is a normal governance op, not a sysadmin task.
 contract NyseHoursOracle is IMarketHoursOracle, Ownable {
     // ---------------------------------------------------------------------- //
@@ -99,33 +99,40 @@ contract NyseHoursOracle is IMarketHoursOracle, Ownable {
 
     /// @inheritdoc IMarketHoursOracle
     function isMarketOpen() external view returns (bool) {
-        uint256 nowTs = block.timestamp;
+        return _currentSessionStart(block.timestamp) != 0;
+    }
 
+    /// @inheritdoc IMarketHoursOracle
+    function currentSessionStart() external view returns (uint256) {
+        return _currentSessionStart(block.timestamp);
+    }
+
+    function _currentSessionStart(uint256 nowTs) internal view returns (uint256) {
         // Convert UTC → ET. Subtract 4h during DST, 5h otherwise.
         uint256 etOffset = _isDst(nowTs) ? 4 hours : 5 hours;
-        if (nowTs <= etOffset) return false; // before unix epoch in ET, sanity guard
+        if (nowTs <= etOffset) return 0; // before unix epoch in ET, sanity guard
         uint256 etTs = nowTs - etOffset;
 
         // Weekend check: Unix epoch 1970-01-01 was a Thursday (dow=4). Mon=1, Sat=6, Sun=0.
         uint256 dayIndexEt = etTs / SECONDS_PER_DAY;
         uint256 dow = (dayIndexEt + 4) % 7;
-        if (dow == 0 || dow == 6) return false;
+        if (dow == 0 || dow == 6) return 0;
 
         // Time-of-day check: 9:30 AM ≤ ET < 4:00 PM.
         // (Doing this BEFORE the holiday check means the holiday lookup only matters during
         // actual trading hours — when UTC date == ET date and we don't need to worry about
         // day-boundary aliasing across the 5h offset.)
         uint256 secondsOfDay = etTs % SECONDS_PER_DAY;
-        if (secondsOfDay < OPEN_SECONDS_ET) return false;
-        if (secondsOfDay >= CLOSE_SECONDS_ET) return false;
+        if (secondsOfDay < OPEN_SECONDS_ET) return 0;
+        if (secondsOfDay >= CLOSE_SECONDS_ET) return 0;
 
         // Holiday check. During trading hours (9:30 ET – 16:00 ET = 13:30–21:00 UTC in EST,
         // 14:30–20:00 UTC in EDT) the UTC calendar date equals the ET calendar date, so the
         // UTC day index is the same key off-chain callers use when populating the holiday list.
         uint256 dayIndexUtc = nowTs / SECONDS_PER_DAY;
-        if (holiday[dayIndexUtc]) return false;
+        if (holiday[dayIndexUtc]) return 0;
 
-        return true;
+        return dayIndexEt * SECONDS_PER_DAY + OPEN_SECONDS_ET + etOffset;
     }
 
     /// @notice Off-chain monitoring hook: timestamp of the most recent change to the calendar.

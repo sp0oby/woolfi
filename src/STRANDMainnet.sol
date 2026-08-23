@@ -8,8 +8,8 @@ import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title STRANDMainnet
-/// @notice Production-shape Twine protocol token. Same hard cap and same role-gated mint as the
-///         simpler {STRAND} used on testnet, plus the two extensions a production utility/governance
+/// @notice Legacy-named production-shape WoolFi protocol token. Same hard cap and same role-gated
+///         mint as the simpler {STRAND} used on testnet, plus the two extensions a utility/governance
 ///         token actually needs: ERC-2612 permit (gasless approvals) and ERC-20 Votes
 ///         (snapshot voting power, delegation, historical balance queries — prerequisite for the
 ///         v2 on-chain {Governor} per PROJECT_SPEC.md §7.4).

@@ -5,7 +5,7 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 /// @title LiquidityAmounts
 /// @notice Minimal liquidity<->amount conversion for full-range positions.
-/// @dev Vendored standard Uniswap v3/v4 math (the only piece Twine needs is
+/// @dev Vendored standard Uniswap v3/v4 math (the only piece WoolFi needs is
 ///      {getLiquidityForAmounts}), implemented on solady's `fullMulDiv` to avoid pulling the
 ///      v4-periphery dependency. `getAmountsForLiquidity` is not needed: v4's `modifyLiquidity`
 ///      returns the realized amounts on withdrawal.

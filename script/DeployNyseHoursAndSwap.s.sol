@@ -9,19 +9,19 @@ import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 
 import {NyseHoursOracle} from "../src/oracle/NyseHoursOracle.sol";
-import {TwineGovernor} from "../src/TwineGovernor.sol";
-import {TwineHook} from "../src/TwineHook.sol";
+import {WoolFiGovernor} from "../src/WoolFiGovernor.sol";
+import {WoolFiHook} from "../src/WoolFiHook.sol";
 import {MockPriceOracle} from "../src/mocks/MockPriceOracle.sol";
 import {MultisigMarketHours} from "../src/oracle/MultisigMarketHours.sol";
 
 /// @notice Deploys the on-chain NYSE hours oracle and re-points the live pool at it via
-///         `TwineGovernor.updatePoolConfig`. Strict superset of `DeployTestnet` — leaves all
+///         `WoolFiGovernor.updatePoolConfig`. Strict superset of `DeployTestnet` — leaves all
 ///         other pool config untouched.
 ///
 /// @dev Env:
-///        DEPLOYER_PRIVATE_KEY   — must currently be the TwineGovernor owner
-///        GOVERNOR_ADDRESS       — the deployed TwineGovernor
-///        HOOK_ADDRESS           — the deployed TwineHook (for currentConfig reads)
+///        DEPLOYER_PRIVATE_KEY   — must currently be the WoolFiGovernor owner
+///        GOVERNOR_ADDRESS       — the deployed WoolFiGovernor
+///        HOOK_ADDRESS           — the deployed WoolFiHook (for currentConfig reads)
 ///        TOKEN0                 — pool token0 (lower-sorted address)
 ///        TOKEN1                 — pool token1
 ///        ORACLE0                — current price oracle for token0
@@ -80,12 +80,12 @@ contract DeployNyseHoursAndSwap is Script {
             tickSpacing: 60,
             hooks: IHooks(e.hook)
         });
-        TwineHook.TwineConfig memory cfg = TwineHook(e.hook).poolConfig(key.toId());
+        WoolFiHook.WoolFiConfig memory cfg = WoolFiHook(e.hook).poolConfig(key.toId());
 
-        TwineGovernor(e.governor)
+        WoolFiGovernor(e.governor)
             .updatePoolConfig(
                 key,
-                TwineHook.AuthParams({
+                WoolFiHook.AuthParams({
                 oracle0: MockPriceOracle(e.oracle0),
                 oracle1: MockPriceOracle(e.oracle1),
                 // type-cheat: NyseHoursOracle implements the same IMarketHoursOracle interface

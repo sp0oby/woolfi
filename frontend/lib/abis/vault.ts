@@ -1,0 +1,81 @@
+export const vaultAbi = [
+  {
+    type: "function",
+    name: "totalShares",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "totalStaked",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "sharesOf",
+    stateMutability: "view",
+    inputs: [{name: "", type: "address"}],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "pendingRewards",
+    stateMutability: "view",
+    inputs: [{name: "user", type: "address"}],
+    outputs: [
+      {name: "fee0", type: "uint256"},
+      {name: "fee1", type: "uint256"},
+    ],
+  },
+  {
+    type: "function",
+    name: "pendingUnstake",
+    stateMutability: "view",
+    inputs: [{name: "", type: "address"}],
+    outputs: [
+      {name: "shares", type: "uint256"},
+      {name: "releaseAt", type: "uint256"},
+    ],
+  },
+  {
+    type: "function",
+    name: "COOLDOWN",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "stake",
+    stateMutability: "nonpayable",
+    inputs: [{name: "amount", type: "uint256"}],
+    outputs: [{name: "shares", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "requestUnstake",
+    stateMutability: "nonpayable",
+    inputs: [{name: "shares", type: "uint256"}],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "unstake",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{name: "amount", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [
+      {name: "amount0", type: "uint256"},
+      {name: "amount1", type: "uint256"},
+    ],
+  },
+] as const;

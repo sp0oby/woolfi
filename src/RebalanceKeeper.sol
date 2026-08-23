@@ -3,11 +3,11 @@ pragma solidity 0.8.26;
 
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 
-import {TwineHook} from "./TwineHook.sol";
-import {TwinePositionManager} from "./TwinePositionManager.sol";
+import {WoolFiHook} from "./WoolFiHook.sol";
+import {WoolFiPositionManager} from "./WoolFiPositionManager.sol";
 
 /// @title RebalanceKeeper
-/// @notice Permissionless entry point that keeps a Twine pool's protocol state fresh
+/// @notice Permissionless entry point that keeps a WoolFi pool's protocol state fresh
 ///         (PROJECT_SPEC.md §5.1, §8.1).
 /// @dev A thin convenience wrapper — anyone may call {keep} to:
 ///        1. Force a structural-break check on the hook (so a drift past the hard threshold triggers
@@ -18,13 +18,13 @@ import {TwinePositionManager} from "./TwinePositionManager.sol";
 ///      the hook / PM as appropriate.
 contract RebalanceKeeper {
     /// @notice The hook this keeper services.
-    TwineHook public immutable hook;
+    WoolFiHook public immutable hook;
     /// @notice The position manager this keeper services.
-    TwinePositionManager public immutable pm;
+    WoolFiPositionManager public immutable pm;
 
     error ZeroAddress();
 
-    constructor(TwineHook _hook, TwinePositionManager _pm) {
+    constructor(WoolFiHook _hook, WoolFiPositionManager _pm) {
         if (address(_hook) == address(0) || address(_pm) == address(0)) revert ZeroAddress();
         hook = _hook;
         pm = _pm;

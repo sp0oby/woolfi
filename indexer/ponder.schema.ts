@@ -1,7 +1,7 @@
 import {onchainTable} from "ponder";
 
 /**
- * Indexer schema for the Twine dashboard. Each row is uniquely identified by `txHash-logIndex`
+ * Indexer schema for the WoolFi dashboard. Each row is uniquely identified by `txHash-logIndex`
  * so re-orgs are handled idempotently.
  */
 
@@ -24,6 +24,26 @@ export const structuralBreak = onchainTable("structural_break", (t) => ({
   timestamp: t.bigint().notNull(),
   driftBps: t.bigint().notNull(),
   resolved: t.boolean().notNull().default(false),
+  cachedFairPriceWad: t.bigint(),
+}));
+
+export const oracleSkew = onchainTable("oracle_skew", (t) => ({
+  id: t.text().primaryKey(),
+  poolId: t.hex().notNull(),
+  blockNumber: t.bigint().notNull(),
+  timestamp: t.bigint().notNull(),
+  updatedAt0: t.bigint().notNull(),
+  updatedAt1: t.bigint().notNull(),
+  maxSkew: t.integer().notNull(),
+}));
+
+export const poolSafety = onchainTable("pool_safety", (t) => ({
+  id: t.text().primaryKey(),
+  poolId: t.hex().notNull(),
+  blockNumber: t.bigint().notNull(),
+  timestamp: t.bigint().notNull(),
+  stabilizationSeconds: t.integer().notNull(),
+  maxOracleSkew: t.integer().notNull(),
 }));
 
 // LP mint/burn events through the position manager.
@@ -54,6 +74,8 @@ export const feeRouting = onchainTable("fee_routing", (t) => ({
 // Vault stake / unstake / drawdown.
 export const vaultEvent = onchainTable("vault_event", (t) => ({
   id: t.text().primaryKey(),
+  vault: t.hex().notNull(),
+  poolId: t.hex().notNull(),
   blockNumber: t.bigint().notNull(),
   timestamp: t.bigint().notNull(),
   kind: t.text().notNull(), // "stake" | "unstake" | "drawdown"

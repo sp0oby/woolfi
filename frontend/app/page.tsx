@@ -13,41 +13,45 @@ export default function SplashPage() {
           A market for the spread.
         </h1>
         <p className="mt-8 text-[17px] leading-relaxed text-ink/85">
-          Twine is a Uniswap v4 hook that turns a pool into a continuously-rebalancing pair-trade
-          vehicle between two fundamentally-linked assets. The flagship pair is{" "}
-          <span className="font-mono text-white">MSTRX/cbBTC</span> - Strategy's stock against
-          Bitcoin.
+          WoolFi is a multi-pool market for Robinhood Stock Tokens on Robinhood Chain. Each
+          Uniswap v4 pool trades the relationship between a stock token and{" "}
+          <span className="font-mono text-white">USDG</span> or{" "}
+          <span className="font-mono text-white">WETH</span>.
         </p>
 
         <Section label="Mechanic">
-          Each Twine pool enforces dollar-neutrality between its two reserves. The hook intercepts
+          Each WoolFi pool enforces dollar-neutrality between its two reserves. The hook intercepts
           every swap and applies an asymmetric fee based on which direction the swap pushes the pool.
           Swaps toward the oracle-implied fair price are discounted; swaps away are surcharged. The
           spread mean-reverts. Liquidity providers capture the elevated fees from the directional
           flow.
         </Section>
 
-        <Section label="Flagship pair">
-          Strategy holds approximately 600,000 BTC on its balance sheet. The stock is, in economic
-          substance, levered Bitcoin plus a financing premium and an operating-business overlay.
-          When that premium drifts from its rolling norm, Twine is the market for trading the drift.
-          Historical MSTR/BTC spread is large enough - often 10%+ deviations from mean - to make
-          pair-trade fees meaningful.
+        <Section label="Pool catalog">
+          Browse stock/USDG, stock/WETH, stock/stock spread, and crypto pools. The catalog shows
+          both live and pending pools; pending pools remain disabled until their verified oracles
+          and production deployments are ready.
         </Section>
 
         <Section label="Market hours">
-          MSTRX has a real underlying: a US-listed equity. When NYSE is closed, Twine reverts to flat
-          fees across both directions. The pool stays usable, but does not promise convergence in
-          those windows. LPs bear the resulting gap risk; a per-pool underwriting vault, capitalized
-          by STRAND stakers, backstops structural breaks.
+          Hours are configured per pool. Stock-token pools follow their underlying market schedule
+          and use flat fees while that market is closed. The pool stays usable, but does not promise
+          convergence in those windows. <span className="font-mono text-white">WETH/USDG</span> is
+          always open. Per-pool vaults use URU as the underwriting asset for structural breaks.
         </Section>
 
-        <Section label="On-chain right now">
+        <Section label="Catalog status">
           <p className="mt-3 text-[15px] leading-[1.75] text-ink/85">
-            The flagship pool is live on Base Sepolia against mocked equity feeds. Drift, fair price
-            and vault stake are read straight from the deployed contracts every twelve seconds.
+            Pools are listed as pending or live on Robinhood Chain. For live pools, drift, fair
+            price, and vault stake are read directly from deployed contracts.
           </p>
           <LivePoolStrip />
+        </Section>
+
+        <Section label="Stock-token disclosure">
+          Robinhood Stock Tokens issued by Robinhood Assets (Jersey) Limited (RHJ) provide economic
+          exposure to referenced securities but not ownership of those securities. Issuer terms and
+          geographic restrictions apply; confirm eligibility before holding or trading a token.
         </Section>
 
         <Section label="Open">

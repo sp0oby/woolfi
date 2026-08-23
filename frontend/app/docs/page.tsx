@@ -8,7 +8,7 @@ import {DeploymentPanel} from "@/components/DeploymentPanel";
 export const metadata: Metadata = {
   title: "Docs",
   description:
-    "How the hook works, who owns what, and the live Base Sepolia deployment addresses. The short version of PROJECT_SPEC.md, with links into the canonical source.",
+    "How WoolFi's Robinhood Chain multi-pool market, market hours, and URU underwriting work.",
 };
 
 export default function DocsPage() {
@@ -18,12 +18,11 @@ export default function DocsPage() {
       <article className="mx-auto max-w-2xl px-6 pt-24 pb-32">
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted">Docs</p>
         <h1 className="mt-3 text-[36px] sm:text-[44px] font-medium tracking-[-0.02em] leading-[1.1]">
-          How Twine works.
+          How WoolFi works.
         </h1>
         <p className="mt-8 text-[17px] leading-relaxed text-ink/85">
-          Twine is a Uniswap v4 hook. The hook makes a pool behave less like a passive AMM and more
-          like a tightly-managed pair-trade vehicle. Two long-only tokens, one continuously enforced
-          economic relationship.
+          WoolFi is a Uniswap v4 multi-pool market on Robinhood Chain. Each pool uses oracle-aware
+          fees to trade the economic relationship between two long-only tokens.
         </p>
 
         <Section label="The hook">
@@ -37,74 +36,83 @@ export default function DocsPage() {
           </p>
         </Section>
 
-        <Section label="LPs vs stakers">
+        <Section label="Pools">
+          <p>
+            The catalog spans stock/USDG, stock/WETH, stock/stock spread, and crypto pools. A pool
+            is marked <span className="text-white">pending</span> until its verified oracles and
+            production contracts are ready, then marked <span className="text-white">live</span>.
+            Actions stay disabled for pending pools.
+          </p>
+        </Section>
+
+        <Section label="LPs vs underwriters">
           <p>
             <span className="text-white">Liquidity providers</span> deposit token0 and token1, mint
-            non-transferable LP shares against a TwinePositionManager, and collect a share of swap
+            non-transferable LP shares against a WoolFiPositionManager, and collect a share of swap
             fees in both tokens. They do <em>not</em> bear structural-break risk.
           </p>
           <p className="mt-4">
-            <span className="text-white">STRAND stakers</span> deposit a governance asset into the
-            per-pool underwriting vault. They earn a configurable cut of swap fees in token0/token1
-            but underwrite the pool: when the hook declares a structural break, it seizes a
-            fraction of staked STRAND to fund a rebalance and every staker takes a pro-rata
-            haircut. A seven-day cooldown blocks staker flight during a break.
+            <span className="text-white">URU underwriters</span> deposit URU into a per-pool vault.
+            They may earn a configured cut of swap fees in the pool assets, but bear structural-break
+            risk: a vault drawdown can fund a rebalance and reduce vault positions pro rata. URU is
+            the underwriting asset; it is not presented as a governance voting token.
           </p>
         </Section>
 
         <Section id="market-hours" label="Market hours">
           <p>
-            MSTRX has a real underlying - a US-listed equity. When NYSE is closed the equity
-            oracle stops updating, so Twine cannot honestly price the leg and cannot promise
-            the spread will converge. The hook reads NYSE hours directly on-chain (no off-chain
-            feed; the calendar is hardcoded with DST and US market holidays through 2030, with
-            governance extension), and changes pool behavior accordingly:
+            Hours are configured per pool. When a stock token's underlying market is closed, WoolFi
+            cannot promise that the spread will converge, so the pool changes behavior:
           </p>
           <ul className="space-y-2 text-[14px] leading-relaxed text-ink/85 list-disc pl-5 marker:text-muted">
             <li><span className="text-white">Swaps stay open</span>, at a flat symmetric fee. The asymmetric mechanic is paused until reopen.</li>
-            <li><span className="text-white">Deposits are blocked.</span> Entering during close means committing capital at a price the protocol explicitly isn't policing - the in-band check would reference a 60-hour-old equity quote, and the asymmetric mechanic that's the whole reason to LP here is off. "Disclose and let them choose" isn't real protection, so the protocol refuses the deposit instead.</li>
+            <li><span className="text-white">Deposits are blocked.</span> The in-band check may rely on a stale underlying-market quote while directional fees are paused.</li>
             <li><span className="text-white">Withdrawals stay open</span>, the entire time. Existing LPs already committed with a defined risk profile; letting them out is "you can change your mind."</li>
             <li><span className="text-white">Structural-break detection is paused.</span> The hard-threshold drawdown only runs when prices are live.</li>
           </ul>
           <p>
-            Reopens automatically at 9:30 AM ET on the next trading day. No keeper involved.
+            Each stock-token pool resumes its active-market behavior according to its configured
+            schedule. WETH/USDG is always open.
+          </p>
+        </Section>
+
+        <Section label="Robinhood Stock Tokens">
+          <p>
+            Robinhood Stock Tokens are issued by Robinhood Assets (Jersey) Limited (RHJ). They
+            provide economic exposure to referenced securities but not ownership, voting rights,
+            or other shareholder rights in the underlying securities. Issuer terms and geographic
+            restrictions apply. WoolFi does not determine eligibility; users must confirm they may
+            hold and trade each token.
           </p>
         </Section>
 
         <Section label="Structural breaks">
           <p>
-            If the oracle disagrees with the pool by more than a hard threshold (default 15%) and
-            the pool's recent drawdown exceeds a separate threshold, the hook flips a{" "}
-            <code className="font-mono">structuralBreak</code> flag and disables both directional
-            fees and new LP deposits. A drawdown from the vault funds the rebalance back to fair
-            value. Withdrawals stay open the entire time.
+            If the oracle disagrees with the pool by more than a hard threshold (default 15%), the
+            hook caches that fair price, admits only corrective swaps against it, and blocks new
+            deposits. A capped URU vault drawdown can fund the rebalance. Withdrawals stay open.
           </p>
         </Section>
 
         <Section label="Status">
           <pre className="font-mono text-[13px] leading-[1.8] text-ink/80 border-l border-line pl-5 whitespace-pre">
-{`Spec version       v0.17
-Build phase        Phases 0-10 complete  ·  live on Base Sepolia
-Contracts          Solidity 0.8.26  (BUSL hook / MIT elsewhere)
-Audit              pending
-Network            Base Sepolia testnet  (mocked equity leg)`}
+{`Network            Robinhood Chain
+Architecture       Uniswap v4 multi-pool hook
+Catalog            Pending and live pools
+Underwriting       URU, configured per pool
+Audit              Pending`}
           </pre>
         </Section>
 
         <Section label="Source">
           <ul className="space-y-2 font-mono text-[13px]">
             <SourceLink
-              href="https://github.com/sp0oby/twine/blob/main/PROJECT_SPEC.md"
+              href="https://github.com/urufu-labs/woolfi/blob/main/PROJECT_SPEC.md"
               label="PROJECT_SPEC.md"
               hint="canonical specification"
             />
             <SourceLink
-              href="https://github.com/sp0oby/twine/blob/main/TODO.md"
-              label="TODO.md"
-              hint="build progress"
-            />
-            <SourceLink
-              href="https://github.com/sp0oby/twine"
+              href="https://github.com/urufu-labs/woolfi"
               label="Source on GitHub"
               hint="contracts + tests"
             />

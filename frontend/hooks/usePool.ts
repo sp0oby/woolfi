@@ -1,19 +1,18 @@
 "use client";
 
-import {useChainId, useReadContract, useReadContracts} from "wagmi";
+import {useReadContract, useReadContracts} from "wagmi";
 
 import {erc20Abi, hookAbi, marketHoursAbi, oracleAbi, pmAbi, vaultAbi} from "@/lib/abis";
 import {WAD} from "@/lib/constants";
 import {poolKeyFor, type PoolKey} from "@/lib/poolKey";
-import {getDeployment} from "@/lib/twine";
+import {useSelectedPool} from "./useSelectedPool";
 
 /**
  * Live pool-level reads from chain - drift, structural-break state, vault TVL, PM total shares,
  * oracle fair price. Returns `null` (deployment) when no deployment exists for the active chain.
  */
 export function usePoolReads() {
-  const chainId = useChainId();
-  const deployment = getDeployment(chainId);
+  const {pool, deployment} = useSelectedPool();
 
   const key = deployment ? poolKeyFor(deployment) : undefined;
   const poolId = deployment?.poolId;
@@ -23,23 +22,33 @@ export function usePoolReads() {
       ? [
           {address: deployment.hook, abi: hookAbi, functionName: "currentDrift", args: [key as PoolKey]},
           {address: deployment.hook, abi: hookAbi, functionName: "poolConfig", args: [poolId as `0x${string}`]},
+          {address: deployment.hook, abi: hookAbi, functionName: "poolSafetyStatus", args: [key as PoolKey]},
           {address: deployment.positionManager, abi: pmAbi, functionName: "totalShares", args: [BigInt(poolId!)]},
           {address: deployment.vault, abi: vaultAbi, functionName: "totalStaked"},
           {address: deployment.vault, abi: vaultAbi, functionName: "totalShares"},
           {address: deployment.oracle0, abi: oracleAbi, functionName: "getPrice"},
           {address: deployment.oracle1, abi: oracleAbi, functionName: "getPrice"},
-          {address: deployment.marketHours, abi: marketHoursAbi, functionName: "isMarketOpen"},
         ]
       : [],
     query: {enabled: !!deployment, refetchInterval: 12_000},
   });
+  const marketHours = useReadContract({
+    address: deployment?.marketHours,
+    abi: marketHoursAbi,
+    functionName: "isMarketOpen",
+    query: {
+      enabled: !!deployment && pool.tradingHours === "equity-hours",
+      refetchInterval: 12_000,
+    },
+  });
 
   if (!deployment) return {deployment: null} as const;
 
-  const [drift, config, totalShares, vaultStaked, vaultShares, p0, p1, marketOpen] = (reads.data ?? []) as Array<{
+  const [drift, config, safety, totalShares, vaultStaked, vaultShares, p0, p1] = (reads.data ?? []) as Array<{
     result?: any;
     error?: Error;
   }>;
+  const safetyResult = safety?.result as readonly [boolean, bigint, boolean, boolean] | undefined;
 
   const price0 = p0?.result as bigint | undefined;
   const price1 = p1?.result as bigint | undefined;
@@ -57,8 +66,19 @@ export function usePoolReads() {
           configured: boolean;
           toleranceBps: number;
           hardThresholdBps: number;
+          cachedFairPriceWad: bigint;
+          stabilizationSeconds: number;
+          maxOracleSkew: number;
         }
       | undefined,
+    safety: safetyResult
+      ? {
+          structurallyBroken: safetyResult[0],
+          cachedFairPriceWad: safetyResult[1],
+          stabilizing: safetyResult[2],
+          oracleSkewed: safetyResult[3],
+        }
+      : undefined,
     totalShares: totalShares?.result as bigint | undefined,
     vaultStaked: vaultStaked?.result as bigint | undefined,
     vaultShares: vaultShares?.result as bigint | undefined,
@@ -66,18 +86,17 @@ export function usePoolReads() {
     price1,
     fairPriceWad,
     /** `true` when the equity-hours oracle reports the underlying market is open. */
-    marketOpen: marketOpen?.result as boolean | undefined,
+    marketOpen: pool.tradingHours === "always-open" ? true : marketHours.data,
     refetch: reads.refetch,
   } as const;
 }
 
 /**
- * Per-user reads: token balances (token0/token1/STRAND), LP shares, vault stake, pending fees & rewards.
+ * Per-user reads: pool and staking-token balances, LP shares, vault stake, pending fees and rewards.
  * Returns sensible undefined values when wallet not connected.
  */
 export function useUserReads(account: `0x${string}` | undefined) {
-  const chainId = useChainId();
-  const deployment = getDeployment(chainId);
+  const {deployment} = useSelectedPool();
 
   const enabled = !!deployment && !!account;
 
@@ -87,7 +106,7 @@ export function useUserReads(account: `0x${string}` | undefined) {
         ? [
             {address: deployment.token0, abi: erc20Abi, functionName: "balanceOf", args: [account]},
             {address: deployment.token1, abi: erc20Abi, functionName: "balanceOf", args: [account]},
-            {address: deployment.strand, abi: erc20Abi, functionName: "balanceOf", args: [account]},
+            {address: deployment.stakingToken, abi: erc20Abi, functionName: "balanceOf", args: [account]},
             {address: deployment.positionManager, abi: pmAbi, functionName: "balanceOf", args: [account, BigInt(deployment.poolId)]},
             {address: deployment.vault, abi: vaultAbi, functionName: "sharesOf", args: [account]},
             {address: deployment.vault, abi: vaultAbi, functionName: "pendingRewards", args: [account]},
@@ -97,14 +116,14 @@ export function useUserReads(account: `0x${string}` | undefined) {
     query: {enabled, refetchInterval: 12_000},
   });
 
-  const [t0, t1, strand, lp, stake, rewards, unstake] = (reads.data ?? []) as Array<{result?: any}>;
+  const [t0, t1, stakingToken, lp, stake, rewards, unstake] = (reads.data ?? []) as Array<{result?: any}>;
 
   return {
     enabled,
     isLoading: reads.isLoading,
     bal0: t0?.result as bigint | undefined,
     bal1: t1?.result as bigint | undefined,
-    strandBal: strand?.result as bigint | undefined,
+    stakingTokenBal: stakingToken?.result as bigint | undefined,
     lpShares: lp?.result as bigint | undefined,
     vaultStake: stake?.result as bigint | undefined,
     pendingRewards: rewards?.result as readonly [bigint, bigint] | undefined,

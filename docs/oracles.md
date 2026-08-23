@@ -1,138 +1,104 @@
-# Twine Oracle Stack
+# WoolFi Oracle Stack
 
-**Status:** v1 reference. Read alongside [`PROJECT_SPEC.md`](../PROJECT_SPEC.md) §6.
+**Status:** Robinhood production design; read with [`PROJECT_SPEC.md`](../PROJECT_SPEC.md) §5.
 
-This document is the operational reference for anyone integrating, auditing, or extending Twine's oracle layer - Chainlink, Pyth, RedStone teams; auditors reviewing the v1 hook; future maintainers. The implementation lives in [`src/oracle/`](../src/oracle/) and exposes two interfaces in [`src/interfaces/`](../src/interfaces/).
+Oracle safety is load-bearing because WoolFi uses fair value to choose the fee applied to every
+swap. The production target is Robinhood Chain (4663); no production adapters are deployed yet.
 
----
+## Pool-class fair value
 
-## Why the oracle layer matters
+- **Stock/USDG spot:** stock/USD divided by USDG/USD.
+- **Stock/WETH crypto beta:** stock/USD divided by WETH/USD.
+- **Stock/stock relative value:** the two stock/USD prices divided in pool token order.
+- **WETH/USDG always-open spot:** WETH/USD divided by USDG/USD.
 
-Twine's hook prices every swap as a function of the pool's drift from an oracle-derived fair price. The oracle layer is therefore directly load-bearing: a bad price is not a degraded UX, it is a bad fee.
+All adapter outputs use 1e18 normalization. Pool token address ordering determines whether the
+ratio is used directly or inverted.
 
-Three classes of failure must be impossible:
+## Current interfaces
 
-1. **Stale prices used as fresh.** Either revert or fail over.
-2. **A single feed's bad print quietly mispricing the pool.** Cross-check against a second source when one is wired.
-3. **Equity-market-closed periods treated like normal trading.** The asymmetric fee mechanic is paused on close.
+`IPriceOracle.getPrice()` returns a WAD price and reverts on invalid or stale data.
+`IMarketHoursOracle.isMarketOpen()` identifies equity-hours pools. An address-zero market-hours
+oracle denotes an always-open pool.
 
-The v1 design handles each of these explicitly; the rest of this document is how.
+`IPriceOracle.getPriceData()` returns the same WAD price plus the source `updatedAt`.
+`IPriceOracle.requireRuntimeGuards()` enforces sequencer, pause, and last-print validity without
+treating heartbeat age as a failure. `IMarketHoursOracle.currentSessionStart()` supplies the
+session boundary used by post-open stabilization.
 
----
+## Current adapters
 
-## The two interfaces
+### `RobinhoodStockOracleAdapter`
 
-Everything the hook reads goes through one of two minimal interfaces.
+This is the production-shaped stock-leg adapter already present in code. Before returning a price,
+it verifies:
 
-### `IPriceOracle`
+- the sequencer uptime answer indicates up;
+- sequencer timestamps are nonzero and not in the future;
+- the post-recovery grace period has elapsed;
+- the Robinhood Stock Token reports `oraclePaused() == false`;
+- the Chainlink round has a positive answer, a valid round relationship, and a valid timestamp;
+- feed age does not exceed twice the configured heartbeat.
 
-```solidity
-interface IPriceOracle {
-    function getPrice() external view returns (uint256 priceWad);
-}
-```
-
-A 1e18-normalized price. Adapters MUST revert on stale or invalid data - the hook does not introspect prices.
-
-### `IMarketHoursOracle`
-
-```solidity
-interface IMarketHoursOracle {
-    function isMarketOpen() external view returns (bool);
-}
-```
-
-A boolean: true when the equity market backing the relevant leg is currently open. When false, the hook drops the asymmetric fee mechanic and reverts to flat fees in both directions (§6.2).
-
-These two interfaces are the entire contract between Twine and the oracle world. Anything that satisfies them is plug-and-play.
-
----
-
-## Implementations shipped in v1
+Any failure reverts. One independently verified adapter is required for every stock leg; an adapter
+address in a dry run is not a deployment.
 
 ### `ChainlinkOracleAdapter`
 
-Wraps a single Chainlink aggregator.
-
-| Property | Behavior |
-|---|---|
-| Decimals | Read once at construction; rejects feeds with > 18 decimals. Up-scales `answer` to 1e18 on read. |
-| Heartbeat | Immutable, set per feed at deploy. |
-| Staleness | Reverts `StalePrice(updatedAt, maxStaleness)` if `block.timestamp − updatedAt > heartbeat × 2`. The 2× factor is the spec's chosen tolerance (§6.1) - wide enough to ride out brief feeder outages, tight enough that a multi-hour stall is caught. |
-| Invalid price | Reverts `InvalidPrice(answer)` if `answer ≤ 0`. Catches incomplete rounds too (an `updatedAt == 0` round registers as maximally stale). |
-| Mutability | Feed, heartbeat, and decimals are all `immutable`. Changing any of them means deploying a new adapter and re-pointing the hook via governance. |
-
-One adapter instance per feed. For Base mainnet the v1 launch wires `ChainlinkOracleAdapter` for the cbBTC leg; for the MSTRX leg it sits behind `DualOracleAdapter` (next).
+The generic adapter normalizes a Chainlink feed, rejects nonpositive values, and reverts when the
+feed exceeds its configured freshness bound. It remains suitable for non-stock legs only after the
+Robinhood feed proxy, decimals, and heartbeat are verified.
 
 ### `DualOracleAdapter`
 
-Wraps a primary + backup `IPriceOracle` and enforces a deviation cap.
+The legacy generic dual-source wrapper can return the primary when sources agree, fail over when
+only one source succeeds, and revert on excessive deviation or two failures. Timestamp skew is
+enforced by the hook across the two pool legs, not inside this adapter. Both legs still expose
+`getPriceData()` and `requireRuntimeGuards()`.
 
-Designed for the equity leg (§6.1/§6.3): Chainlink MSTRX as primary, Pyth (behind an `IPriceOracle` adapter) as backup. The adapter is wrapper-agnostic - anything that satisfies `IPriceOracle` plugs in.
+### Market-hours adapters
 
-Behavior:
+`NyseHoursOracle` and `MultisigMarketHours` remain available implementation artifacts. The selected
+production source and calendar configuration must be reviewed for every stock-linked pool.
+WETH/USDG uses no market-hours gate.
 
-- **Both fresh, within cap → return primary.** The deviation check is `(hi − lo) × BPS > lo × maxDeviationBps` against the configured `maxDeviationBps` (default 200 bps).
-- **Primary stale, backup fresh → return backup.** Silent failover (no event - `getPrice` is `view`). Off-chain monitoring observes failover by reading the two sources directly.
-- **Backup stale, primary fresh → return primary alone.** No deviation check possible; the primary is trusted.
-- **Both stale → revert `BothStale()`.** No fallback fiction.
-- **Deviation exceeds cap → revert `PriceDeviation(p, b)`.** Requires governance intervention to either re-tune or repoint a source. This is the right default: silently picking one of two disagreeing sources is worse than briefly halting swaps.
+## Required failure behavior
 
-### `MultisigMarketHours`
+Open-market swaps and liquidity additions hard-revert when:
 
-The production `IMarketHoursOracle` for the v1 launch.
+- either required leg is stale, invalid, incomplete, or future-dated;
+- a Robinhood stock-token oracle is paused;
+- the sequencer is down, has invalid status data, or is inside the recovery grace period;
+- a required adapter or feed is missing.
 
-- A single `bool open` plus a `lastUpdate` timestamp.
-- `setOpen(bool)` is `onlyOwner`, where the owner is a multisig (Safe, typically).
-- Emits `MarketStatusUpdated(open, at)` on every write so off-chain monitoring can prove freshness and detect drift.
+Closed-market and stabilization paths still hard-revert on pause, sequencer, and invalid last-print
+failures via `requireRuntimeGuards()`. They do not treat heartbeat staleness as a failure.
 
-Why a multisig oracle in v1? Because no Chainlink (or equivalent) market-status feed exists on Base Sepolia today. The §6.1 fallback is exactly this: a multisig flips the flag on the weekly NYSE open/close cadence plus US market holidays. The flip is observable on-chain via the event, and the `lastUpdate` field lets monitors alert on stale flags.
+When `maxOracleSkew` is set, excessive two-leg timestamp skew degrades swaps to the flat base fee
+and hard-reverts new liquidity. Stale, paused, invalid, and sequencer-unsafe feeds never degrade
+into that mode; they revert.
 
-The interface is plug-compatible. The day a Chainlink market-status feed ships on Base, swapping `MultisigMarketHours` for a `ChainlinkMarketHoursAdapter` is a one-line governance call (`updatePoolConfig`).
+## Structural-break pricing
 
----
+The hook caches the fair price that triggered the break (`cachedFairPriceWad`) and admits only
+swaps that reduce drift against that cached value. The target does not silently follow a moving
+oracle while the pool is contained. A configurable post-open stabilization interval, measured from
+`currentSessionStart()`, keeps asymmetric operation off until the session has settled. Always-open
+pools ignore that interval.
 
-## How the hook consumes oracle data
+## Per-pool launch record
 
-`TwineHook` reads oracle data in two places - `beforeSwap` (pricing) and `beforeAddLiquidity` (the in-band check). The flow:
+For each of the exact 18 pools, record and independently approve:
 
-1. **Market-closed gate first.** If the pool's `IMarketHoursOracle.isMarketOpen()` returns `false`, the hook returns the flat base fee without reading any price oracle. Crucially the equity feed *is expected to be stale* over the close, so this branch must not require it.
-2. **Otherwise read both price oracles.** Each `IPriceOracle.getPrice()` reverts on stale or invalid data - and that revert bubbles up to the swap caller. There is no fallback price.
-3. **Compute drift and classify the swap.** `SpreadMath` derives the signed drift in bps; if out of band, the hook computes the asymmetric fee and returns it as the dynamic LP fee override.
+- token0/token1 and decimals;
+- adapter addresses and underlying feed proxies;
+- feed decimals, heartbeat, and maximum dual-leg timestamp skew;
+- stock-token `oraclePaused()` behavior where applicable;
+- sequencer feed and recovery grace period;
+- market-hours source/calendar, or always-open designation;
+- fair-price orientation and an expected-value test vector;
+- fork-test block and result;
+- multisig approval reference.
 
-The flat-fee branch is intentionally permissive on staleness because the spec says so: a closed market should not block swaps, just suspend the convergence promise.
-
----
-
-## Failure-mode reference
-
-This table is the operational source of truth. It is reproduced in §6.3 of the spec; if the two ever diverge, the spec wins.
-
-| Condition | Hook behavior |
-|---|---|
-| Both feeds stale | Revert all swaps until recovery |
-| Primary stale, backup fresh | Use backup (silent failover) |
-| Feeds disagree by > 2% (configurable) | Revert swaps; requires governance intervention |
-| Market closed (equity leg) | Flat fees; normal swap allowed; no rebalance promise |
-| Structural break flag set | Flat fees + vault drawdown; requires governance to exit |
-
-Every row is unit- or integration-tested. See `test/unit/ChainlinkOracleAdapter.t.sol`, `test/unit/DualOracleAdapter.t.sol`, `test/unit/MultisigMarketHours.t.sol`, and `test/integration/TwineHook.t.sol`.
-
----
-
-## What's deferred to v2
-
-- **`PythOracleAdapter`.** Pyth push-pattern wrapper sitting behind `IPriceOracle`, intended as the MSTRX backup. Not built in v1 because the launch pair on Base Sepolia uses a mocked equity leg.
-- **Chainlink market-status feed adapter.** Drop-in `IMarketHoursOracle` once an on-chain NYSE-status feed is available on the target chain. Same governance call (`updatePoolConfig`) swaps it in.
-- **Underlying-pool TWAP cross-check.** Spec §6.1 references a secondary deviation check against the issuer's underlying tokenized-equity pool. Wired as a `DualOracleAdapter` backup once a credible TWAP source exists.
-
----
-
-## For oracle teams reading this
-
-Twine is a small, well-scoped integration. If you're shipping a feed that fits one of the slots above, two things move the conversation:
-
-1. **A working `IPriceOracle` (or `IMarketHoursOracle`) wrapper around your feed.** Anything that satisfies the interface above plugs in without contract changes.
-2. **Feed metadata** - addresses, heartbeats, decimals, push cadence, expected uptime, and a contact for the team that maintains it.
-
-The right entry point is [GitHub Discussions on the repo](https://github.com/sp0oby/twine/discussions). The codebase is small enough that we can plumb a new adapter through in a single PR.
+All feeds and adapters must be ready before any pool is marked live. No placeholder or invented
+address may enter the production manifest.

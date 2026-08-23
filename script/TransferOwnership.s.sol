@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {Script, console2} from "forge-std/Script.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {TwinePositionManager} from "../src/TwinePositionManager.sol";
+import {WoolFiPositionManager} from "../src/WoolFiPositionManager.sol";
 
 /// @notice One-shot ownership handoff from the deployer EOA to a real multisig (e.g. a Safe).
 ///
@@ -17,7 +17,7 @@ import {TwinePositionManager} from "../src/TwinePositionManager.sol";
 ///      partial run only retries what still belongs to the deployer.
 ///
 ///      The underwriting vault's `rebalancer` is intentionally NOT touched: it is `immutable` at
-///      construction and would require a vault redeploy (and migration of staked STRAND) to change.
+///      construction and would require a vault redeploy (and migration of staked assets) to change.
 contract TransferOwnership is Script {
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -37,7 +37,7 @@ contract TransferOwnership is Script {
 
         vm.startBroadcast(pk);
         _maybeTransferOwnable("STRAND", strand, deployer, multisig);
-        _maybeTransferOwnable("TwineGovernor", governor, deployer, multisig);
+        _maybeTransferOwnable("WoolFiGovernor", governor, deployer, multisig);
         _maybeTransferPm(pm, deployer, multisig);
         _maybeTransferOwnable("MultisigMarketHours", marketHours, deployer, multisig);
         vm.stopBroadcast();
@@ -64,23 +64,23 @@ contract TransferOwnership is Script {
         console2.log(string.concat("xfer  ", label));
     }
 
-    /// @dev TwinePositionManager uses a custom `setOwner(address)` rather than OZ Ownable.
+    /// @dev WoolFiPositionManager uses a custom `setOwner(address)` rather than OZ Ownable.
     function _maybeTransferPm(address target, address deployer, address multisig) internal {
         if (target == address(0)) {
-            console2.log("skip  TwinePositionManager (address unset)");
+            console2.log("skip  WoolFiPositionManager (address unset)");
             return;
         }
-        address current = TwinePositionManager(target).owner();
+        address current = WoolFiPositionManager(target).owner();
         if (current == multisig) {
-            console2.log("done  TwinePositionManager (already multisig)");
+            console2.log("done  WoolFiPositionManager (already multisig)");
             return;
         }
         if (current != deployer) {
-            console2.log("skip  TwinePositionManager (owner is not deployer)");
+            console2.log("skip  WoolFiPositionManager (owner is not deployer)");
             return;
         }
-        TwinePositionManager(target).setOwner(multisig);
-        console2.log("xfer  TwinePositionManager");
+        WoolFiPositionManager(target).setOwner(multisig);
+        console2.log("xfer  WoolFiPositionManager");
     }
 
     function _envOr(string memory key, address fallback_) internal view returns (address) {
