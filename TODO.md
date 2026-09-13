@@ -60,8 +60,10 @@ Chainlink is the official Robinhood Chain source. Do not invent feed addresses.
       bind it for every equity pool.
 - [ ] Deploy one `RobinhoodStockOracleAdapter` per stock/ETF leg (with sequencer disabled) and
       one `ChainlinkOracleAdapter` per WETH/USDG leg, pointed at verified proxies.
-- [ ] Add Robinhood fork tests that read each production feed through those adapters (price
-      band, decimals, heartbeat, `oraclePaused()`).
+- [x] Add Robinhood fork tests that read each production feed through those adapters (price
+      band, decimals, heartbeat, `oraclePaused()`) — `test/fork/WoolFiPreDeploy.fork.t.sol`
+      covers all 10 stock adapters + WETH/USDG + full-stack authorize on real 4663 state; runs
+      when `ROBINHOOD_RPC_URL` is set, skips cleanly otherwise.
 - [x] Harden `ChainlinkOracleAdapter` with round-completeness (`answeredInRound`) matching the
       stock adapter.
 - [x] Decide whether WETH/USDG should also check the sequencer — moot: no sequencer feed on
