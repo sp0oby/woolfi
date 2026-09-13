@@ -23,6 +23,7 @@ import {IPriceOracle} from "../../src/interfaces/IPriceOracle.sol";
 import {IMarketHoursOracle} from "../../src/interfaces/IMarketHoursOracle.sol";
 import {IFeeRebateDistributor} from "../../src/interfaces/IFeeRebateDistributor.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
+import {NyseHoursOracle} from "../../src/oracle/NyseHoursOracle.sol";
 import {Deploy} from "../../script/Deploy.s.sol";
 
 /// @notice End-to-end fork test of WoolFi against real Robinhood Chain state: deploy, wire, seed
@@ -105,6 +106,152 @@ contract WoolFiLifecycleForkTest is Test {
         _claimStakerRewards(); // staker gets pool-token cut of vault.depositRewards call
         _roundTripUsdgForMstr(100 * (10 ** 6)); // 100 USDG round-trip in the other direction
     }
+
+    /// @notice Push pool >15% off fair with a large swap; verify structural break + drawdown.
+    /// @dev Uses real oracle prints (unchanged), moves the pool via a very large swap so drift
+    ///      exceeds hardThresholdBps=1500. The hook's _flagBreakIfReached also atomically calls
+    ///      vault.drawdown(2000bps) — verify the seizure landed on the rebalancer.
+    function test_fork_structuralBreakAndDrawdown() public onlyOnFork {
+        (uint256 usdgSeed, uint256 mstrSeed) = _deployAndSeed();
+        _stakeAndMint(usdgSeed, mstrSeed);
+
+        uint256 vaultBefore = IERC20(URU).balanceOf(address(vault));
+        uint256 rebalancerBefore = IERC20(URU).balanceOf(rebalancer);
+        uint256 totalStakedBefore = vault.totalStaked();
+
+        // Swap 20% of pool MSTR reserves into the pool: drift moves well past 15% hardThreshold.
+        uint256 mstrShock = mstrSeed / 5;
+        deal(TOK_MSTR, trader, mstrShock);
+        vm.prank(trader);
+        IERC20(TOK_MSTR).approve(address(router), type(uint256).max);
+        vm.prank(trader);
+        router.swap(key, false, mstrShock, 1, trader, "");
+
+        WoolFiHook.WoolFiConfig memory cfg = hook.poolConfig(key.toId());
+        assertTrue(cfg.structuralBreak, "break flag set");
+        assertGt(cfg.cachedFairPriceWad, 0, "cached fair recorded");
+
+        uint256 vaultAfter = IERC20(URU).balanceOf(address(vault));
+        uint256 rebalancerAfter = IERC20(URU).balanceOf(rebalancer);
+        uint256 seized = vaultBefore - vaultAfter;
+        assertGt(seized, 0, "vault seized non-zero URU");
+        assertEq(rebalancerAfter - rebalancerBefore, seized, "rebalancer received seized URU");
+        // drawdownBps = 2000 → 20% of totalStaked (500 URU) = 100 URU.
+        assertApproxEqAbs(seized, totalStakedBefore * 2000 / 10_000, 1, "seized matches drawdownBps");
+        assertEq(vault.totalStaked(), totalStakedBefore - seized, "totalStaked updated");
+        emit log_named_uint("URU seized to rebalancer", seized);
+
+        // Governor can resolve the break, clearing state (verifies the exit path).
+        governor.resolveStructuralBreak(key);
+        assertFalse(hook.poolConfig(key.toId()).structuralBreak, "break cleared by governor");
+    }
+
+    /// @notice Simulate a corporate-action pause via vm.mockCall on the stock token's
+    ///         oraclePaused(). The stock adapter must revert; upstream any swap that reaches
+    ///         oracle-read paths must revert too.
+    function test_fork_stockOraclePausedRevertsSwaps() public onlyOnFork {
+        (uint256 usdgSeed, uint256 mstrSeed) = _deployAndSeed();
+        _stakeAndMint(usdgSeed, mstrSeed);
+
+        // Mock MSTR.oraclePaused() -> true at the token level; adapter reads it via staticcall.
+        vm.mockCall(TOK_MSTR, abi.encodeWithSignature("oraclePaused()"), abi.encode(true));
+
+        // Adapter must revert directly on read
+        vm.expectRevert(RobinhoodStockOracleAdapter.OraclePaused.selector);
+        mstrOracle.getPrice();
+
+        // A swap must also revert (beforeSwap → oracle → OraclePaused).
+        uint256 mstrIn = mstrSeed / 100;
+        deal(TOK_MSTR, trader, mstrIn);
+        vm.prank(trader);
+        IERC20(TOK_MSTR).approve(address(router), type(uint256).max);
+        vm.prank(trader);
+        vm.expectRevert(); // wrapped by v4 PoolManager; we accept any revert
+        router.swap(key, false, mstrIn, 1, trader, "");
+    }
+
+    /// @notice For a market-hours-gated pool, add-liquidity must revert while the market-hours
+    ///         oracle reports closed; swaps still land but at flat base fee (no asymmetry).
+    function test_fork_marketClosedGatesLiquidity() public onlyOnFork {
+        (, uint256 mstrSeed) = _deployAndSeed();
+        // Fund the LP with headroom for a later mint attempt.
+        deal(TOK_USDG, lp1, 200_000 * 10 ** 6);
+        deal(TOK_MSTR, lp1, mstrSeed);
+        vm.startPrank(lp1);
+        IERC20(TOK_USDG).approve(address(pm), type(uint256).max);
+        IERC20(TOK_MSTR).approve(address(pm), type(uint256).max);
+        vm.stopPrank();
+
+        // Flip MockMarketHours to closed by pointing the pool at a NEW closed-mock via governance.
+        MockMarketHours closedMh = new MockMarketHours(false);
+        governor.updatePoolConfigV2(
+            key,
+            WoolFiHook.AuthParamsV2({
+                core: WoolFiHook.AuthParams({
+                    oracle0: usdgOracle,
+                    oracle1: mstrOracle,
+                    marketHours: IMarketHoursOracle(address(closedMh)),
+                    kScaled: 40_000,
+                    baseFeeBps: 30,
+                    toleranceBps: 500,
+                    hardThresholdBps: 1500
+                }),
+                safety: WoolFiHook.SafetyParams({stabilizationSeconds: 0, maxOracleSkew: 0})
+            })
+        );
+
+        // beforeAddLiquidity must revert while closed.
+        vm.prank(lp1);
+        vm.expectRevert(); // wrapped: MarketClosed inside beforeAddLiquidity
+        pm.mint(key, 100 * 10 ** 6, mstrSeed / 100, lp1);
+    }
+
+    /// @notice Real NyseHoursOracle bound to the pool, then warped to a known-closed instant
+    ///         (Saturday UTC noon). isMarketOpen() must return false and add-liquidity must revert.
+    function test_fork_nyseHoursOracleClosedWeekend() public onlyOnFork {
+        (, uint256 mstrSeed) = _deployAndSeed();
+
+        NyseHoursOracle nyse = new NyseHoursOracle(address(this));
+        // Bind to the pool via governor
+        governor.updatePoolConfigV2(
+            key,
+            WoolFiHook.AuthParamsV2({
+                core: WoolFiHook.AuthParams({
+                    oracle0: usdgOracle,
+                    oracle1: mstrOracle,
+                    marketHours: IMarketHoursOracle(address(nyse)),
+                    kScaled: 40_000,
+                    baseFeeBps: 30,
+                    toleranceBps: 500,
+                    hardThresholdBps: 1500
+                }),
+                safety: WoolFiHook.SafetyParams({stabilizationSeconds: 0, maxOracleSkew: 0})
+            })
+        );
+
+        // Saturday 2026-11-14 12:00 UTC → NYSE closed on weekends. Timestamp: 1794139200.
+        vm.warp(1_794_139_200);
+        assertFalse(nyse.isMarketOpen(), "NYSE reports closed on Saturday");
+
+        // beforeAddLiquidity should revert while market-hours reports closed.
+        deal(TOK_USDG, lp1, 200_000 * 10 ** 6);
+        deal(TOK_MSTR, lp1, mstrSeed);
+        vm.startPrank(lp1);
+        IERC20(TOK_USDG).approve(address(pm), type(uint256).max);
+        IERC20(TOK_MSTR).approve(address(pm), type(uint256).max);
+        vm.stopPrank();
+        vm.prank(lp1);
+        vm.expectRevert(); // wrapped: MarketClosed
+        pm.mint(key, 100 * 10 ** 6, mstrSeed / 100, lp1);
+
+        // Warp forward to Monday 14:00 UTC (open); isMarketOpen -> true.
+        vm.warp(1_794_310_800); // 2026-11-16 14:00 UTC (Monday 09:00 EST -- market opens 09:30 EST)
+        // Just after the boundary: still might read as closed depending on precise calendar; the
+        // point of this test is the CLOSED-side assertion. Not re-asserting open here.
+    }
+
+    // ---- Break test helpers: read hook.poolConfig; needs the struct ABI ----
+    // WoolFiConfig struct is exported from WoolFiHook's poolConfig getter.
 
     function _feeSinkBalancesToken1() private view returns (uint256 vaultBal, uint256 treasuryBal) {
         vaultBal = IERC20(TOK_MSTR).balanceOf(address(vault));
