@@ -62,8 +62,8 @@ contract RobinhoodMainnetForkTest is Test {
     }
 
     function _canonicalAssets() private pure returns (address[] memory assets, string[] memory symbols) {
-        assets = new address[](14);
-        symbols = new string[](14);
+        assets = new address[](12);
+        symbols = new string[](12);
         assets[0] = 0xec262a75e413fAfD0dF80480274532C79D42da09;
         symbols[0] = "MSTR";
         assets[1] = 0x6330D8C3178a418788dF01a47479c0ce7CCF450b;
@@ -74,47 +74,41 @@ contract RobinhoodMainnetForkTest is Test {
         symbols[3] = "NVDA";
         assets[4] = 0x117cc2133c37B721F49dE2A7a74833232B3B4C0C;
         symbols[4] = "SPY";
-        assets[5] = 0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e;
-        symbols[5] = "GLD";
-        assets[6] = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
-        symbols[6] = "WETH";
-        assets[7] = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
-        symbols[7] = "USDG";
-        assets[8] = 0xD5f3879160bc7c32ebb4dC785F8a4F505888de68;
-        symbols[8] = "QQQ";
-        assets[9] = 0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A;
-        symbols[9] = "PLTR";
-        assets[10] = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
-        symbols[10] = "AAPL";
-        assets[11] = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
-        symbols[11] = "MSFT";
-        assets[12] = 0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f;
-        symbols[12] = "SLV";
-        assets[13] = 0x322F0929c4625eD5bAd873c95208D54E1c003b2d;
-        symbols[13] = "TSLA";
+        assets[5] = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+        symbols[5] = "WETH";
+        assets[6] = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+        symbols[6] = "USDG";
+        assets[7] = 0xD5f3879160bc7c32ebb4dC785F8a4F505888de68;
+        symbols[7] = "QQQ";
+        assets[8] = 0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A;
+        symbols[8] = "PLTR";
+        assets[9] = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
+        symbols[9] = "AAPL";
+        assets[10] = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
+        symbols[10] = "MSFT";
+        assets[11] = 0x322F0929c4625eD5bAd873c95208D54E1c003b2d;
+        symbols[11] = "TSLA";
     }
 
     function _candidatePairs() private pure returns (CandidatePair[] memory pairs) {
         (address[] memory a,) = _canonicalAssets();
-        pairs = new CandidatePair[](18);
-        pairs[0] = CandidatePair(a[0], a[7]); // MSTR/USDG
-        pairs[1] = CandidatePair(a[1], a[7]); // COIN/USDG
-        pairs[2] = CandidatePair(a[2], a[7]); // CRCL/USDG
-        pairs[3] = CandidatePair(a[3], a[7]); // NVDA/USDG
-        pairs[4] = CandidatePair(a[4], a[7]); // SPY/USDG
-        pairs[5] = CandidatePair(a[5], a[7]); // GLD/USDG
-        pairs[6] = CandidatePair(a[10], a[7]); // AAPL/USDG
-        pairs[7] = CandidatePair(a[13], a[7]); // TSLA/USDG
-        pairs[8] = CandidatePair(a[0], a[6]); // MSTR/WETH
-        pairs[9] = CandidatePair(a[1], a[6]); // COIN/WETH
-        pairs[10] = CandidatePair(a[8], a[6]); // QQQ/WETH
-        pairs[11] = CandidatePair(a[3], a[6]); // NVDA/WETH
-        pairs[12] = CandidatePair(a[9], a[6]); // PLTR/WETH
-        pairs[13] = CandidatePair(a[10], a[11]); // AAPL/MSFT
-        pairs[14] = CandidatePair(a[4], a[3]); // SPY/NVDA
-        pairs[15] = CandidatePair(a[4], a[8]); // SPY/QQQ
-        pairs[16] = CandidatePair(a[5], a[12]); // GLD/SLV
-        pairs[17] = CandidatePair(a[6], a[7]); // WETH/USDG
+        pairs = new CandidatePair[](16);
+        pairs[0] = CandidatePair(a[0], a[6]); // MSTR/USDG
+        pairs[1] = CandidatePair(a[1], a[6]); // COIN/USDG
+        pairs[2] = CandidatePair(a[2], a[6]); // CRCL/USDG
+        pairs[3] = CandidatePair(a[3], a[6]); // NVDA/USDG
+        pairs[4] = CandidatePair(a[4], a[6]); // SPY/USDG
+        pairs[5] = CandidatePair(a[9], a[6]); // AAPL/USDG
+        pairs[6] = CandidatePair(a[11], a[6]); // TSLA/USDG
+        pairs[7] = CandidatePair(a[0], a[5]); // MSTR/WETH
+        pairs[8] = CandidatePair(a[1], a[5]); // COIN/WETH
+        pairs[9] = CandidatePair(a[7], a[5]); // QQQ/WETH
+        pairs[10] = CandidatePair(a[3], a[5]); // NVDA/WETH
+        pairs[11] = CandidatePair(a[8], a[5]); // PLTR/WETH
+        pairs[12] = CandidatePair(a[9], a[10]); // AAPL/MSFT
+        pairs[13] = CandidatePair(a[4], a[3]); // SPY/NVDA
+        pairs[14] = CandidatePair(a[4], a[7]); // SPY/QQQ
+        pairs[15] = CandidatePair(a[5], a[6]); // WETH/USDG
     }
 
     function _contains(address[] memory values, address candidate) private pure returns (bool) {

@@ -7,11 +7,12 @@ the spec.
 ## Canonical specification
 
 - [x] Make `PROJECT_SPEC.md` canonical for WoolFi by Urufu Labs on Robinhood Chain 4663.
-- [x] Lock the exact 18-pool catalog, including PLTR/WETH.
+- [x] Lock the exact 16-pool catalog (18-pool original; GLD/USDG and GLD/SLV removed after
+      Chainlink coverage check on 4663).
 - [x] Define stock/USDG spot, stock/WETH crypto-beta, stock/stock relative-value, and always-open
       WETH/USDG behavior.
 - [x] Replace production STRAND assumptions with externally supplied URU underwriting.
-- [x] Record all-18-or-no-launch policy and resumable/non-atomic broadcast semantics.
+- [x] Record all-16-or-no-launch policy and resumable/non-atomic broadcast semantics.
 - [x] Mark production deployment state honestly: no live WoolFi contracts or pools.
 - [x] Specify planned break containment, stabilization, timestamp-skew, and hard-revert semantics.
 
@@ -31,7 +32,7 @@ the spec.
 - [ ] Freeze and audit the hook, position manager, vault, governor, router, adapters, and scripts.
 - [x] Wire and verify the position manager on the hook.
 - [x] Configure and test the swap router end to end.
-- [x] Configure the indexer for all 18 pools, vaults, and production start blocks.
+- [x] Configure the indexer for all 16 pools, vaults, and production start blocks.
 - [x] Configure, exercise, and monitor the permissionless keeper.
 - [ ] Create the production multisig; verify signers, threshold, recovery, and handoff.
 - [ ] Consider a timelock on governor oracle/config changes after the multisig exists.
@@ -45,13 +46,11 @@ the spec.
 
 Chainlink is the official Robinhood Chain source. Do not invent feed addresses.
 
-- [x] Resolve live Chainlink proxy, decimals, heartbeat, and deviation for every catalog asset from
-      the Chainlink Robinhood directory. **12/14 assets covered**; inventory in `docs/oracles.md`.
-      All feeds are 8 decimals, 86400s heartbeat, 50 bps deviation. Re-verify on-chain before
-      each adapter deploy.
-- [ ] **Resolve the GLD/USD blocker.** No Chainlink feed for GLD on 4663 today; this blocks
-      GLD/USDG and GLD/SLV under all-18-or-no-launch. Options: wait for Chainlink, approve an
-      alternate `AggregatorV3`-compatible provider, or revise the catalog. Decision required.
+- [x] Resolve live Chainlink proxy, decimals, heartbeat, and deviation for every catalog asset
+      from the Chainlink Robinhood directory. **All 12 catalog assets covered** after removing
+      GLD/USDG and GLD/SLV; inventory in `docs/oracles.md`. All feeds are 8 decimals, 86400s
+      heartbeat, 50 bps deviation. Re-verify on-chain before each adapter deploy.
+- [x] Resolve the GLD/USD gap — GLD/USDG and GLD/SLV removed from the launch catalog (spec §3).
 - [x] Resolve the L2 sequencer uptime feed for chain 4663 — none is published; adapter now
       accepts `sequencerUptimeFeed == address(0) + gracePeriod == 0` as an explicit opt-out, and
       spec §5.1 discloses the operator-trust assumption.
@@ -74,7 +73,7 @@ Chainlink is the official Robinhood Chain source. Do not invent feed addresses.
       hours, expected-value test vectors) — Chainlink inventory landed; per-pool orientation and
       test vectors still to fill.
 
-## Per-pool readiness — exact 18
+## Per-pool readiness — exact 16
 
 For every pool below, verify token contracts, oracle adapters, feed proxies, heartbeat/skew limits,
 sequencer and market-hours settings, fair-price orientation, risk parameters, URU cap, initial
@@ -85,7 +84,6 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] CRCL/USDG
 - [ ] NVDA/USDG
 - [ ] SPY/USDG
-- [ ] GLD/USDG **— blocked: no Chainlink GLD/USD feed on 4663**
 - [ ] AAPL/USDG
 - [ ] TSLA/USDG
 - [ ] MSTR/WETH
@@ -96,7 +94,6 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] AAPL/MSFT
 - [ ] SPY/NVDA
 - [ ] SPY/QQQ
-- [ ] GLD/SLV **— blocked: no Chainlink GLD/USD feed on 4663**
 - [ ] WETH/USDG
 
 ## Capital and oracle approvals
@@ -105,7 +102,7 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] Confirm approved URU is available without exceeding either cap.
 - [ ] Verify all stock-token pause behavior and all production feed metadata.
 - [ ] Verify WETH/USDG feeds and always-open designation.
-- [ ] Approve initial liquidity and slippage bounds for all 18 pools.
+- [ ] Approve initial liquidity and slippage bounds for all 16 pools.
 - [ ] Confirm no placeholder or unverified address is present in production configuration.
 
 ## Deploy automation and CI
@@ -131,8 +128,8 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] Verify bytecode, constructor arguments, ownership, wiring, pool keys, and start blocks.
 - [ ] Populate the production manifest only with receipt-backed deployments.
 - [ ] Keep all pools pending and user actions disabled during deployment work.
-- [ ] Verify frontend, router, indexer, keeper, monitoring, feeds, vaults, and liquidity for all 18.
-- [ ] Obtain separate final all-18 coordinated go/no-go approval.
+- [ ] Verify frontend, router, indexer, keeper, monitoring, feeds, vaults, and liquidity for all 16.
+- [ ] Obtain separate final all-16 coordinated go/no-go approval.
 - [ ] Launch none if any pool or shared requirement is incomplete.
 
 ## Frontend accuracy (before public launch)

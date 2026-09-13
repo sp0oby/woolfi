@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validated, resumable coordinator for the 18 Robinhood production pools."""
+"""Validated, resumable coordinator for the 16 Robinhood production pools."""
 
 from __future__ import annotations
 
@@ -353,7 +353,7 @@ def main() -> int:
         print(json.dumps({"ready": False, "errors": errors}, indent=2))
         return 1
     if args.command == "readiness":
-        print(json.dumps({"ready": True, "completePools": 18}))
+        print(json.dumps({"ready": True, "completePools": len(SLUGS)}))
         return 0
     if args.broadcast and os.getenv("CONFIRM_MAINNET", "").lower() != "true":
         print(json.dumps({"ready": False, "errors": ["set CONFIRM_MAINNET=true before broadcast"]}))

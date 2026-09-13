@@ -29,7 +29,6 @@ const pairSpecs = [
   ["CRCL", "USDG", "stock-usdg", "equity-hours"],
   ["NVDA", "USDG", "stock-usdg", "equity-hours"],
   ["SPY", "USDG", "stock-usdg", "equity-hours"],
-  ["GLD", "USDG", "stock-usdg", "equity-hours"],
   ["AAPL", "USDG", "stock-usdg", "equity-hours"],
   ["TSLA", "USDG", "stock-usdg", "equity-hours"],
   ["MSTR", "WETH", "stock-weth", "equity-hours"],
@@ -40,7 +39,6 @@ const pairSpecs = [
   ["AAPL", "MSFT", "spread", "equity-hours"],
   ["SPY", "NVDA", "spread", "equity-hours"],
   ["SPY", "QQQ", "spread", "equity-hours"],
-  ["GLD", "SLV", "spread", "equity-hours"],
   ["WETH", "USDG", "crypto", "always-open"],
 ] as const satisfies readonly PairSpec[];
 
@@ -82,7 +80,7 @@ export const poolRegistry: readonly CuratedPool[] = resolvedPairs.map(
       readinessRequirement: coordinatedLaunchReady
         ? undefined
         : deployment
-          ? "Deployment detected, but public activation waits for the coordinated all-18 launch."
+          ? "Deployment detected, but public activation waits for the coordinated all-16 launch."
           : pendingOracleRequirement,
     };
   },

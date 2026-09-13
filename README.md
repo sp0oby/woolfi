@@ -9,7 +9,7 @@
 
 WoolFi by Urufu Labs is a Uniswap v4 hook that turns a pool into a continuously-rebalancing pair-trade vehicle. The pool looks like an ordinary v4 pool from the outside. You swap, add liquidity, collect fees. The hook quietly enforces a peg between the pool's internal price and an oracle-derived fair price, weaving related assets into a venue for trading their *relationship* rather than just one against the other.
 
-One hook serves an exact 18-pool catalog: eight stock/USDG oracle-guided spot pools, five stock/WETH crypto-beta pools (including PLTR/WETH), four stock/stock relative-value spreads, and always-open WETH/USDG. The coordinated rollout is all 18 ready or no launch.
+One hook serves an exact 16-pool catalog: seven stock/USDG oracle-guided spot pools, five stock/WETH crypto-beta pools (including PLTR/WETH), three stock/stock relative-value spreads, and always-open WETH/USDG. The coordinated rollout is all 16 ready or no launch.
 
 ## Using WoolFi, end to end
 
@@ -82,7 +82,7 @@ The frontend is configured exclusively for Robinhood Chain and presents the exac
 | Source | Solidity 0.8.26, Foundry, BUSL-1.1 hook, MIT elsewhere |
 | Tests | 181 passing &middot; 100k invariant calls clean &middot; [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
 | Network | Robinhood Chain |
-| Catalog | Exact 18 pools; all currently pending |
+| Catalog | Exact 16 pools; all currently pending |
 | Audit | Not done; bug bounty pending audit |
 | Dashboard | Next.js 14, wagmi/viem, reads configured live contracts |
 
@@ -145,7 +145,7 @@ npm run dev          # http://localhost:3000
 
 The splash and docs render at `/` and `/docs`; the multi-pool dashboard is at `/app`. Once the
 coordinated launch is approved, live pools will read Robinhood Chain state and expose swap,
-liquidity, and URU underwriting actions. Until then all 18 remain read-only.
+liquidity, and URU underwriting actions. Until then all 16 remain read-only.
 
 ## License
 

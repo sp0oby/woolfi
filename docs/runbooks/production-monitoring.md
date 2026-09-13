@@ -36,7 +36,7 @@ invented values.
 1. Export receipt-backed addresses and start blocks from the manifest.
 2. Backfill from each contract's own start block. Do not use block zero for a deployed contract.
 3. Compare the indexer head with two independent RPC views.
-4. Run the keeper with `KEEPER_BROADCAST=false`; require all 18 simulations to succeed.
+4. Run the keeper with `KEEPER_BROADCAST=false`; require all 16 simulations to succeed.
 5. Confirm rebate events are indexed and liabilities reconcile to contract state.
 6. Verify every alert route with a non-production test signal and record the evidence.
 

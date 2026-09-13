@@ -119,21 +119,13 @@ adapter deployment.
 | AAPL   | `0x6B22A786bAa607d76728168703a39Ea9C99f2cD0` | Robinhood AAPL/USD, TRV, us_equities_24/5 |
 | TSLA   | `0x4A1166a659A55625345e9515b32adECea5547C38` | Robinhood TSLA/USD, TRV, us_equities_24/5 |
 | MSFT   | `0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E` | Robinhood MSFT/USD, TRV, us_equities_24/5 |
-| SLV    | `0x209b73908e92Ae021826eD79609845451Ecba2ce` | Robinhood SLV/USD, TRV, us_equities_24/5 |
 | WETH   | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` | Registered as ETH/USD; WETH ↔ ETH is 1:1 by contract. Document the alias in the launch record. `ChainlinkOracleAdapter`, not stock-guarded. |
 | USDG   | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` | USDG/USD, crypto category, always-open. `ChainlinkOracleAdapter`. |
-| GLD    | **not published on 4663**                     | Blocks the GLD/USDG and GLD/SLV pools. See "Coverage gaps" below. |
 | Sequencer uptime | **not published on 4663**            | Adapter deploys with the sequencer guard disabled; see above. |
 
-## Coverage gaps
-
-- **GLD/USD is not on Robinhood Chain.** Under the spec's "all 18 or no launch" rule, GLD/USDG
-  and GLD/SLV cannot go live until one of:
-  1. Chainlink publishes GLD/USD on 4663;
-  2. governance approves a Chainlink-compatible alternate feed (must fit `AggregatorV3` and pass
-     independent verification), recorded in the launch record; or
-  3. the spec is revised to replace these two pools.
-  Do not fabricate a GLD address or launch a partial catalog.
+GLD and SLV were removed from the launch catalog (spec §3) because Chainlink does not publish
+GLD/USD on 4663. Re-adding those pools would require a future spec revision that binds them to
+verified feeds — do not fabricate a GLD address or launch a partial catalog.
 
 ## Structural-break pricing
 
@@ -145,7 +137,7 @@ pools ignore that interval.
 
 ## Per-pool launch record
 
-For each of the exact 18 pools, record and independently approve:
+For each of the exact 16 pools, record and independently approve:
 
 - token0/token1 and decimals;
 - adapter addresses and underlying feed proxies;

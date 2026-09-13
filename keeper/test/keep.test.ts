@@ -43,8 +43,8 @@ describe("keeper manifest", () => {
     expect(isDeployed(loadManifest(path))).toBe(false);
   });
 
-  it("accepts exactly eighteen distinct live pools", () => {
-    const pools = Array.from({length: 18}, (_, index) => ({
+  it("accepts exactly sixteen distinct live pools", () => {
+    const pools = Array.from({length: 16}, (_, index) => ({
       slug: `pool-${index}`,
       poolId: `0x${(index + 1).toString(16).padStart(64, "0")}` as `0x${string}`,
       startBlock: 123,

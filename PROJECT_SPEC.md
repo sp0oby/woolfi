@@ -13,7 +13,7 @@ WoolFi is one Uniswap v4 hook serving a curated set of full-range pools. The hoo
 pool price with oracle-derived fair value and uses a directional dynamic LP fee: flow toward fair
 is discounted and flow away from fair is surcharged.
 
-The production launch is a coordinated 18-pool market for Robinhood Stock Tokens, WETH, and USDG.
+The production launch is a coordinated 16-pool market for Robinhood Stock Tokens, WETH, and USDG.
 Per-pool underwriting uses the existing external **URU** token. WoolFi does not issue a production
 token and does not provide URU governance rights.
 
@@ -30,7 +30,7 @@ reference artifacts only. They are not part of the Robinhood launch.
 ### 2.1 Required for launch
 
 - Robinhood Chain only (chain ID 4663).
-- One permission-mined `WoolFiHook` shared by exactly the 18 authorized pools in §3.
+- One permission-mined `WoolFiHook` shared by exactly the 16 authorized pools in §3.
 - One position manager, swap router, governor, and production multisig control plane.
 - One URU-denominated underwriting vault per pool, each with an approved cap.
 - Full-range ERC-6909 LP shares and fee routing through the position manager.
@@ -50,9 +50,12 @@ eligibility for them. Issuer terms and geographic restrictions remain applicable
 - Concentrated WoolFi liquidity, native ETH legs, fee-on-transfer tokens, or rebasing vault assets.
 - A partial public launch of the curated catalog.
 
-## 3. Canonical 18-pool catalog
+## 3. Canonical 16-pool catalog
 
-All symbols below refer to the canonical Robinhood Chain assets verified at launch.
+All symbols below refer to the canonical Robinhood Chain assets verified at launch. GLD/USDG,
+GLD/SLV, and the GLD and SLV assets were removed from the launch catalog because Chainlink
+does not publish a GLD/USD feed on Robinhood Chain (see `docs/oracles.md`); those pools may be
+re-added by future spec revision once a verified feed is available.
 
 ### 3.1 Stock/USDG — oracle-guided spot pools
 
@@ -64,33 +67,31 @@ relative to USDG/USD.
 3. CRCL/USDG
 4. NVDA/USDG
 5. SPY/USDG
-6. GLD/USDG
-7. AAPL/USDG
-8. TSLA/USDG
+6. AAPL/USDG
+7. TSLA/USDG
 
 ### 3.2 Stock/WETH — crypto-beta pools
 
 These pools trade the relationship between a stock token and ETH rather than claiming a dollar
 spot market.
 
-9. MSTR/WETH
-10. COIN/WETH
-11. QQQ/WETH
-12. NVDA/WETH
-13. PLTR/WETH
+8. MSTR/WETH
+9. COIN/WETH
+10. QQQ/WETH
+11. NVDA/WETH
+12. PLTR/WETH
 
 ### 3.3 Stock/stock — relative-value spreads
 
 These pools express relative value between related equities or ETFs.
 
-14. AAPL/MSFT
-15. SPY/NVDA
-16. SPY/QQQ
-17. GLD/SLV
+13. AAPL/MSFT
+14. SPY/NVDA
+15. SPY/QQQ
 
 ### 3.4 Always-open crypto spot
 
-18. WETH/USDG
+16. WETH/USDG
 
 WETH/USDG has no equity-market-hours gate. It remains subject to feed freshness and sequencer
 safety requirements.
@@ -218,7 +219,7 @@ print is not required to classify corrective flow.
 - `RobinhoodStockOracleAdapter`: stock pause, feed validity/staleness, and sequencer guards.
 - `RebalanceKeeper`: permissionless no-swap break checks; required keeper operations must be
   monitored even though ordinary fee realization occurs in-hook.
-- Indexer: all 18 pools, swaps, LP shares, fee routing, vault state, breaks, and deployment blocks.
+- Indexer: all 16 pools, swaps, LP shares, fee routing, vault state, breaks, and deployment blocks.
 
 Production requires the position-manager wiring, router, zapper/executor, indexer, keeper, and
 frontend to point to the same verified deployment manifest.
@@ -241,7 +242,7 @@ it is not an automatic STRAND or URU buyback. Any per-pool override requires lau
 
 ## 9. Coordinated rollout
 
-The public launch condition is **all 18 ready or no launch**. “Ready” means each pair has verified
+The public launch condition is **all 16 ready or no launch**. “Ready” means each pair has verified
 assets, both required oracles, heartbeat/skew/market-hours settings, approved risk parameters,
 approved URU cap, approved initial liquidity, completed dry runs, indexed metadata, and passing
 smoke checks; shared contracts and services must also be ready.
@@ -252,7 +253,7 @@ resume from verified on-chain state; it must never fabricate addresses, mark inc
 live, or imply that rollback is automatic.
 
 Every broadcast requires explicit approval immediately before submission, including resumed
-broadcasts. Deployment completion is not public launch authorization. If fewer than all 18 pools
+broadcasts. Deployment completion is not public launch authorization. If fewer than all 16 pools
 are production-ready after deployment work, every pool remains pending and user actions remain
 disabled.
 
@@ -269,14 +270,14 @@ disabled.
 - [ ] Corrective-only cached-fair breaks, post-open stabilization, and timestamp-skew checks
       audited (implemented and covered in-repo).
 - [ ] All stock pause guards, feeds, heartbeats, sequencer guards, and market-hours sources verified.
-- [ ] All 18 pool keys, initial prices, risk parameters, and liquidity amounts independently checked.
+- [ ] All 16 pool keys, initial prices, risk parameters, and liquidity amounts independently checked.
 - [ ] Per-pool and aggregate URU caps explicitly approved and funded only within those caps.
-- [ ] Initial liquidity for all 18 pools approved and available.
+- [ ] Initial liquidity for all 16 pools approved and available.
 - [ ] Frontend and manifest show no pool live until the coordinated launch decision.
 - [ ] Monitoring, incident runbooks, security contact, and bug bounty ready.
 - [ ] Dry runs and read-only fork checks pass against chain ID 4663.
 - [ ] Explicit multisig approval recorded for each broadcast or resumed broadcast.
-- [ ] Post-broadcast source verification, wiring checks, and read-only smoke checks pass for all 18.
+- [ ] Post-broadcast source verification, wiring checks, and read-only smoke checks pass for all 16.
 - [ ] Final coordinated go/no-go approval recorded; otherwise no public launch.
 
 See [`docs/robinhood-deployment.md`](./docs/robinhood-deployment.md) for the operational sequence

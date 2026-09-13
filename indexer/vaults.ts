@@ -54,7 +54,7 @@ function manifestVaultPools(): VaultPool[] {
     }
     return {vault: pool.vault as `0x${string}`, poolId: pool.poolId as `0x${string}`};
   });
-  if (pools.length !== 18) throw new Error("live manifest must contain all 18 pools");
+  if (pools.length !== 16) throw new Error("live manifest must contain all 16 pools");
   return pools;
 }
 

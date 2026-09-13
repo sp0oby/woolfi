@@ -14,8 +14,6 @@ export const robinhoodAssets = {
   TSLA: asset("TSLA", "Tesla", "stock", "0x322F0929c4625eD5bAd873c95208D54E1c003b2d"),
   SPY: asset("SPY", "SPDR S&P 500 ETF", "etf", "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C"),
   QQQ: asset("QQQ", "Invesco QQQ", "etf", "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68"),
-  GLD: asset("GLD", "SPDR Gold Shares", "etf", "0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e"),
-  SLV: asset("SLV", "iShares Silver Trust", "etf", "0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f"),
 } as const satisfies Record<string, CuratedAsset>;
 
 export type RobinhoodSymbol = keyof typeof robinhoodAssets;

@@ -53,15 +53,13 @@
     "CRCL": {"token": "0xdf0992e440dd0be65bd8439b609d6d4366bf1cb5", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
     "NVDA": {"token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
     "SPY": {"token": "0x117cc2133c37b721f49de2a7a74833232b3b4c0c", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
-    "GLD": {"token": "0xc9a981fee1f9dec688bb123ccdecc63d0debfc4e", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
     "WETH": {"token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "chainlink"},
     "USDG": {"token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "chainlink"},
     "QQQ": {"token": "0xd5f3879160bc7c32ebb4dc785f8a4f505888de68", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
     "PLTR": {"token": "0x894e1ec2d74ffe5aef8dc8a9e84686accb964f2a", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
     "AAPL": {"token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
     "MSFT": {"token": "0xe93237c50d904957cf27e7b1133b510c669c2e74", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
-    "TSLA": {"token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"},
-    "SLV": {"token": "0x411efb0e7f985935daec3d4c3ebaea0d0ad7d89f", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"}
+    "TSLA": {"token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d", "oracle": "0x0000000000000000000000000000000000000000", "feed": "0x0000000000000000000000000000000000000000", "heartbeat": 0, "oracleKind": "stock-pause-guarded"}
   },
   "pools": [
     {"slug": "mstr-usdg", "base": "MSTR", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
@@ -69,7 +67,6 @@
     {"slug": "crcl-usdg", "base": "CRCL", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "nvda-usdg", "base": "NVDA", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "spy-usdg", "base": "SPY", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
-    {"slug": "gld-usdg", "base": "GLD", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "aapl-usdg", "base": "AAPL", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "tsla-usdg", "base": "TSLA", "quote": "USDG", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "mstr-weth", "base": "MSTR", "quote": "WETH", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
@@ -80,7 +77,6 @@
     {"slug": "aapl-msft", "base": "AAPL", "quote": "MSFT", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "safety": {"stabilizationSeconds": 900, "maxOracleSkew": 120}, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "spy-nvda", "base": "SPY", "quote": "NVDA", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "safety": {"stabilizationSeconds": 900, "maxOracleSkew": 120}, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "spy-qqq", "base": "SPY", "quote": "QQQ", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "safety": {"stabilizationSeconds": 900, "maxOracleSkew": 120}, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
-    {"slug": "gld-slv", "base": "GLD", "quote": "SLV", "hoursPolicy": "equity-hours", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "safety": {"stabilizationSeconds": 900, "maxOracleSkew": 120}, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}},
     {"slug": "weth-usdg", "base": "WETH", "quote": "USDG", "hoursPolicy": "always-open", "sqrtPriceX96": 0, "vaultAllocationCap": 0, "safety": {"stabilizationSeconds": 0, "maxOracleSkew": 0}, "initialLiquidity": {"base": 0, "quote": 0, "slippageBps": 0}}
   ]
 }

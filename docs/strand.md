@@ -13,7 +13,7 @@ verified URU contract. WoolFi does not mint URU and URU underwriting does not gr
 rights.
 
 No STRAND contract, faucet, presale, buyback market, allocation schedule, or STRAND liquidity pool
-is part of the 18-pool launch. Production administration is multisig-based.
+is part of the 16-pool launch. Production administration is multisig-based.
 
 See [`PROJECT_SPEC.md`](../PROJECT_SPEC.md) for the canonical protocol design and
 [`robinhood-deployment.md`](./robinhood-deployment.md) for URU caps and deployment controls.

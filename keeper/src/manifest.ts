@@ -67,5 +67,5 @@ export function loadManifest(path: string): KeeperManifest {
 }
 
 export function isDeployed(manifest: KeeperManifest): boolean {
-  return manifest.hook !== ZERO && manifest.pools.length === 18 && new Set(manifest.pools.map((pool) => pool.slug)).size === 18;
+  return manifest.hook !== ZERO && manifest.pools.length === 16 && new Set(manifest.pools.map((pool) => pool.slug)).size === 16;
 }
