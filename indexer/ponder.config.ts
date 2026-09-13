@@ -1,6 +1,12 @@
 import {createConfig} from "ponder";
 
-import {woolfiHookAbi, woolfiPositionManagerAbi, woolfiUnderwritingVaultAbi} from "./abis";
+import {
+  urufuFeeRebateDistributorAbi,
+  woolfiHookAbi,
+  woolfiPositionManagerAbi,
+  woolfiUnderwritingVaultAbi,
+} from "./abis";
+import {contractSource, deployment} from "./deployment";
 import {vaultPools} from "./vaults";
 
 /**
@@ -13,6 +19,20 @@ const chain = "robinhood" as const;
 
 // Realtime poll cadence (ms). Higher = fewer RPC calls once the historical backfill has caught up.
 const pollingInterval = Number(process.env.PONDER_POLLING_INTERVAL_MS ?? 2_000);
+const hook = contractSource("hook", process.env.PONDER_HOOK_ADDRESS, process.env.PONDER_HOOK_START_BLOCK ?? process.env.PONDER_START_BLOCK);
+const positionManager = contractSource(
+  "positionManager",
+  process.env.PONDER_PM_ADDRESS,
+  process.env.PONDER_PM_START_BLOCK ?? process.env.PONDER_START_BLOCK,
+);
+const rebateDistributor = contractSource(
+  "rebateDistributor",
+  process.env.PONDER_REBATE_ADDRESS,
+  process.env.PONDER_REBATE_START_BLOCK ?? process.env.PONDER_START_BLOCK,
+);
+const vaultStartBlock = deployment.launchStatus === "live"
+  ? Math.min(...(deployment.pools ?? []).map((pool) => pool.startBlock ?? 0))
+  : Number(process.env.PONDER_VAULT_START_BLOCK ?? process.env.PONDER_START_BLOCK ?? 0);
 
 export default createConfig({
   chains: {
@@ -28,20 +48,23 @@ export default createConfig({
     WoolFiHook: {
       chain,
       abi: woolfiHookAbi,
-      address: (process.env.PONDER_HOOK_ADDRESS ?? "0x0000000000000000000000000000000000000000") as `0x${string}`,
-      startBlock: Number(process.env.PONDER_START_BLOCK ?? 0),
+      ...hook,
     },
     WoolFiPositionManager: {
       chain,
       abi: woolfiPositionManagerAbi,
-      address: (process.env.PONDER_PM_ADDRESS ?? "0x0000000000000000000000000000000000000000") as `0x${string}`,
-      startBlock: Number(process.env.PONDER_START_BLOCK ?? 0),
+      ...positionManager,
     },
     WoolFiUnderwritingVault: {
       chain,
       abi: woolfiUnderwritingVaultAbi,
       address: vaultPools.map(({vault}) => vault),
-      startBlock: Number(process.env.PONDER_START_BLOCK ?? 0),
+      startBlock: vaultStartBlock,
+    },
+    UrufuFeeRebateDistributor: {
+      chain,
+      abi: urufuFeeRebateDistributorAbi,
+      ...rebateDistributor,
     },
   },
 });

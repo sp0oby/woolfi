@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   webpack: (config, { dev }) => {
     // wagmi/RainbowKit pull in optional React-Native and node-only peers that aren't needed
     // in the browser. Alias them to false so webpack stops looking.

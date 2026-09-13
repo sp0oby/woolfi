@@ -10,10 +10,11 @@ manager plus every configured pool vault; exposes a GraphQL + SQL API the dashbo
 | `swap`             | `WoolFiHook.SwapProcessed`           | Recent swaps, drift series, 24h fee proxy    |
 | `structural_break` | `WoolFiHook.StructuralBreak*`        | Break history, current pool state            |
 | `lp_movement`      | `WoolFiPositionManager.Mint`/`Burn`  | Per-LP positions, TVL changes                |
-| `fee_routing`      | `WoolFiPositionManager.FeesRouted`   | Vault accrual + buyback sink over time       |
+| `fee_routing`      | `WoolFiPositionManager.FeesRouted`   | Vault accrual + treasury policy over time    |
 | `vault_event`      | `WoolFiUnderwritingVault.*`          | Stakes, unstakes, drawdowns                  |
 | `oracle_skew`      | `WoolFiHook.OracleSkewObserved`      | Degraded-mode history                        |
 | `pool_safety`      | `WoolFiHook.PoolSafetyUpdated`       | Stabilization / skew config changes          |
+| `rebate_event`     | `UrufuFeeRebateDistributor.*`        | Caps, funding, accruals, and claims          |
 
 This is a deliberately minimal starter set — extend `abis/`, `ponder.schema.ts`, and `src/index.ts`
 as the dashboard grows (e.g., LP fee claims, governance events, market-hours transitions).
@@ -22,7 +23,7 @@ as the dashboard grows (e.g., LP fee claims, governance events, market-hours tra
 
 ```bash
 cp .env.example .env.local
-# fill in the selected RPC URL, shared contract addresses, PONDER_VAULTS, and PONDER_START_BLOCK
+# fill in the selected RPC URL, receipt-backed addresses/start blocks, and PONDER_VAULTS
 npm install
 npm run dev    # starts ponder dev — http://localhost:42069
 ```
@@ -35,6 +36,8 @@ PONDER_VAULTS=0x1111111111111111111111111111111111111111=0xaaaaaaaaaaaaaaaaaaaaa
 
 Each vault and pool ID must be unique. Entries are validated when Ponder loads its config. If the
 variable is empty, a zero-address placeholder keeps predeployment code generation available.
+Set `PONDER_REBATE_ADDRESS` and `PONDER_REBATE_START_BLOCK` from the same verified manifest and
+receipt journal. A deployed contract must never backfill from block zero.
 
 ## Notes
 

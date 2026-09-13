@@ -67,8 +67,8 @@ export const feeRouting = onchainTable("fee_routing", (t) => ({
   timestamp: t.bigint().notNull(),
   vault0: t.bigint().notNull(),
   vault1: t.bigint().notNull(),
-  buyback0: t.bigint().notNull(),
-  buyback1: t.bigint().notNull(),
+  treasury0: t.bigint().notNull(),
+  treasury1: t.bigint().notNull(),
 }));
 
 // Vault stake / unstake / drawdown.
@@ -83,4 +83,20 @@ export const vaultEvent = onchainTable("vault_event", (t) => ({
   amount: t.bigint().notNull(),
   shares: t.bigint(),
   totalStakedAfter: t.bigint(),
+}));
+
+// Rebate configuration, funding, accrual, and claims. Fields that do not apply to an event kind
+// remain null; amounts are always raw token units.
+export const rebateEvent = onchainTable("rebate_event", (t) => ({
+  id: t.text().primaryKey(),
+  blockNumber: t.bigint().notNull(),
+  timestamp: t.bigint().notNull(),
+  kind: t.text().notNull(),
+  trader: t.hex(),
+  poolId: t.hex(),
+  token: t.hex(),
+  recipient: t.hex(),
+  router: t.hex(),
+  amount: t.bigint(),
+  week: t.bigint(),
 }));

@@ -1,0 +1,71 @@
+{
+  "$schema": "./launch-operations.schema.json",
+  "chainId": 4663,
+  "broadcastEnabled": false,
+  "launchEnabled": false,
+  "operations": [
+    {
+      "id": "deploy-core",
+      "phase": "core",
+      "dependsOn": [],
+      "argv": ["forge", "script", "script/Deploy.s.sol:Deploy", "--rpc-url", "robinhood"],
+      "approvalReference": ""
+    },
+    {
+      "id": "deploy-router-rebate",
+      "phase": "router-rebate",
+      "dependsOn": ["deploy-core"],
+      "argv": ["forge", "script", "script/DeployRouter.s.sol:DeployRouter", "--rpc-url", "robinhood"],
+      "approvalReference": ""
+    },
+    {
+      "id": "deploy-liquidity-zapper",
+      "phase": "router-rebate",
+      "dependsOn": ["deploy-router-rebate"],
+      "argv": ["forge", "script", "script/DeployLiquidityZapper.s.sol:DeployLiquidityZapper", "--rpc-url", "robinhood"],
+      "approvalReference": ""
+    },
+    {
+      "id": "deploy-oracles-and-pools",
+      "phase": "oracles-pools",
+      "dependsOn": ["deploy-liquidity-zapper"],
+      "argv": ["python", "script/robinhood_batch.py", "deploy", "--config", "script/config/robinhood-batch.json"],
+      "approvalReference": ""
+    },
+    {
+      "id": "seed-initial-liquidity",
+      "phase": "liquidity",
+      "dependsOn": ["deploy-oracles-and-pools"],
+      "evidence": "18 approved LP seed simulation artifacts and balances",
+      "approvalReference": ""
+    },
+    {
+      "id": "configure-rebate-caps-and-funding",
+      "phase": "rebate-funding",
+      "dependsOn": ["seed-initial-liquidity"],
+      "evidence": "approved per-token caps, funding amounts, calldata, and simulations",
+      "approvalReference": ""
+    },
+    {
+      "id": "verify-ownership-handoff",
+      "phase": "ownership",
+      "dependsOn": ["configure-rebate-caps-and-funding"],
+      "evidence": "read-only owner and role checks against the approved multisig",
+      "approvalReference": ""
+    },
+    {
+      "id": "deploy-keeper",
+      "phase": "services",
+      "dependsOn": ["verify-ownership-handoff"],
+      "argv": ["forge", "script", "script/DeployKeeper.s.sol:DeployKeeper", "--rpc-url", "robinhood"],
+      "approvalReference": ""
+    },
+    {
+      "id": "activate-keeper-indexer-monitoring",
+      "phase": "services",
+      "dependsOn": ["deploy-keeper"],
+      "evidence": "receipt-backed start blocks and passing keeper/indexer/monitoring smoke checks",
+      "approvalReference": ""
+    }
+  ]
+}

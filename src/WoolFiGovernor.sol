@@ -9,7 +9,7 @@ import {WoolFiHook} from "./WoolFiHook.sol";
 /// @title WoolFiGovernor
 /// @notice v1 governance surface for WoolFi: a single owner-controlled entry point that holds the
 ///         `governor` role on {WoolFiHook}. The owner is a multisig in v1 (PROJECT_SPEC.md §6, §7.4);
-///         full on-chain STRAND voting is deferred to v2.
+///         token voting is outside the v1 production scope.
 /// @dev Deliberately minimal — a thin, audited forwarding layer rather than premature voting/timelock
 ///      machinery. Its value is a durable, immutable-to-the-hook governance endpoint whose *control*
 ///      can transition (multisig -> on-chain governor) two ways without redeploying the hook:

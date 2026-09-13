@@ -22,7 +22,7 @@ export function LiquidityPanel() {
   const {pool, deployment} = useSelectedPool();
   const {address} = useAccount();
   const user = useUserReads(address);
-  const {drift, totalShares, marketOpen, safety} = usePoolReads();
+  const {drift, totalShares, marketOpen, safety, price0, price1} = usePoolReads();
   const depositsBlocked =
     marketOpen === false ||
     safety?.structurallyBroken === true ||
@@ -64,6 +64,8 @@ export function LiquidityPanel() {
             user={user}
             drift={drift}
             totalShares={totalShares}
+            price0={price0}
+            price1={price1}
           />
         )
       ) : (

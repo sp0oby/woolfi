@@ -111,12 +111,13 @@ export function useUserReads(account: `0x${string}` | undefined) {
             {address: deployment.vault, abi: vaultAbi, functionName: "sharesOf", args: [account]},
             {address: deployment.vault, abi: vaultAbi, functionName: "pendingRewards", args: [account]},
             {address: deployment.vault, abi: vaultAbi, functionName: "pendingUnstake", args: [account]},
+            {address: deployment.positionManager, abi: pmAbi, functionName: "pendingFees", args: [poolKeyFor(deployment), account]},
           ]
         : [],
     query: {enabled, refetchInterval: 12_000},
   });
 
-  const [t0, t1, stakingToken, lp, stake, rewards, unstake] = (reads.data ?? []) as Array<{result?: any}>;
+  const [t0, t1, stakingToken, lp, stake, rewards, unstake, lpFees] = (reads.data ?? []) as Array<{result?: any}>;
 
   return {
     enabled,
@@ -128,6 +129,7 @@ export function useUserReads(account: `0x${string}` | undefined) {
     vaultStake: stake?.result as bigint | undefined,
     pendingRewards: rewards?.result as readonly [bigint, bigint] | undefined,
     pendingUnstake: unstake?.result as readonly [bigint, bigint] | undefined,
+    pendingLpFees: lpFees?.result as readonly [bigint, bigint] | undefined,
     refetch: reads.refetch,
   } as const;
 }

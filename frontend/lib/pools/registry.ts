@@ -11,9 +11,9 @@ export const conservativeLaunchRisk = {
   baseFeeBps: 30,
   toleranceBps: 500,
   hardThresholdBps: 1500,
-  drawdownBps: 1000,
+  drawdownBps: 2000,
   vaultFeeBps: 2000,
-  buybackBps: 1000,
+  treasuryFeeBps: 1000,
 } as const satisfies PoolRiskDefaults;
 
 type PairSpec = readonly [
@@ -30,31 +30,46 @@ const pairSpecs = [
   ["NVDA", "USDG", "stock-usdg", "equity-hours"],
   ["SPY", "USDG", "stock-usdg", "equity-hours"],
   ["GLD", "USDG", "stock-usdg", "equity-hours"],
+  ["AAPL", "USDG", "stock-usdg", "equity-hours"],
+  ["TSLA", "USDG", "stock-usdg", "equity-hours"],
   ["MSTR", "WETH", "stock-weth", "equity-hours"],
   ["COIN", "WETH", "stock-weth", "equity-hours"],
   ["QQQ", "WETH", "stock-weth", "equity-hours"],
   ["NVDA", "WETH", "stock-weth", "equity-hours"],
   ["PLTR", "WETH", "stock-weth", "equity-hours"],
   ["AAPL", "MSFT", "spread", "equity-hours"],
-  ["NVDA", "SMH", "spread", "equity-hours"],
-  ["SMH", "SOXX", "spread", "equity-hours"],
-  ["XLK", "QQQ", "spread", "equity-hours"],
+  ["SPY", "NVDA", "spread", "equity-hours"],
   ["SPY", "QQQ", "spread", "equity-hours"],
   ["GLD", "SLV", "spread", "equity-hours"],
   ["WETH", "USDG", "crypto", "always-open"],
 ] as const satisfies readonly PairSpec[];
 
-type RawManifest = {pools?: readonly Partial<DeployedPool>[]};
-const deployedPools = ((robinhoodManifest as RawManifest).pools ?? []).filter(isDeployedPool);
-
-export const poolRegistry: readonly CuratedPool[] = pairSpecs.map(
-  ([baseSymbol, quoteSymbol, category, tradingHours]) => {
+type RawManifest = {launchStatus?: string; pools?: readonly Partial<DeployedPool>[]};
+const rawManifest = robinhoodManifest as RawManifest;
+const manifestPools = rawManifest.launchStatus === "live"
+  ? (rawManifest.pools ?? []).filter(isDeployedPool)
+  : [];
+const resolvedPairs = pairSpecs.map(([baseSymbol, quoteSymbol, category, tradingHours]) => {
     const base = robinhoodAssets[baseSymbol];
     const quote = robinhoodAssets[quoteSymbol];
     const slug = `${baseSymbol.toLowerCase()}-${quoteSymbol.toLowerCase()}`;
-    const deployment = deployedPools.find(
+    const rawDeployment = manifestPools.find(
       (pool) => (!pool.slug || pool.slug === slug) && matchesPair(pool, base.address, quote.address),
     );
+    const deployment = rawDeployment ? withTokenMetadata(rawDeployment, base, quote) : undefined;
+    return {base, quote, category, tradingHours, slug, deployment};
+  });
+const protocolAddressesReady = [
+  robinhoodManifest.poolManager,
+  robinhoodManifest.hook,
+  robinhoodManifest.positionManager,
+  robinhoodManifest.stakingToken,
+].every((address) => address && address !== ZERO);
+const coordinatedLaunchReady =
+  protocolAddressesReady && resolvedPairs.every(({deployment}) => deployment !== undefined);
+
+export const poolRegistry: readonly CuratedPool[] = resolvedPairs.map(
+  ({base, quote, category, tradingHours, slug, deployment}) => {
     return {
       slug,
       base,
@@ -62,9 +77,13 @@ export const poolRegistry: readonly CuratedPool[] = pairSpecs.map(
       category,
       tradingHours,
       risk: deployment ?? conservativeLaunchRisk,
-      status: deployment ? "live" : "pending",
-      deployment,
-      readinessRequirement: deployment ? undefined : pendingOracleRequirement,
+      status: coordinatedLaunchReady ? "live" : "pending",
+      deployment: coordinatedLaunchReady ? deployment : undefined,
+      readinessRequirement: coordinatedLaunchReady
+        ? undefined
+        : deployment
+          ? "Deployment detected, but public activation waits for the coordinated all-18 launch."
+          : pendingOracleRequirement,
     };
   },
 );
@@ -124,6 +143,7 @@ function matchesPair(pool: DeployedPool, a: string, b: string): boolean {
 }
 
 function isDeployedPool(pool: Partial<DeployedPool>): pool is DeployedPool {
+  const alwaysOpen = isWethUsdg(pool);
   return Boolean(
     pool.poolId &&
       pool.token0 &&
@@ -134,6 +154,27 @@ function isDeployedPool(pool: Partial<DeployedPool>): pool is DeployedPool {
       pool.marketHours &&
       pool.vault !== ZERO &&
       pool.oracle0 !== ZERO &&
-      pool.oracle1 !== ZERO,
+      pool.oracle1 !== ZERO &&
+      (pool.marketHours !== ZERO || alwaysOpen),
   );
+}
+
+function isWethUsdg(pool: Partial<DeployedPool>): boolean {
+  const symbols = [pool.token0Symbol?.toUpperCase(), pool.token1Symbol?.toUpperCase()];
+  return symbols.includes("WETH") && symbols.includes("USDG");
+}
+
+function withTokenMetadata(
+  pool: DeployedPool,
+  base: CuratedPool["base"],
+  quote: CuratedPool["quote"],
+): DeployedPool {
+  const token0IsBase = pool.token0.toLowerCase() === base.address.toLowerCase();
+  return {
+    ...pool,
+    token0Symbol: token0IsBase ? base.symbol : quote.symbol,
+    token1Symbol: token0IsBase ? quote.symbol : base.symbol,
+    token0Decimals: token0IsBase ? base.decimals : quote.decimals,
+    token1Decimals: token0IsBase ? quote.decimals : base.decimals,
+  };
 }

@@ -94,7 +94,7 @@ contract WoolFiHook is BaseHook {
     address public governor;
     /// @notice Position manager that owns the shared full-range LP position for every WoolFi pool
     ///         this hook serves. When set, the hook pokes its `realizeFromHook` from `afterSwap`
-    ///         so vault rewards and buyback cuts route automatically on every trade — no keeper
+    ///         so vault rewards and treasury-policy cuts route automatically on every trade — no keeper
     ///         needed for the steady state. address(0) until governance wires it (`setPositionManager`).
     address public positionManager;
     /// @notice Global emergency pause. When true, swaps and adds revert.
@@ -129,6 +129,7 @@ contract WoolFiHook is BaseHook {
     error StructuralBreakActive();
     error StabilizationActive(uint256 sessionStart, uint256 endsAt);
     error OracleTimestampSkew(uint256 updatedAt0, uint256 updatedAt1, uint32 maxSkew);
+    error UnauthorizedLiquidityProvider(address sender);
 
     modifier onlyGovernor() {
         if (msg.sender != governor) revert NotGovernor();
@@ -449,11 +450,13 @@ contract WoolFiHook is BaseHook {
     ///      math assumes uniform liquidity across the price domain. The PM always uses full range;
     ///      this guards against direct PoolManager callers attempting a concentrated position.
     function _beforeAddLiquidity(
-        address,
+        address sender,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata
     ) internal view override returns (bytes4) {
+        address pm = positionManager;
+        if (pm != address(0) && sender != pm) revert UnauthorizedLiquidityProvider(sender);
         if (paused) revert Paused();
         PoolId id = key.toId();
         WoolFiConfig memory c = _config[id];

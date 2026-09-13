@@ -70,7 +70,7 @@ export function PoolCard() {
           value={
             fee0 === undefined || fee1 === undefined
               ? "-"
-              : `${fmtAmount(fee0, 18, 2)} / ${fmtAmount(fee1, 18, 2)}`
+              : `${fmtAmount(fee0, deployment.token0Decimals, 2)} / ${fmtAmount(fee1, deployment.token1Decimals, 2)}`
           }
           hint={stale ? "indexer behind" : "routed from indexer"}
         />

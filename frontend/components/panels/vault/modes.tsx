@@ -57,7 +57,7 @@ export function StakeMode({
         stats={[
           {label: "Your stake", value: fmtAmount(user.vaultStake)},
           {label: "Vault TVL", value: fmtAmount(vaultStaked)},
-          {label: "Pending rewards", value: fmtRewardPair(user.pendingRewards)},
+          {label: "Pending rewards", value: fmtRewardPair(user.pendingRewards, deployment)},
         ]}
       />
       <button
@@ -184,8 +184,8 @@ export function ClaimMode({deployment, address, user}: ModeProps) {
     <>
       <StatRow
         stats={[
-          {label: `Pending ${deployment.token0Symbol}`, value: fmtAmount(p0)},
-          {label: `Pending ${deployment.token1Symbol}`, value: fmtAmount(p1)},
+          {label: `Pending ${deployment.token0Symbol}`, value: fmtAmount(p0, deployment.token0Decimals)},
+          {label: `Pending ${deployment.token1Symbol}`, value: fmtAmount(p1, deployment.token1Decimals)},
           {label: "Your stake", value: fmtAmount(user.vaultStake)},
         ]}
       />
@@ -208,7 +208,10 @@ export function ClaimMode({deployment, address, user}: ModeProps) {
   );
 }
 
-function fmtRewardPair(pending: readonly [bigint, bigint] | undefined): string {
+function fmtRewardPair(
+  pending: readonly [bigint, bigint] | undefined,
+  deployment: WoolFiDeployment,
+): string {
   if (!pending) return "-";
-  return `${fmtAmount(pending[0], 18, 2)} / ${fmtAmount(pending[1], 18, 2)}`;
+  return `${fmtAmount(pending[0], deployment.token0Decimals, 2)} / ${fmtAmount(pending[1], deployment.token1Decimals, 2)}`;
 }

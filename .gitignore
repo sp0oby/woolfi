@@ -13,6 +13,7 @@ keystore/
 # Node / frontend / indexer
 node_modules/
 .next/
+.next-dev/
 .ponder/
 dist/
 *.tsbuildinfo
@@ -38,6 +39,7 @@ __pycache__/
 # Tooling / sessions
 .claude/
 .cursor/
+.launch-state/
 CLAUDE.md
 slither.config.json
 *.log

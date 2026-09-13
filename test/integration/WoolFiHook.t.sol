@@ -696,7 +696,7 @@ contract WoolFiHookTest is Deployers {
         STRAND strand = new STRAND(address(this));
         address rebalancer = makeAddr("rebalancer");
         WoolFiUnderwritingVault vault = new WoolFiUnderwritingVault(
-            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer
+            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer, 1_000e18
         );
         strand.mint(address(this), 1000e18);
         strand.approve(address(vault), type(uint256).max);
@@ -737,7 +737,7 @@ contract WoolFiHookTest is Deployers {
         STRAND strand = new STRAND(address(this));
         address rebalancer = makeAddr("rebalancer");
         WoolFiUnderwritingVault vault = new WoolFiUnderwritingVault(
-            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer
+            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer, 1_000e18
         );
         strand.mint(address(this), 1000e18);
         strand.approve(address(vault), type(uint256).max);

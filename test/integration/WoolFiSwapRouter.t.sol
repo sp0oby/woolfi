@@ -10,11 +10,21 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {WoolFiHook} from "../../src/WoolFiHook.sol";
 import {WoolFiSwapRouter} from "../../src/WoolFiSwapRouter.sol";
+import {UrufuFeeRebateDistributor} from "../../src/UrufuFeeRebateDistributor.sol";
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
+
+contract MockUrufuNft is ERC721 {
+    constructor() ERC721("Urufu Gemu", "URUFU") {}
+
+    function mint(address to, uint256 tokenId) external {
+        _mint(to, tokenId);
+    }
+}
 
 /// @notice Integration tests for WoolFiSwapRouter against a real v4 PoolManager + WoolFi hook.
 contract WoolFiSwapRouterTest is Deployers {
@@ -22,6 +32,8 @@ contract WoolFiSwapRouterTest is Deployers {
 
     WoolFiHook hook;
     WoolFiSwapRouter router;
+    UrufuFeeRebateDistributor rebateDistributor;
+    MockUrufuNft urufuNft;
     MockPriceOracle oracle0;
     MockPriceOracle oracle1;
     MockMarketHours marketHours;
@@ -67,7 +79,13 @@ contract WoolFiSwapRouterTest is Deployers {
             ZERO_BYTES
         );
 
-        router = new WoolFiSwapRouter(manager);
+        urufuNft = new MockUrufuNft();
+        rebateDistributor = new UrufuFeeRebateDistributor(hook, address(urufuNft), address(this));
+        router = new WoolFiSwapRouter(manager, rebateDistributor);
+        rebateDistributor.setRouter(address(router));
+        rebateDistributor.setWeeklyCap(Currency.unwrap(currency0), 1e18);
+        IERC20Minimal(Currency.unwrap(currency0)).approve(address(rebateDistributor), 1e18);
+        rebateDistributor.fund(Currency.unwrap(currency0), 1e18);
 
         // Fund Alice and approve the router as her spender for both tokens.
         IERC20Minimal(Currency.unwrap(currency0)).transfer(ALICE, 10e18);
@@ -131,6 +149,73 @@ contract WoolFiSwapRouterTest is Deployers {
 
         uint256 b1After = IERC20Minimal(Currency.unwrap(currency1)).balanceOf(bob);
         assertEq(b1After - b1Before, out, "bob got the output");
+    }
+
+    function test_swap_nftHolderAccruesAndClaimsBaseFeeRebate() public {
+        uint256 amountIn = 1e16;
+        uint256 expected = amountIn * 30 / 10_000 * 1_500 / 10_000;
+        urufuNft.mint(ALICE, 1);
+
+        vm.prank(ALICE);
+        router.swap(poolKey, true, amountIn, 0, ALICE, ZERO_BYTES);
+
+        address tokenIn = Currency.unwrap(currency0);
+        assertEq(rebateDistributor.claimable(ALICE, tokenIn), expected);
+        uint256 beforeClaim = IERC20Minimal(tokenIn).balanceOf(ALICE);
+        vm.prank(ALICE);
+        assertEq(rebateDistributor.claim(tokenIn, ALICE), expected);
+        assertEq(IERC20Minimal(tokenIn).balanceOf(ALICE) - beforeClaim, expected);
+    }
+
+    function test_swap_nonHolderGetsNoRebate() public {
+        vm.prank(ALICE);
+        router.swap(poolKey, true, 1e16, 0, ALICE, ZERO_BYTES);
+
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency0)), 0);
+    }
+
+    function test_swap_rebateIsClampedToWeeklyCap() public {
+        uint256 amountIn = 1e16;
+        uint256 expected = amountIn * 30 / 10_000 * 1_500 / 10_000;
+        uint256 cap = expected / 2;
+        urufuNft.mint(ALICE, 1);
+        rebateDistributor.setWeeklyCap(Currency.unwrap(currency0), cap);
+
+        vm.prank(ALICE);
+        router.swap(poolKey, true, amountIn, 0, ALICE, ZERO_BYTES);
+
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency0)), cap);
+    }
+
+    function test_swap_unfundedInputTokenAccruesNothing() public {
+        urufuNft.mint(ALICE, 1);
+        rebateDistributor.setWeeklyCap(Currency.unwrap(currency1), 1e18);
+
+        vm.prank(ALICE);
+        router.swap(poolKey, false, 1e16, 0, ALICE, ZERO_BYTES);
+
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency1)), 0);
+    }
+
+    function test_nftTransferDoesNotMoveEarnedRebate() public {
+        address bob = address(0xB0B);
+        urufuNft.mint(ALICE, 1);
+
+        vm.prank(ALICE);
+        router.swap(poolKey, true, 1e16, 0, ALICE, ZERO_BYTES);
+        uint256 earned = rebateDistributor.claimable(ALICE, Currency.unwrap(currency0));
+
+        vm.prank(ALICE);
+        urufuNft.transferFrom(ALICE, bob, 1);
+
+        assertGt(earned, 0);
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency0)), earned);
+        assertEq(rebateDistributor.claimable(bob, Currency.unwrap(currency0)), 0);
+    }
+
+    function testRevert_rebateRecord_onlyRouter() public {
+        vm.expectRevert(UrufuFeeRebateDistributor.NotRouter.selector);
+        rebateDistributor.recordSwap(ALICE, poolId, Currency.unwrap(currency0), 1e16);
     }
 
     // -----------------------------------------------------------------

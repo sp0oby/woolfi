@@ -12,8 +12,9 @@
     "core": {
       "type": "object",
       "required": [
-        "poolManager", "stakingToken", "hook", "positionManager", "governor", "multisig",
-        "treasury", "rebalancer", "buybackSink", "marketHours", "sequencerUptimeFeed",
+        "poolManager", "stakingToken", "hook", "positionManager", "governor", "swapRouter",
+        "rebateDistributor", "liquidityZapper", "externalSwapExecutor", "urufuNft", "multisig",
+        "treasury", "rebalancer", "treasuryFeeSink", "marketHours", "sequencerUptimeFeed",
         "sequencerGracePeriod", "totalTreasuryAllocationCap"
       ],
       "additionalProperties": false,
@@ -23,10 +24,15 @@
         "hook": {"$ref": "#/$defs/address"},
         "positionManager": {"$ref": "#/$defs/address"},
         "governor": {"$ref": "#/$defs/address"},
+        "swapRouter": {"$ref": "#/$defs/address"},
+        "rebateDistributor": {"$ref": "#/$defs/address"},
+        "liquidityZapper": {"$ref": "#/$defs/address"},
+        "externalSwapExecutor": {"$ref": "#/$defs/address"},
+        "urufuNft": {"$ref": "#/$defs/address"},
         "multisig": {"$ref": "#/$defs/address"},
         "treasury": {"$ref": "#/$defs/address"},
         "rebalancer": {"$ref": "#/$defs/address"},
-        "buybackSink": {"$ref": "#/$defs/address"},
+        "treasuryFeeSink": {"$ref": "#/$defs/address"},
         "marketHours": {"$ref": "#/$defs/address"},
         "sequencerUptimeFeed": {"$ref": "#/$defs/address"},
         "sequencerGracePeriod": {"type": "integer", "minimum": 0},
@@ -38,8 +44,8 @@
     "gates": {"$ref": "#/$defs/gates"},
     "assets": {
       "type": "object",
-      "minProperties": 16,
-      "maxProperties": 16,
+      "minProperties": 14,
+      "maxProperties": 14,
       "additionalProperties": {"$ref": "#/$defs/asset"}
     },
     "pools": {
@@ -54,13 +60,14 @@
     "address": {"type": "string", "pattern": "^0x[0-9a-fA-F]{40}$"},
     "asset": {
       "type": "object",
-      "required": ["token", "oracle", "feed", "heartbeat"],
+      "required": ["token", "oracle", "feed", "heartbeat", "oracleKind"],
       "additionalProperties": false,
       "properties": {
         "token": {"$ref": "#/$defs/address"},
         "oracle": {"$ref": "#/$defs/address"},
         "feed": {"$ref": "#/$defs/address"},
-        "heartbeat": {"type": "integer", "minimum": 0}
+        "heartbeat": {"type": "integer", "minimum": 0},
+        "oracleKind": {"enum": ["stock-pause-guarded", "chainlink"]}
       }
     },
     "safety": {
@@ -94,7 +101,7 @@
       "type": "object",
       "required": [
         "tickSpacing", "kScaled", "baseFeeBps", "toleranceBps", "hardThresholdBps",
-        "drawdownBps", "vaultFeeBps", "buybackBps"
+        "drawdownBps", "vaultFeeBps", "treasuryFeeBps"
       ],
       "additionalProperties": false,
       "properties": {
@@ -105,7 +112,7 @@
         "hardThresholdBps": {"type": "integer", "minimum": 1, "maximum": 10000},
         "drawdownBps": {"type": "integer", "minimum": 1, "maximum": 10000},
         "vaultFeeBps": {"type": "integer", "minimum": 1, "maximum": 10000},
-        "buybackBps": {"type": "integer", "minimum": 1, "maximum": 10000}
+        "treasuryFeeBps": {"type": "integer", "minimum": 1, "maximum": 10000}
       }
     },
     "pool": {

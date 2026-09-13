@@ -83,7 +83,8 @@ contract WoolFiInvariantsTest is Deployers {
             address(hook),
             Currency.unwrap(currency0),
             Currency.unwrap(currency1),
-            makeAddr("rebalancer")
+            makeAddr("rebalancer"),
+            1_000_000e18
         );
         hook.setVault(poolKey, address(vault), 2000); // drawdowns fire on a break
         hook.setPoolSafety(poolKey, WoolFiHook.SafetyParams({stabilizationSeconds: 0, maxOracleSkew: 300}));

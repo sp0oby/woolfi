@@ -25,7 +25,7 @@ abstract contract RobinhoodDeploymentArtifact is RobinhoodBroadcastGuard {
         uint16 hardThresholdBps;
         uint16 drawdownBps;
         uint16 vaultFeeBps;
-        uint16 buybackBps;
+        uint16 treasuryFeeBps;
     }
 
     function _persistAfterBroadcast(PoolArtifact memory pool) internal {
@@ -88,7 +88,7 @@ abstract contract RobinhoodDeploymentArtifact is RobinhoodBroadcastGuard {
         pool.hardThresholdBps = uint16(vm.parseJsonUint(json, string.concat(root, "hardThresholdBps")));
         pool.drawdownBps = uint16(vm.parseJsonUint(json, string.concat(root, "drawdownBps")));
         pool.vaultFeeBps = uint16(vm.parseJsonUint(json, string.concat(root, "vaultFeeBps")));
-        pool.buybackBps = uint16(vm.parseJsonUint(json, string.concat(root, "buybackBps")));
+        pool.treasuryFeeBps = uint16(vm.parseJsonUint(json, string.concat(root, "treasuryFeeBps")));
     }
 
     function _serializePool(PoolArtifact memory pool) internal returns (string memory json) {
@@ -109,7 +109,7 @@ abstract contract RobinhoodDeploymentArtifact is RobinhoodBroadcastGuard {
         vm.serializeUint(object, "hardThresholdBps", pool.hardThresholdBps);
         vm.serializeUint(object, "drawdownBps", pool.drawdownBps);
         vm.serializeUint(object, "vaultFeeBps", pool.vaultFeeBps);
-        json = vm.serializeUint(object, "buybackBps", pool.buybackBps);
+        json = vm.serializeUint(object, "treasuryFeeBps", pool.treasuryFeeBps);
     }
 
     function _writeCoreAddress(string memory json, string memory key, address expected) private {

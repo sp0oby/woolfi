@@ -4,11 +4,14 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
+
+import {IFeeRebateDistributor} from "./interfaces/IFeeRebateDistributor.sol";
 
 /// @title WoolFiSwapRouter
 /// @notice Minimal v4 swap router for WoolFi pools. Wraps `PoolManager.unlock` so end users can
@@ -18,13 +21,18 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 ///      WoolFi-specific state involved is whatever the hook returns inside the swap callback. Native
 ///      ETH is intentionally unsupported in v1; WoolFi pools are ERC20/ERC20.
 contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
+    using PoolIdLibrary for PoolKey;
+
     IPoolManager public immutable poolManager;
+    IFeeRebateDistributor public immutable rebateDistributor;
 
     error NotPoolManager();
     error ZeroAmount();
     error InsufficientOutput(uint256 received, uint256 minimum);
 
     event Swap(address indexed payer, address indexed recipient, bool zeroForOne, uint256 amountIn, uint256 amountOut);
+    event RebateRecorded(address indexed payer, address indexed tokenIn, uint256 amount);
+    event RebateRecordFailed(address indexed payer, bytes reason);
 
     /// @dev Encoded across the `unlock` boundary.
     struct CallbackData {
@@ -35,8 +43,9 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
         bytes hookData;
     }
 
-    constructor(IPoolManager _manager) {
+    constructor(IPoolManager _manager, IFeeRebateDistributor _rebateDistributor) {
         poolManager = _manager;
+        rebateDistributor = _rebateDistributor;
     }
 
     /// @notice Swap `amountIn` of token-in for at least `amountOutMinimum` of token-out.
@@ -73,6 +82,7 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
         amountOut = abi.decode(raw, (uint256));
 
         if (amountOut < amountOutMinimum) revert InsufficientOutput(amountOut, amountOutMinimum);
+        _recordRebate(key, zeroForOne, amountIn);
         emit Swap(msg.sender, recipient, zeroForOne, amountIn, amountOut);
     }
 
@@ -115,5 +125,16 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
         if (delta <= 0) return 0;
         amount = uint256(uint128(delta));
         poolManager.take(currency, to, amount);
+    }
+
+    /// @dev Rebate accounting is fail-open so an optional loyalty module can never halt trading.
+    function _recordRebate(PoolKey calldata key, bool zeroForOne, uint256 amountIn) private {
+        if (address(rebateDistributor) == address(0)) return;
+        address tokenIn = Currency.unwrap(zeroForOne ? key.currency0 : key.currency1);
+        try rebateDistributor.recordSwap(msg.sender, key.toId(), tokenIn, amountIn) returns (uint256 rebate) {
+            if (rebate > 0) emit RebateRecorded(msg.sender, tokenIn, rebate);
+        } catch (bytes memory reason) {
+            emit RebateRecordFailed(msg.sender, reason);
+        }
     }
 }

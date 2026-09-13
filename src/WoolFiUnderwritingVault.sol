@@ -32,6 +32,8 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     address public immutable token1;
     /// @notice Recipient of seized staking tokens on a drawdown (treasury / rebalancer).
     address public immutable rebalancer;
+    /// @notice Maximum staking-token assets this vault may accept.
+    uint256 public immutable maxTotalStaked;
 
     /// @notice Total staking shares outstanding.
     uint256 public totalShares;
@@ -70,13 +72,21 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     error ZeroAddress();
     error NotContract(address target);
     error UnsupportedTransferBehavior(uint256 expected, uint256 received);
+    error CapExceeded(uint256 attemptedTotal, uint256 cap);
 
     modifier onlyHook() {
         if (msg.sender != hook) revert NotHook();
         _;
     }
 
-    constructor(address stakingToken_, address hook_, address token0_, address token1_, address rebalancer_) {
+    constructor(
+        address stakingToken_,
+        address hook_,
+        address token0_,
+        address token1_,
+        address rebalancer_,
+        uint256 maxTotalStaked_
+    ) {
         if (
             stakingToken_ == address(0) || hook_ == address(0) || token0_ == address(0) || token1_ == address(0)
                 || rebalancer_ == address(0)
@@ -91,6 +101,7 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
         token0 = token0_;
         token1 = token1_;
         rebalancer = rebalancer_;
+        maxTotalStaked = maxTotalStaked_;
     }
 
     // --------------------------------------------------------------------
@@ -101,6 +112,8 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     /// @dev Fee-on-transfer and rebasing tokens are not supported.
     function stake(uint256 amount) external nonReentrant returns (uint256 shares) {
         if (amount == 0) revert ZeroAmount();
+        uint256 attemptedTotal = totalStaked + amount;
+        if (attemptedTotal > maxTotalStaked) revert CapExceeded(attemptedTotal, maxTotalStaked);
         _harvest(msg.sender);
 
         shares = totalShares == 0 ? amount : FixedPointMathLib.fullMulDiv(amount, totalShares, totalStaked);

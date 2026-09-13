@@ -1,7 +1,6 @@
 "use client";
 
 import {useEffect, useState} from "react";
-import {parseUnits} from "viem";
 import {useAccount, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
 import {erc20Abi, swapRouterAbi} from "@/lib/abis";
@@ -13,6 +12,7 @@ import type {WoolFiDeployment} from "@/lib/woolfi";
 import {useAllowance, usePoolReads, useUserReads} from "@/hooks/usePool";
 import {useSwapQuote} from "@/hooks/useSwapQuote";
 import {Field, PanelFootnote, StatRow, TxStatus} from "./atoms";
+import {btnCls, parseAmount} from "./panelHelpers";
 
 const ZERO_BYTES = "0x" as const;
 
@@ -97,8 +97,10 @@ function Live({
   const tokenInLabel = zeroForOne ? deployment.token0Symbol : deployment.token1Symbol;
   const tokenOutLabel = zeroForOne ? deployment.token1Symbol : deployment.token0Symbol;
   const balanceIn = zeroForOne ? user.bal0 : user.bal1;
+  const tokenInDecimals = zeroForOne ? deployment.token0Decimals : deployment.token1Decimals;
+  const tokenOutDecimals = zeroForOne ? deployment.token1Decimals : deployment.token0Decimals;
 
-  const amountInWei = parseAmount(amountIn, 18);
+  const amountInWei = parseAmount(amountIn, tokenInDecimals);
 
   const allowance = useAllowance(tokenIn, address, deployment.swapRouter);
   const {writeContract: approve, data: approveTx, isPending: approving} = useWriteContract();
@@ -192,7 +194,7 @@ function Live({
         value={amountIn}
         onChange={setAmountIn}
         editable
-        hint={`balance ${fmtAmount(balanceIn)}`}
+        hint={`balance ${fmtAmount(balanceIn, tokenInDecimals)}`}
       />
       <div className="flex justify-center">
         <button
@@ -207,7 +209,7 @@ function Live({
       <Field
         label="You receive"
         token={tokenOutLabel}
-        value={quote !== undefined ? formatQuote(quote) : ""}
+        value={quote !== undefined ? fmtAmount(quote, tokenOutDecimals, 6) : ""}
         editable={false}
         hint={
           needsApproval
@@ -215,7 +217,7 @@ function Live({
             : quoting
               ? "quoting…"
               : quote !== undefined && slippageBps !== undefined
-                ? `min ${formatQuote((quote * (10_000n - slippageBps)) / 10_000n)} after slippage`
+                ? `min ${fmtAmount((quote * (10_000n - slippageBps)) / 10_000n, tokenOutDecimals, 6)} after slippage`
                 : undefined
         }
       />
@@ -277,23 +279,6 @@ function Live({
   );
 }
 
-function parseAmount(v: string, decimals: number): bigint | undefined {
-  if (!v || v === "." || v.startsWith(".")) return undefined;
-  try {
-    return parseUnits(v as `${number}`, decimals);
-  } catch {
-    return undefined;
-  }
-}
-
-function formatQuote(wei: bigint): string {
-  // Display ~6 significant decimals - keep tight enough to read, sparse enough to fit the panel.
-  const whole = wei / 10n ** 18n;
-  const frac = wei % 10n ** 18n;
-  const fracStr = frac.toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
-  return fracStr.length > 0 ? `${whole}.${fracStr}` : whole.toString();
-}
-
 function parseSlippageBps(v: string): bigint | undefined {
   if (!v) return undefined;
   const num = Number(v);
@@ -304,10 +289,4 @@ function parseSlippageBps(v: string): bigint | undefined {
 
 function signedBps(bps: bigint): string {
   return `${bps > 0n ? "+" : ""}${bps.toString()}`;
-}
-
-function btnCls(disabled: boolean) {
-  return `block w-full py-3 border border-line font-mono text-[11px] uppercase tracking-[0.22em] transition-colors ${
-    disabled ? "text-muted cursor-not-allowed" : "text-white hover:bg-white/5"
-  }`;
 }

@@ -3,7 +3,7 @@
 import {useEffect, useState} from "react";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 
-const STORAGE_KEY = "woolfi.disclosure.ack.v2";
+const STORAGE_KEY = "woolfi.disclosure.ack.v3";
 
 /**
  * First-visit dismissable modal explaining the tokenized-equity dependency.
@@ -47,17 +47,17 @@ export function DisclosureModal() {
         <div className="px-6 pt-6 pb-2">
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">Disclosure</p>
           <h2 id="woolfi-disclosure-title" className="mt-2 text-[20px] font-medium tracking-tight">
-            This pool includes a Robinhood Stock Token.
+            This selected pool includes Robinhood Stock Token exposure.
           </h2>
         </div>
         <div className="px-6 pb-5 space-y-4 text-[14px] leading-relaxed text-ink/85">
           <p>
-            This pool is{" "}
+            The selected pair is{" "}
             <span className="font-mono text-white">
               {pool.base.symbol} / {pool.quote.symbol}
             </span>
-            . Robinhood Stock Tokens are issued by Robinhood Assets (Jersey) Limited (RHJ) and
-            provide economic exposure to referenced securities. They do not provide ownership,
+            . One or both assets may be Robinhood Stock Tokens issued by Robinhood Assets (Jersey)
+            Limited (RHJ). They provide economic exposure to referenced securities, not ownership,
             voting rights, or other shareholder rights in those securities.
           </p>
           <p>
@@ -66,9 +66,9 @@ export function DisclosureModal() {
             responsible for confirming that you may hold and trade this token.
           </p>
           <p>
-            While NYSE is closed the hook drops its asymmetric mechanic and reverts to flat fees.
-            LPs bear overnight and weekend gap risk. WoolFi is pre-launch, unaudited, and provides
-            no investment advice.
+            While the applicable U.S. equity market is closed, the hook drops its asymmetric
+            mechanic and uses flat fees. LPs bear overnight and weekend gap risk. WoolFi is
+            pre-launch, unaudited, and provides no investment advice.
           </p>
         </div>
         <div className="border-t border-line px-6 py-4 flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:justify-end">

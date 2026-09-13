@@ -28,8 +28,7 @@ import {HookMiner} from "./lib/HookMiner.sol";
 /// @dev Reads optional `MULTISIG_ADDRESS` from env. When set, all Ownable contracts (STRAND,
 ///      WoolFiGovernor, WoolFiPositionManager, MultisigMarketHours) plus the vault's `rebalancer`
 ///      land on the multisig directly — no post-deploy transfer required. When unset, falls back
-///      to the deployer address (useful for fast iteration). The buyback sink stays on the
-///      deployer in both modes; switch it via `WoolFiPositionManager.setFeeConfig` post-deploy.
+///      to the deployer address (useful for fast iteration). The treasury fee sink is the multisig.
 contract DeployTestnet is Script {
     using PoolIdLibrary for PoolKey;
 
@@ -143,22 +142,23 @@ contract DeployTestnet is Script {
             .authorizePool(
                 key,
                 WoolFiHook.AuthParams({
-                oracle0: MockPriceOracle(dep.oracle0),
-                oracle1: MockPriceOracle(dep.oracle1),
-                marketHours: MultisigMarketHours(dep.marketHours),
-                kScaled: 40_000,
-                baseFeeBps: 30,
-                toleranceBps: 500,
-                hardThresholdBps: 1500
-            })
+                    oracle0: MockPriceOracle(dep.oracle0),
+                    oracle1: MockPriceOracle(dep.oracle1),
+                    marketHours: MultisigMarketHours(dep.marketHours),
+                    kScaled: 40_000,
+                    baseFeeBps: 30,
+                    toleranceBps: 500,
+                    hardThresholdBps: 1500
+                })
             );
         poolManager.initialize(key, SQRT_PRICE_1_1);
 
         // Vault rebalancer is immutable; set it to the multisig at construction so seized STRAND
         // on a structural-break drawdown lands in multisig custody.
-        dep.vault = address(new WoolFiUnderwritingVault(dep.strand, dep.hook, dep.token0, dep.token1, multisig));
+        dep.vault =
+            address(new WoolFiUnderwritingVault(dep.strand, dep.hook, dep.token0, dep.token1, multisig, 1_000_000e18));
         WoolFiGovernor(dep.governor).setVault(key, dep.vault, 2000);
-        // Buyback sink → multisig; multisig later runs the off-chain market-buy-and-burn.
+        // The multisig applies treasury policy to its fee allocation.
         WoolFiPositionManager(dep.pm).setFeeConfig(key, dep.vault, 2000, multisig, 1000);
 
         // Ownership handoff: deployer keeps no privileges after the script finishes.
@@ -255,7 +255,7 @@ contract DeployTestnet is Script {
             '  "hardThresholdBps": 1500,\n',
             '  "drawdownBps": 2000,\n',
             '  "vaultFeeBps": 2000,\n',
-            '  "buybackBps": 1000\n',
+            '  "treasuryFeeBps": 1000\n',
             "}\n"
         );
 

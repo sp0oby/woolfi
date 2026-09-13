@@ -35,6 +35,8 @@ export function ModeTabs<Mode extends string>({
 
 export function parseAmount(value: string, decimals: number): bigint | undefined {
   if (!value || value === "." || value.startsWith(".")) return undefined;
+  const [, fraction = ""] = value.split(".");
+  if (!/^\d+(?:\.\d*)?$/.test(value) || fraction.length > decimals) return undefined;
   try {
     return parseUnits(value as `${number}`, decimals);
   } catch {

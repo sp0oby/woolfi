@@ -5,7 +5,7 @@ import {IPriceOracle, IPriceOracleMetadata} from "../interfaces/IPriceOracle.sol
 
 /// @title DualOracleAdapter
 /// @notice Wraps two {IPriceOracle}s (primary + backup) and enforces an inter-source deviation cap.
-/// @dev Designed for the equity leg per PROJECT_SPEC.md §6.1/§6.3: e.g. Chainlink MSTRX as primary
+/// @dev Designed for an equity leg per PROJECT_SPEC.md: e.g. a verified Chainlink stock feed as primary
 ///      with a Pyth feed (behind an `IPriceOracle` adapter) as backup. Returns the primary price
 ///      while both are fresh and within `maxDeviationBps`. Silently fails over to whichever source
 ///      is fresh when the other reverts on staleness; reverts when both are stale or the two

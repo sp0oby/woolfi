@@ -37,7 +37,7 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     /// @dev Fixed-point scale for the fee-per-share accumulator.
     uint256 private constant ACC_PRECISION = 1e18;
     uint256 private constant BPS = 10_000;
-    /// @dev Max combined protocol cut (vault + buyback) that may be diverted from LP fees.
+    /// @dev Max combined protocol cut (vault + treasury) that may be diverted from LP fees.
     uint256 private constant MAX_PROTOCOL_FEE_BPS = 5_000; // 50%
 
     enum Action {
@@ -57,8 +57,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     struct FeeConfig {
         address vault; // receives the vault cut as staker rewards (address(0) = none)
         uint16 vaultBps; // share of fees to the underwriting vault (default 2000 = 20%)
-        address buybackSink; // receives the buyback cut (a keeper/treasury that market-buys + burns STRAND)
-        uint16 buybackBps; // share of fees to buyback-and-burn (default 1000 = 10%)
+        address treasurySink; // receives the treasury policy's fee allocation
+        uint16 treasuryBps; // share of fees allocated to the treasury policy
     }
 
     /// @notice The v4 PoolManager singleton.
@@ -81,8 +81,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     event Mint(uint256 indexed id, address indexed to, uint128 liquidity, uint256 amount0, uint256 amount1);
     event Burn(uint256 indexed id, address indexed from, uint128 liquidity, uint256 amount0, uint256 amount1);
     event FeesCollected(uint256 indexed id, address indexed to, uint256 amount0, uint256 amount1);
-    event FeesRouted(uint256 indexed id, uint256 vault0, uint256 vault1, uint256 buyback0, uint256 buyback1);
-    event FeeConfigSet(uint256 indexed id, address vault, uint16 vaultBps, address buybackSink, uint16 buybackBps);
+    event FeesRouted(uint256 indexed id, uint256 vault0, uint256 vault1, uint256 treasury0, uint256 treasury1);
+    event FeeConfigSet(uint256 indexed id, address vault, uint16 vaultBps, address treasurySink, uint16 treasuryBps);
     event OwnerUpdated(address indexed oldOwner, address indexed newOwner);
 
     error NotPoolManager();
@@ -91,6 +91,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     error ZeroLiquidity();
     error TransfersDisabled();
     error InvalidFeeConfig();
+    error DeadlineExpired(uint256 deadline);
+    error InsufficientShares(uint256 received, uint256 minimum);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -110,17 +112,20 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         owner = newOwner;
     }
 
-    /// @notice Configure how a pool's swap fees are split (vault rewards / buyback / LPs).
-    /// @dev Combined protocol cut (vaultBps + buybackBps) is capped at {MAX_PROTOCOL_FEE_BPS}. The
+    /// @notice Configure how a pool's swap fees are split (vault rewards / treasury policy / LPs).
+    /// @dev Combined protocol cut (vaultBps + treasuryBps) is capped at {MAX_PROTOCOL_FEE_BPS}. The
     ///      remainder always accrues to LPs. Defaults (unset) route 100% to LPs.
-    function setFeeConfig(PoolKey calldata key, address vault, uint16 vaultBps, address buybackSink, uint16 buybackBps)
-        external
-        onlyOwner
-    {
-        if (uint256(vaultBps) + buybackBps > MAX_PROTOCOL_FEE_BPS) revert InvalidFeeConfig();
+    function setFeeConfig(
+        PoolKey calldata key,
+        address vault,
+        uint16 vaultBps,
+        address treasurySink,
+        uint16 treasuryBps
+    ) external onlyOwner {
+        if (uint256(vaultBps) + treasuryBps > MAX_PROTOCOL_FEE_BPS) revert InvalidFeeConfig();
         feeConfig[_id(key)] =
-            FeeConfig({vault: vault, vaultBps: vaultBps, buybackSink: buybackSink, buybackBps: buybackBps});
-        emit FeeConfigSet(_id(key), vault, vaultBps, buybackSink, buybackBps);
+            FeeConfig({vault: vault, vaultBps: vaultBps, treasurySink: treasurySink, treasuryBps: treasuryBps});
+        emit FeeConfigSet(_id(key), vault, vaultBps, treasurySink, treasuryBps);
     }
 
     // --------------------------------------------------------------------
@@ -159,9 +164,34 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         nonReentrant
         returns (uint128 shares)
     {
+        return _mintPosition(key, amount0Max, amount1Max, 0, type(uint256).max, to);
+    }
+
+    /// @notice Deposit liquidity with caller-enforced share slippage and transaction deadline bounds.
+    function mint(
+        PoolKey calldata key,
+        uint256 amount0Max,
+        uint256 amount1Max,
+        uint128 minShares,
+        uint256 deadline,
+        address to
+    ) external nonReentrant returns (uint128 shares) {
+        return _mintPosition(key, amount0Max, amount1Max, minShares, deadline, to);
+    }
+
+    function _mintPosition(
+        PoolKey calldata key,
+        uint256 amount0Max,
+        uint256 amount1Max,
+        uint128 minShares,
+        uint256 deadline,
+        address to
+    ) private returns (uint128 shares) {
+        if (block.timestamp > deadline) revert DeadlineExpired(deadline);
         uint256 id = _id(key);
         shares = _liquidityFor(key, amount0Max, amount1Max);
         if (shares == 0) revert ZeroLiquidity();
+        if (shares < minShares) revert InsufficientShares(shares, minShares);
 
         bytes memory ret = poolManager.unlock(abi.encode(CallbackData(Action.MINT, key, shares, msg.sender, to)));
         (uint256 amount0, uint256 amount1) = abi.decode(ret, (uint256, uint256));
@@ -190,7 +220,7 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         bytes memory ret = poolManager.unlock(abi.encode(CallbackData(Action.BURN, key, shares, msg.sender, to)));
         (amount0, amount1) = abi.decode(ret, (uint256, uint256));
 
-        _harvest(to, key, id); // pay the caller's fee share (uses pre-burn balance) to `to`
+        _harvestTo(msg.sender, to, key, id); // pay the caller's pre-burn fee share to `to`
         _burn(msg.sender, id, shares); // reverts if the caller lacks the shares
         totalShares[id] -= shares;
         _checkpoint(msg.sender, id);
@@ -218,7 +248,7 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     ///      pool key, so a malicious caller can't impersonate another pool's hook by passing
     ///      forged data. Side effects are identical to a `collectFees(key, *)` poke:
     ///      modifyLiquidity(0) pulls accrued fees out, they get split per the FeeConfig (vault
-    ///      cut deposited as rewards, buyback cut transferred to sink), LP remainder folds into
+    ///      cut deposited as rewards, treasury cut transferred to sink), LP remainder folds into
     ///      the per-share accumulator. Idempotent: when there are no pending fees this is a
     ///      cheap modifyLiquidity(0) round-trip with no transfers.
     ///
@@ -272,11 +302,20 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         fee1 = bal * accFeePerShare1[id] / ACC_PRECISION - feeDebt1[account][id];
     }
 
+    /// @notice Preview shares for the supplied token maxima at the pool's current price.
+    function previewMint(PoolKey calldata key, uint256 amount0Max, uint256 amount1Max)
+        external
+        view
+        returns (uint128 shares)
+    {
+        shares = _liquidityFor(key, amount0Max, amount1Max);
+    }
+
     // --------------------------------------------------------------------
     // Internal: fees
     // --------------------------------------------------------------------
 
-    /// @dev Poke the position to realize pending fees, route the protocol cuts (vault/buyback), then
+    /// @dev Poke the position to realize pending fees, route the protocol cuts (vault/treasury), then
     ///      fold the LP remainder into the per-share accumulator.
     function _realizeFees(PoolKey memory key, uint256 id, int24 tickLower, int24 tickUpper) private {
         uint256 supply = totalShares[id];
@@ -289,8 +328,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         if (lp1 > 0) accFeePerShare1[id] += lp1 * ACC_PRECISION / supply;
     }
 
-    /// @dev Split realized fees per the pool's {FeeConfig}: vault cut -> staker rewards, buyback cut
-    ///      -> sink, remainder -> LPs. Cuts fold back into the LP share when their destination is
+    /// @dev Split realized fees per the pool's {FeeConfig}: vault cut -> staker rewards, treasury cut
+    ///      -> policy sink, remainder -> LPs. Cuts fold back into the LP share when their destination is
     ///      unset (or, for the vault, has no stakers), so no fees are ever stranded.
     function _routeProtocolFees(PoolKey memory key, uint256 id, uint256 fee0, uint256 fee1)
         private
@@ -318,11 +357,11 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
             }
         }
 
-        if (fc.buybackSink != address(0) && fc.buybackBps > 0) {
-            b0 = fee0 * fc.buybackBps / BPS;
-            b1 = fee1 * fc.buybackBps / BPS;
-            if (b0 > 0) SafeTransferLib.safeTransfer(t0, fc.buybackSink, b0);
-            if (b1 > 0) SafeTransferLib.safeTransfer(t1, fc.buybackSink, b1);
+        if (fc.treasurySink != address(0) && fc.treasuryBps > 0) {
+            b0 = fee0 * fc.treasuryBps / BPS;
+            b1 = fee1 * fc.treasuryBps / BPS;
+            if (b0 > 0) SafeTransferLib.safeTransfer(t0, fc.treasurySink, b0);
+            if (b1 > 0) SafeTransferLib.safeTransfer(t1, fc.treasurySink, b1);
         }
 
         lp0 = fee0 - v0 - b0;

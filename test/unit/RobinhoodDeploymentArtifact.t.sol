@@ -77,7 +77,7 @@ contract RobinhoodDeploymentArtifactTest is Test {
             hardThresholdBps: 1500,
             drawdownBps: 1000,
             vaultFeeBps: 2000,
-            buybackBps: 1000
+            treasuryFeeBps: 1000
         });
     }
 }

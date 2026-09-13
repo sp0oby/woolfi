@@ -45,6 +45,16 @@ export default function DocsPage() {
           </p>
         </Section>
 
+        <Section label="Using WoolFi">
+          <p>
+            Connect a Robinhood Chain wallet, select a live pool, approve the token you want to
+            spend, and swap. The hook chooses the fee from the trade&apos;s direction and oracle
+            drift; the router enforces your minimum output. Urufu Gemu holders then claim funded
+            base-fee rebates from the NFT rebates tab. Users who want fee income can instead add
+            both pool assets as liquidity or stake URU as risk-bearing underwriting.
+          </p>
+        </Section>
+
         <Section label="LPs vs underwriters">
           <p>
             <span className="text-white">Liquidity providers</span> deposit token0 and token1, mint
@@ -56,6 +66,15 @@ export default function DocsPage() {
             They may earn a configured cut of swap fees in the pool assets, but bear structural-break
             risk: a vault drawdown can fund a rebalance and reduce vault positions pro rata. URU is
             the underwriting asset; it is not presented as a governance voting token.
+          </p>
+        </Section>
+
+        <Section label="Urufu Gemu rebates">
+          <p>
+            A wallet holding at least one verified Urufu Gemu NFT when its router swap settles
+            earns 15% of the pool&apos;s base-fee portion back in the input token. Directional
+            surcharges are excluded, multiple NFTs do not stack the benefit, and per-token weekly
+            caps apply. Rebates are funded in advance and claimed from the dashboard.
           </p>
         </Section>
 

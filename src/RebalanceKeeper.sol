@@ -13,7 +13,7 @@ import {WoolFiPositionManager} from "./WoolFiPositionManager.sol";
 ///        1. Force a structural-break check on the hook (so a drift past the hard threshold triggers
 ///           the drawdown even when no swap has occurred since the oracle moved).
 ///        2. Poke the position manager's fee realization, routing the protocol cuts (vault rewards
-///           and buyback sink) and refreshing the per-share fee accumulator.
+///           and treasury policy sink) and refreshing the per-share fee accumulator.
 ///      Holds no funds and has no privileges — both calls are themselves permissionless and gated by
 ///      the hook / PM as appropriate.
 contract RebalanceKeeper {

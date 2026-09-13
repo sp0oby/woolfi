@@ -178,6 +178,26 @@ contract WoolFiPositionManagerTest is Deployers {
         assertApproxEqRel(aFee0 * sb, bFee0 * sa, 0.01e18); // within 1%
     }
 
+    function test_burn_routesOwnersFeesToDifferentRecipient() public {
+        vm.prank(alice);
+        uint128 shares = pm.mint(poolKey, 100e18, 100e18, alice);
+        swap(poolKey, true, -1e18, ZERO_BYTES);
+        swap(poolKey, false, -1e18, ZERO_BYTES);
+
+        vm.prank(bob);
+        pm.collectFees(poolKey, bob); // realize fees without claiming Alice's share
+        (uint256 pending0, uint256 pending1) = pm.pendingFees(poolKey, alice);
+        assertGt(pending0 + pending1, 0);
+
+        uint256 before0 = _bal(currency0, bob);
+        uint256 before1 = _bal(currency1, bob);
+        vm.prank(alice);
+        (uint256 principal0, uint256 principal1) = pm.burn(poolKey, shares, bob);
+
+        assertEq(_bal(currency0, bob) - before0, principal0 + pending0);
+        assertEq(_bal(currency1, bob) - before1, principal1 + pending1);
+    }
+
     // -----------------------------------------------------------------
     // guards
     // -----------------------------------------------------------------
@@ -198,13 +218,46 @@ contract WoolFiPositionManagerTest is Deployers {
         pm.mint(poolKey, 100e18, 100e18, alice);
     }
 
+    function testRevert_directLiquidityBlockedAfterPositionManagerWired() public {
+        hook.setPositionManager(address(pm));
+        vm.expectRevert();
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: -887220, tickUpper: 887220, liquidityDelta: 1e18, salt: bytes32(uint256(1))
+            }),
+            ZERO_BYTES
+        );
+    }
+
+    function test_mintWithProtection_succeedsAtMinimum() public {
+        vm.prank(alice);
+        uint128 quoted = pm.mint(poolKey, 100e18, 100e18, alice);
+        vm.prank(bob);
+        uint128 protectedShares = pm.mint(poolKey, 100e18, 100e18, quoted, block.timestamp, bob);
+        assertEq(protectedShares, quoted);
+    }
+
+    function testRevert_mintWithProtection_belowMinimumShares() public {
+        vm.prank(alice);
+        vm.expectPartialRevert(WoolFiPositionManager.InsufficientShares.selector);
+        pm.mint(poolKey, 100e18, 100e18, type(uint128).max, block.timestamp, alice);
+    }
+
+    function testRevert_mintWithProtection_expired() public {
+        vm.warp(100);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(WoolFiPositionManager.DeadlineExpired.selector, 99));
+        pm.mint(poolKey, 100e18, 100e18, 0, 99, alice);
+    }
+
     function testRevert_unlockCallback_notPoolManager() public {
         vm.expectRevert(WoolFiPositionManager.NotPoolManager.selector);
         pm.unlockCallback("");
     }
 
     // -----------------------------------------------------------------
-    // fee routing (vault 20% / buyback 10% / LP 70%) — spec §7.3
+    // fee routing (vault 20% / treasury 10% / LP 70%) — spec §7.3
     // -----------------------------------------------------------------
 
     function _vaultWithStaker() internal returns (WoolFiUnderwritingVault vault) {
@@ -212,7 +265,12 @@ contract WoolFiPositionManagerTest is Deployers {
         address staker = makeAddr("staker");
         strand.mint(staker, 1000e18);
         vault = new WoolFiUnderwritingVault(
-            address(strand), address(this), Currency.unwrap(currency0), Currency.unwrap(currency1), makeAddr("reb")
+            address(strand),
+            address(this),
+            Currency.unwrap(currency0),
+            Currency.unwrap(currency1),
+            makeAddr("reb"),
+            1_000e18
         );
         vm.startPrank(staker);
         strand.approve(address(vault), type(uint256).max);
@@ -220,10 +278,10 @@ contract WoolFiPositionManagerTest is Deployers {
         vm.stopPrank();
     }
 
-    function test_feeRouting_splitsVaultBuybackLp() public {
+    function test_feeRouting_splitsVaultTreasuryLp() public {
         WoolFiUnderwritingVault vault = _vaultWithStaker();
-        address buyback = makeAddr("buyback");
-        pm.setFeeConfig(poolKey, address(vault), 2000, buyback, 1000);
+        address treasury = makeAddr("treasury");
+        pm.setFeeConfig(poolKey, address(vault), 2000, treasury, 1000);
 
         vm.prank(alice);
         pm.mint(poolKey, 100e18, 100e18, alice);
@@ -231,17 +289,17 @@ contract WoolFiPositionManagerTest is Deployers {
         swap(poolKey, false, -1e18, ZERO_BYTES);
 
         uint256 vaultBefore = _bal(currency0, address(vault));
-        uint256 buybackBefore = _bal(currency0, buyback);
+        uint256 treasuryBefore = _bal(currency0, treasury);
 
         vm.prank(alice);
         pm.collectFees(poolKey, alice); // poke routes the realized fees
 
         uint256 vaultGot = _bal(currency0, address(vault)) - vaultBefore;
-        uint256 buybackGot = _bal(currency0, buyback) - buybackBefore;
+        uint256 treasuryGot = _bal(currency0, treasury) - treasuryBefore;
 
         assertGt(vaultGot, 0);
-        assertGt(buybackGot, 0);
-        assertApproxEqAbs(vaultGot, buybackGot * 2, 2); // 20% == 2 x 10%
+        assertGt(treasuryGot, 0);
+        assertApproxEqAbs(vaultGot, treasuryGot * 2, 2); // 20% == 2 x 10%
     }
 
     /// @notice With the PM wired into the hook, every swap routes accrued fees automatically —
@@ -249,8 +307,8 @@ contract WoolFiPositionManagerTest is Deployers {
     ///         "vault rewards stay at zero between LP interactions" problem.
     function test_feeRouting_autoRealizesFromAfterSwap() public {
         WoolFiUnderwritingVault vault = _vaultWithStaker();
-        address buyback = makeAddr("buyback");
-        pm.setFeeConfig(poolKey, address(vault), 2000, buyback, 1000);
+        address treasury = makeAddr("treasury");
+        pm.setFeeConfig(poolKey, address(vault), 2000, treasury, 1000);
 
         // Wire the PM into the hook — this is what enables auto-realization.
         hook.setPositionManager(address(pm));
@@ -259,22 +317,22 @@ contract WoolFiPositionManagerTest is Deployers {
         vm.prank(alice);
         pm.mint(poolKey, 100e18, 100e18, alice);
         uint256 vaultBefore = _bal(currency0, address(vault));
-        uint256 buybackBefore = _bal(currency0, buyback);
+        uint256 treasuryBefore = _bal(currency0, treasury);
 
         swap(poolKey, true, -1e18, ZERO_BYTES);
         swap(poolKey, false, -1e18, ZERO_BYTES);
 
-        // No LP touch happened after the swaps — yet vault and buyback already received their cuts.
+        // No LP touch happened after the swaps — yet vault and treasury already received their cuts.
         assertGt(_bal(currency0, address(vault)) - vaultBefore, 0, "vault auto-credited from afterSwap");
-        assertGt(_bal(currency0, buyback) - buybackBefore, 0, "buyback auto-credited from afterSwap");
+        assertGt(_bal(currency0, treasury) - treasuryBefore, 0, "treasury auto-credited from afterSwap");
     }
 
     /// @notice With the PM unset on the hook, afterSwap is a no-op for fee realization — fees
     ///         remain unrealized until an LP touches the PM. Confirms the gating is honored.
     function test_feeRouting_skipsAutoRealizeWhenPmUnset() public {
         WoolFiUnderwritingVault vault = _vaultWithStaker();
-        address buyback = makeAddr("buyback");
-        pm.setFeeConfig(poolKey, address(vault), 2000, buyback, 1000);
+        address treasury = makeAddr("treasury");
+        pm.setFeeConfig(poolKey, address(vault), 2000, treasury, 1000);
         // Deliberately do NOT call hook.setPositionManager — auto-realize stays disabled.
 
         vm.prank(alice);
@@ -295,21 +353,26 @@ contract WoolFiPositionManagerTest is Deployers {
     function test_feeRouting_vaultCutFoldsBackWhenNoStakers() public {
         STRAND strand = new STRAND(address(this));
         WoolFiUnderwritingVault emptyVault = new WoolFiUnderwritingVault(
-            address(strand), address(this), Currency.unwrap(currency0), Currency.unwrap(currency1), makeAddr("reb")
+            address(strand),
+            address(this),
+            Currency.unwrap(currency0),
+            Currency.unwrap(currency1),
+            makeAddr("reb"),
+            1_000e18
         );
-        address buyback = makeAddr("buyback");
-        pm.setFeeConfig(poolKey, address(emptyVault), 2000, buyback, 1000);
+        address treasury = makeAddr("treasury");
+        pm.setFeeConfig(poolKey, address(emptyVault), 2000, treasury, 1000);
 
         vm.prank(alice);
         pm.mint(poolKey, 100e18, 100e18, alice);
         swap(poolKey, true, -1e18, ZERO_BYTES);
 
-        uint256 buybackBefore = _bal(currency0, buyback);
+        uint256 treasuryBefore = _bal(currency0, treasury);
         vm.prank(alice);
         pm.collectFees(poolKey, alice);
 
         assertEq(_bal(currency0, address(emptyVault)), 0); // vault got nothing (no stakers)
-        assertGt(_bal(currency0, buyback) - buybackBefore, 0); // buyback still taken
+        assertGt(_bal(currency0, treasury) - treasuryBefore, 0); // treasury cut still taken
     }
 
     function testRevert_setFeeConfig_notOwner() public {

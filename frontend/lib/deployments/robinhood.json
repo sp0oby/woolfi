@@ -5,8 +5,15 @@
   "positionManager": "0x0000000000000000000000000000000000000000",
   "governor": "0x0000000000000000000000000000000000000000",
   "swapRouter": "0x0000000000000000000000000000000000000000",
+  "rebateDistributor": "0x0000000000000000000000000000000000000000",
+  "liquidityZapper": "0x0000000000000000000000000000000000000000",
+  "externalSwapExecutor": "0x0000000000000000000000000000000000000000",
+  "urufuNft": "0x60cb7082c8c14b4237c6a24c65e7c2e7abe2bd17",
   "stakingToken": "0x9fbe210007dDd8389f98d0253018e65CC48b9D24",
   "stakingSymbol": "URU",
+  "launchStatus": "pending",
+  "startBlocks": {},
+  "receipts": [],
   "poolCount": 0,
   "pools": []
 }

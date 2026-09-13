@@ -41,7 +41,7 @@ contract WoolFiUnderwritingVaultTest is Test {
         token1 = new MockERC20("Token1", "T1", 18);
         // this contract is both the hook (drawdown caller) and the reward funder
         vault = new WoolFiUnderwritingVault(
-            address(stakingToken), address(this), address(token0), address(token1), rebalancer
+            address(stakingToken), address(this), address(token0), address(token1), rebalancer, 1_000e18
         );
 
         stakingToken.mint(alice, 1_000e18);
@@ -81,10 +81,24 @@ contract WoolFiUnderwritingVaultTest is Test {
         vault.stake(0);
     }
 
+    function test_stake_acceptsUpToCap() public {
+        _stake(alice, 600e18);
+        _stake(bob, 400e18);
+        assertEq(vault.totalStaked(), vault.maxTotalStaked());
+    }
+
+    function testRevert_stake_exceedsCap() public {
+        _stake(alice, 900e18);
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(WoolFiUnderwritingVault.CapExceeded.selector, 1_001e18, 1_000e18));
+        vault.stake(101e18);
+    }
+
     function testRevert_stake_rejectsFeeOnTransferToken() public {
         FeeOnTransferToken feeToken = new FeeOnTransferToken();
-        WoolFiUnderwritingVault feeVault =
-            new WoolFiUnderwritingVault(address(feeToken), address(this), address(token0), address(token1), rebalancer);
+        WoolFiUnderwritingVault feeVault = new WoolFiUnderwritingVault(
+            address(feeToken), address(this), address(token0), address(token1), rebalancer, 1_000e18
+        );
         feeToken.mint(alice, 100e18);
         vm.startPrank(alice);
         feeToken.approve(address(feeVault), 100e18);
@@ -97,19 +111,21 @@ contract WoolFiUnderwritingVaultTest is Test {
 
     function testRevert_constructor_zeroAddress() public {
         vm.expectRevert(WoolFiUnderwritingVault.ZeroAddress.selector);
-        new WoolFiUnderwritingVault(address(0), address(this), address(token0), address(token1), rebalancer);
+        new WoolFiUnderwritingVault(address(0), address(this), address(token0), address(token1), rebalancer, 1_000e18);
 
         vm.expectRevert(WoolFiUnderwritingVault.ZeroAddress.selector);
-        new WoolFiUnderwritingVault(address(stakingToken), address(this), address(token0), address(token1), address(0));
+        new WoolFiUnderwritingVault(
+            address(stakingToken), address(this), address(token0), address(token1), address(0), 1_000e18
+        );
     }
 
     function testRevert_constructor_dependencyWithoutCode() public {
         address eoa = makeAddr("notAContract");
         vm.expectRevert(abi.encodeWithSelector(WoolFiUnderwritingVault.NotContract.selector, eoa));
-        new WoolFiUnderwritingVault(eoa, address(this), address(token0), address(token1), rebalancer);
+        new WoolFiUnderwritingVault(eoa, address(this), address(token0), address(token1), rebalancer, 1_000e18);
 
         vm.expectRevert(abi.encodeWithSelector(WoolFiUnderwritingVault.NotContract.selector, eoa));
-        new WoolFiUnderwritingVault(address(stakingToken), eoa, address(token0), address(token1), rebalancer);
+        new WoolFiUnderwritingVault(address(stakingToken), eoa, address(token0), address(token1), rebalancer, 1_000e18);
     }
 
     // -----------------------------------------------------------------

@@ -3,6 +3,7 @@
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 
 import {LiquidityPanel} from "./panels/LiquidityPanel";
+import {RebatePanel} from "./panels/RebatePanel";
 import {SwapPanel} from "./panels/SwapPanel";
 import {VaultPanel} from "./panels/VaultPanel";
 import {Tabs} from "./Tabs";
@@ -29,11 +30,13 @@ export function DashboardTabs() {
         {id: "trade", label: "Trade"},
         {id: "provide", label: "Provide liquidity"},
         {id: "stake", label: "Stake URU"},
+        {id: "rebates", label: "NFT rebates"},
       ]}
       panels={{
         trade: <SwapPanel />,
         provide: <LiquidityPanel />,
         stake: <VaultPanel />,
+        rebates: <RebatePanel />,
       }}
     />
   );

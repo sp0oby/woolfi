@@ -9,7 +9,25 @@
 
 WoolFi by Urufu Labs is a Uniswap v4 hook that turns a pool into a continuously-rebalancing pair-trade vehicle. The pool looks like an ordinary v4 pool from the outside. You swap, add liquidity, collect fees. The hook quietly enforces a peg between the pool's internal price and an oracle-derived fair price, weaving related assets into a venue for trading their *relationship* rather than just one against the other.
 
-One hook serves an exact 18-pool catalog: six stock/USDG oracle-guided spot pools, five stock/WETH crypto-beta pools (including PLTR/WETH), six stock/stock relative-value spreads, and always-open WETH/USDG. The coordinated rollout is all 18 ready or no launch.
+One hook serves an exact 18-pool catalog: eight stock/USDG oracle-guided spot pools, five stock/WETH crypto-beta pools (including PLTR/WETH), four stock/stock relative-value spreads, and always-open WETH/USDG. The coordinated rollout is all 18 ready or no launch.
+
+## Using WoolFi, end to end
+
+1. Connect a wallet on Robinhood Chain and choose a live pool.
+2. To trade, approve the token you are paying and submit a swap. The hook compares the pool with
+   oracle fair value, discounts corrective flow, and surcharges flow that increases the mismatch.
+3. The router enforces the minimum output you accepted and sends the purchased token to your
+   wallet. If that wallet holds an Urufu Gemu NFT, a funded rebate equal to 15% of the base-fee
+   portion accrues in the input token; claim it from **NFT rebates**.
+4. To earn LP fees, deposit both pool assets when the market is open and the pool is near fair
+   value. Burn LP shares later to withdraw the current asset mix plus accrued fees.
+5. To underwrite, stake URU in a pool vault. Underwriters may receive pool-token fee rewards but
+   can lose a configured portion of staked URU during a structural break.
+6. Traders close exposure with a reverse swap; LPs withdraw through **Provide liquidity**; URU
+   stakers request withdrawal and wait through the seven-day cooldown.
+
+No action is available while a pool is pending. Returns are not guaranteed: trading can move
+against the user, LP inventory can lose value, and underwriting is explicitly exposed to drawdown.
 
 ## The trade
 
@@ -38,6 +56,13 @@ WoolFi handles this with a per-pool underwriting vault capitalized with external
 LPs are insulated from the haircut; their tokens stay where they are, and withdrawals remain open the entire time.
 
 The vault doesn't make breaks impossible. It makes them survivable.
+
+## Urufu Gemu holder rebates
+
+Wallets holding at least one verified Urufu Gemu NFT can earn 15% of WoolFi's base-fee portion
+back in the token used for a swap. Rebates are recorded after successful router swaps, funded in
+advance, and limited by a per-token weekly cap. The benefit does not stack across multiple NFTs,
+does not rebate directional surcharges, and never draws from LP or underwriting principal.
 
 ## Market hours
 
@@ -69,10 +94,12 @@ current zero core addresses and empty pool list are the canonical “not deploye
 ```
 WoolFiHook                beforeSwap / afterSwap, asymmetric fee, structural-break flag,
                          auto-realizes fees on every swap
-WoolFiPositionManager     ERC-6909 LP shares, fee accumulator, vault and buyback routing
-WoolFiUnderwritingVault   per-pool URU vault, drawdown bound to the hook
-WoolFiGovernor            pool authorization, parameter updates, fee config
+WoolFiPositionManager     ERC-6909 LP shares, fee accumulator, vault and treasury routing
+WoolFiUnderwritingVault   capped per-pool URU vault, drawdown bound to the hook
+WoolFiGovernor            pool authorization, hook parameters, emergency controls
 WoolFiSwapRouter          minimal IUnlockCallback wrapper for EOA swaps with slippage
+WoolFiLiquidityZapper     guarded one-token LP path through allowlisted external routes
+UrufuFeeRebateDistributor funded, capped base-fee rebates for Urufu Gemu NFT holders
 oracle/                  Chainlink adapter, dual-oracle adapter, NyseHoursOracle (on-chain
                          NYSE calendar; production market-hours choice pending verification)
 keeper/                  permissionless break checks from the Robinhood manifest

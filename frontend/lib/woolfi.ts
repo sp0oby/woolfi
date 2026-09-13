@@ -10,6 +10,10 @@ export type DeploymentConfig = {
   stakingToken: `0x${string}`;
   stakingSymbol: string;
   swapRouter?: `0x${string}`;
+  rebateDistributor?: `0x${string}`;
+  liquidityZapper?: `0x${string}`;
+  externalSwapExecutor?: `0x${string}`;
+  urufuNft?: `0x${string}`;
   pools: readonly DeployedPool[];
 };
 
@@ -17,14 +21,25 @@ export type WoolFiDeployment = DeploymentConfig & DeployedPool;
 
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 
-const raw = robinhood as Omit<DeploymentConfig, "swapRouter" | "pools"> & {
+const raw = robinhood as Omit<
+  DeploymentConfig,
+  "swapRouter" | "rebateDistributor" | "liquidityZapper" | "externalSwapExecutor" | "urufuNft" | "pools"
+> & {
   swapRouter?: `0x${string}`;
+  rebateDistributor?: `0x${string}`;
+  liquidityZapper?: `0x${string}`;
+  externalSwapExecutor?: `0x${string}`;
+  urufuNft?: `0x${string}`;
   pools?: readonly DeployedPool[];
 };
 
 export const robinhoodDeployment: DeploymentConfig = {
   ...raw,
   swapRouter: nonZero(raw.swapRouter),
+  rebateDistributor: nonZero(raw.rebateDistributor),
+  liquidityZapper: nonZero(raw.liquidityZapper),
+  externalSwapExecutor: nonZero(raw.externalSwapExecutor),
+  urufuNft: nonZero(raw.urufuNft),
   stakingSymbol: "URU",
   pools: raw.pools ?? [],
 };

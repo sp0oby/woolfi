@@ -11,6 +11,7 @@ export type CuratedAsset = {
   name: string;
   kind: AssetKind;
   address: Address;
+  decimals: number;
 };
 
 export type PoolRiskDefaults = {
@@ -20,7 +21,7 @@ export type PoolRiskDefaults = {
   hardThresholdBps: number;
   drawdownBps: number;
   vaultFeeBps: number;
-  buybackBps: number;
+  treasuryFeeBps: number;
 };
 
 export type DeployedPool = PoolRiskDefaults & {
@@ -30,6 +31,8 @@ export type DeployedPool = PoolRiskDefaults & {
   token1: Address;
   token0Symbol: string;
   token1Symbol: string;
+  token0Decimals: number;
+  token1Decimals: number;
   oracle0: Address;
   oracle1: Address;
   marketHours: Address;

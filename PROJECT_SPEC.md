@@ -65,26 +65,26 @@ relative to USDG/USD.
 4. NVDA/USDG
 5. SPY/USDG
 6. GLD/USDG
+7. AAPL/USDG
+8. TSLA/USDG
 
 ### 3.2 Stock/WETH — crypto-beta pools
 
 These pools trade the relationship between a stock token and ETH rather than claiming a dollar
 spot market.
 
-7. MSTR/WETH
-8. COIN/WETH
-9. QQQ/WETH
-10. NVDA/WETH
-11. PLTR/WETH
+9. MSTR/WETH
+10. COIN/WETH
+11. QQQ/WETH
+12. NVDA/WETH
+13. PLTR/WETH
 
 ### 3.3 Stock/stock — relative-value spreads
 
 These pools express relative value between related equities or ETFs.
 
-12. AAPL/MSFT
-13. NVDA/SMH
-14. SMH/SOXX
-15. XLK/QQQ
+14. AAPL/MSFT
+15. SPY/NVDA
 16. SPY/QQQ
 17. GLD/SLV
 
@@ -94,6 +94,11 @@ These pools express relative value between related equities or ETFs.
 
 WETH/USDG has no equity-market-hours gate. It remains subject to feed freshness and sequencer
 safety requirements.
+
+The catalog favors assets with observable Robinhood Chain liquidity so arbitrageurs can hedge
+WoolFi inventory elsewhere. Existing external liquidity does not seed a WoolFi pool: every pool
+still requires its own approved initial liquidity and executable-route checks immediately before
+launch.
 
 ## 4. Price and fee mechanics
 
@@ -113,6 +118,20 @@ configuration.
 
 Pools are full-range only. New liquidity is accepted only when configured, unpaused, market-open
 when applicable, and in band. Withdrawals remain available at the current pool ratio.
+
+### 4.1 Urufu Gemu holder rebates
+
+The production swap router may connect to an optional `UrufuFeeRebateDistributor`. A wallet that
+holds at least one verified Urufu Gemu NFT when its swap settles earns 15% of that pool's base-fee
+portion back in the swap's input token. The directional surcharge is never rebated, NFT quantity
+does not stack the benefit, and credits already earned remain with the trading wallet after an NFT
+transfer.
+
+Rebates accrue only through the verified WoolFi router, only for funded tokens with a
+multisig-approved per-wallet weekly cap, and only against the hook's configured base fee. The
+distributor reserves funded assets as credits accrue, preventing unfunded liabilities. Its
+post-swap call is fail-open: rebate failure must never revert an otherwise valid swap. Rebate
+funding is a capped loyalty budget and is separate from LP principal and URU underwriting assets.
 
 ## 5. Market hours and oracle safety
 
@@ -172,13 +191,18 @@ print is not required to classify corrective flow.
   Robinhood production.
 - `WoolFiGovernor`: multisig-owned pool configuration and emergency control surface.
 - `WoolFiSwapRouter`: exact-input EOA swap path with minimum-output protection.
+- `WoolFiLiquidityZapper`: optional one-token LP path. It wraps native ETH when requested, permits
+  only governance-allowlisted external executors with exact approvals, verifies both route outputs,
+  enforces minimum LP shares and deadlines, and refunds all unused input. Balancing routes must not
+  trade against the target WoolFi pool.
+- `UrufuFeeRebateDistributor`: optional funded, capped input-token rebates for Urufu Gemu holders.
 - `RobinhoodStockOracleAdapter`: stock pause, feed validity/staleness, and sequencer guards.
 - `RebalanceKeeper`: permissionless no-swap break checks; required keeper operations must be
   monitored even though ordinary fee realization occurs in-hook.
 - Indexer: all 18 pools, swaps, LP shares, fee routing, vault state, breaks, and deployment blocks.
 
-Production requires the position-manager wiring, router, indexer, keeper, and frontend to point to
-the same verified deployment manifest.
+Production requires the position-manager wiring, router, zapper/executor, indexer, keeper, and
+frontend to point to the same verified deployment manifest.
 
 ## 8. Governance and underwriting
 
@@ -190,6 +214,11 @@ token.
 Every vault has an explicit URU cap. Per-pool caps and the aggregate treasury allocation require
 multisig approval before funding. Vault rewards may receive a configured share of pool fees.
 No documentation or interface may imply that underwriting eliminates LP loss.
+
+The launch default for realized pool fees is 20% to active URU vault stakers, 10% to the
+multisig-controlled treasury policy, and 70% to LPs. If a configured vault has no stakers, its
+share folds back to LPs. The treasury allocation may fund approved rebates and protocol operations;
+it is not an automatic STRAND or URU buyback. Any per-pool override requires launch-record approval.
 
 ## 9. Coordinated rollout
 
@@ -215,6 +244,7 @@ disabled.
 - [ ] Hook, position manager, governor, router, vault implementation, and deployment scripts frozen.
 - [ ] Position manager wired to the hook and fee routing configured.
 - [ ] Router configured and end-to-end slippage tests passed.
+- [ ] Urufu Gemu NFT address, rebate distributor/router binding, token budgets, and weekly caps verified.
 - [ ] Indexer configured for all pool/vault mappings and production start blocks.
 - [ ] Keeper deployed/configured, funded if needed, monitored, and exercised.
 - [ ] Corrective-only cached-fair breaks, post-open stabilization, and timestamp-skew checks

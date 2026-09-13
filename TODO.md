@@ -34,7 +34,7 @@ the spec.
 - [x] Configure the indexer for all 18 pools, vaults, and production start blocks.
 - [x] Configure, exercise, and monitor the permissionless keeper.
 - [ ] Create the production multisig; verify signers, threshold, recovery, and handoff.
-- [ ] Publish monitoring, incident-response, and rollback/containment runbooks.
+- [x] Publish monitoring, incident-response, and rollback/containment runbooks.
 - [ ] Establish the production security-reporting and bug-bounty process.
 
 ## Per-pool readiness — exact 18
@@ -49,15 +49,15 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] NVDA/USDG
 - [ ] SPY/USDG
 - [ ] GLD/USDG
+- [ ] AAPL/USDG
+- [ ] TSLA/USDG
 - [ ] MSTR/WETH
 - [ ] COIN/WETH
 - [ ] QQQ/WETH
 - [ ] NVDA/WETH
 - [ ] PLTR/WETH
 - [ ] AAPL/MSFT
-- [ ] NVDA/SMH
-- [ ] SMH/SOXX
-- [ ] XLK/QQQ
+- [ ] SPY/NVDA
 - [ ] SPY/QQQ
 - [ ] GLD/SLV
 - [ ] WETH/USDG

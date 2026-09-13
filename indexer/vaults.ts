@@ -1,3 +1,5 @@
+import {deployment} from "./deployment";
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const POOL_ID_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -44,7 +46,22 @@ export function parseVaultPools(value: string | undefined): VaultPool[] {
   });
 }
 
-export const vaultPools = parseVaultPools(process.env.PONDER_VAULTS);
+function manifestVaultPools(): VaultPool[] {
+  if (deployment.launchStatus !== "live") return [];
+  const pools = (deployment.pools ?? []).map((pool) => {
+    if (!pool.vault || !pool.poolId || !pool.startBlock) {
+      throw new Error("live manifest contains a pool without receipt-backed vault metadata");
+    }
+    return {vault: pool.vault as `0x${string}`, poolId: pool.poolId as `0x${string}`};
+  });
+  if (pools.length !== 18) throw new Error("live manifest must contain all 18 pools");
+  return pools;
+}
+
+const fromManifest = manifestVaultPools();
+export const vaultPools = fromManifest.length > 0
+  ? fromManifest
+  : parseVaultPools(process.env.PONDER_VAULTS);
 
 export const poolIdByVault = new Map(
   vaultPools.map(({vault, poolId}) => [vault.toLowerCase(), poolId] as const),

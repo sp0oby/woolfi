@@ -35,7 +35,7 @@ contract RebalanceKeeperTest is Deployers {
     PoolId poolId;
     address alice = makeAddr("alice");
     address rebalancer = makeAddr("rebalancer");
-    address buyback = makeAddr("buyback");
+    address treasury = makeAddr("treasury");
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -80,10 +80,10 @@ contract RebalanceKeeperTest is Deployers {
         pm = new WoolFiPositionManager(manager, address(this));
         strand = new STRAND(address(this));
         vault = new WoolFiUnderwritingVault(
-            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer
+            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer, 1_000e18
         );
         hook.setVault(poolKey, address(vault), 2000);
-        pm.setFeeConfig(poolKey, address(vault), 2000, buyback, 1000);
+        pm.setFeeConfig(poolKey, address(vault), 2000, treasury, 1000);
 
         // a staker so vault.totalShares > 0 (so PM fee routing actually pushes to vault)
         address staker = makeAddr("staker");
@@ -111,7 +111,7 @@ contract RebalanceKeeperTest is Deployers {
     function test_keep_triggersBreakAndRoutesFees() public {
         // drift past hard threshold WITHOUT a swap — only checkStructuralBreak can flag it now
         oracle0.setPrice(1.2e18);
-        uint256 buybackBefore = IERC20(Currency.unwrap(currency0)).balanceOf(buyback);
+        uint256 treasuryBefore = IERC20(Currency.unwrap(currency0)).balanceOf(treasury);
 
         vm.prank(makeAddr("anyone"));
         keeper.keep(poolKey);
@@ -120,8 +120,8 @@ contract RebalanceKeeperTest is Deployers {
         assertTrue(hook.poolConfig(poolId).structuralBreak);
         assertLt(vault.totalStaked(), 100e18); // some STRAND seized
 
-        // fee realization routed the buyback cut to the sink
-        assertGt(IERC20(Currency.unwrap(currency0)).balanceOf(buyback), buybackBefore);
+        // fee realization routed the treasury cut to its policy sink
+        assertGt(IERC20(Currency.unwrap(currency0)).balanceOf(treasury), treasuryBefore);
     }
 
     function test_keep_isPermissionless_andHoldsNoFunds() public {

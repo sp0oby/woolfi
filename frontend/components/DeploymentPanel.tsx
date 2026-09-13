@@ -8,7 +8,7 @@ import {explorerAddress} from "@/lib/wagmi";
 
 /**
  * Surfaces the active chain's deployed WoolFi contracts (or "no deployment found" honestly).
- * Reads from `frontend/lib/deployments/<chain>.json` - populated by `script/DeployTestnet.s.sol`.
+ * Reads from the receipt-backed chain deployment manifest.
  */
 export function DeploymentPanel() {
   const chainId = useChainId();
@@ -26,6 +26,10 @@ export function DeploymentPanel() {
           <AddrRow chainId={chainId} label="Hook" addr={config.hook} />
           <AddrRow chainId={chainId} label="Position manager" addr={config.positionManager} />
           <AddrRow chainId={chainId} label="Swap router" addr={config.swapRouter} />
+          <AddrRow chainId={chainId} label="Liquidity zapper" addr={config.liquidityZapper} />
+          <AddrRow chainId={chainId} label="External swap executor" addr={config.externalSwapExecutor} />
+          <AddrRow chainId={chainId} label="Rebate distributor" addr={config.rebateDistributor} />
+          <AddrRow chainId={chainId} label="Urufu Gemu NFT" addr={config.urufuNft} />
           <AddrRow chainId={chainId} label="Governor" addr={config.governor} />
           <AddrRow chainId={chainId} label={config.stakingSymbol} addr={config.stakingToken} />
           <AddrRow chainId={chainId} label={pool.base.symbol} addr={pool.base.address} />

@@ -41,3 +41,13 @@ export const erc20Abi = [
     outputs: [{name: "", type: "string"}],
   },
 ] as const;
+
+export const wethAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [],
+    outputs: [],
+  },
+] as const;

@@ -23,10 +23,13 @@ from robinhood_catalog import (
     SLUGS,
     SPREAD_SLUGS,
     STAKING_TOKEN,
+    UNISWAP_V3_SWAP_ROUTER,
+    URUFU_NFT,
     ZERO,
 )
 
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
+TX_HASH = re.compile(r"^0x[0-9a-fA-F]{64}$")
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "script/config/robinhood-batch.example.json"
 DEFAULT_MANIFEST = ROOT / "frontend/lib/deployments/robinhood.json"
@@ -99,14 +102,21 @@ def validate(
         errors.append("core must be an object")
         core = {}
     contract_addresses: list[tuple[str, str]] = []
-    for field in ("poolManager", "stakingToken", "hook", "positionManager", "governor"):
+    for field in (
+        "poolManager", "stakingToken", "hook", "positionManager", "governor",
+        "swapRouter", "rebateDistributor", "liquidityZapper", "externalSwapExecutor", "urufuNft",
+    ):
         value = _address(core.get(field), f"core.{field}", errors)
         contract_addresses.append((f"core.{field}", value))
     if str(core.get("poolManager", "")).lower() != POOL_MANAGER:
         errors.append("core.poolManager is not the canonical Robinhood PoolManager")
     if str(core.get("stakingToken", "")).lower() != STAKING_TOKEN:
         errors.append("core.stakingToken is not canonical URU")
-    for field in ("treasury", "rebalancer", "buybackSink"):
+    if str(core.get("externalSwapExecutor", "")).lower() != UNISWAP_V3_SWAP_ROUTER:
+        errors.append("core.externalSwapExecutor is not the canonical Uniswap v3 SwapRouter02")
+    if str(core.get("urufuNft", "")).lower() != URUFU_NFT:
+        errors.append("core.urufuNft is not canonical Urufu Gemu")
+    for field in ("treasury", "rebalancer", "treasuryFeeSink"):
         _address(core.get(field), f"core.{field}", errors)
     multisig = _address(core.get("multisig"), "core.multisig", errors)
     contract_addresses.append(("core.multisig", multisig))
@@ -135,6 +145,9 @@ def validate(
         oracle = _address(item.get("oracle"), f"assets.{symbol}.oracle", errors)
         feed = _address(item.get("feed"), f"assets.{symbol}.feed", errors)
         heartbeat = _positive(item.get("heartbeat"), f"assets.{symbol}.heartbeat", errors)
+        expected_kind = "chainlink" if symbol in ("WETH", "USDG") else "stock-pause-guarded"
+        if item.get("oracleKind") != expected_kind:
+            errors.append(f"assets.{symbol}.oracleKind must be {expected_kind}")
         contract_addresses.extend(
             ((f"assets.{symbol}.oracle", oracle), (f"assets.{symbol}.feed", feed))
         )
@@ -187,6 +200,11 @@ def validate(
     if require_deployed and deployed != set(SLUGS):
         errors.append(f"deployment incomplete: {len(deployed)}/{len(SLUGS)} canonical pools complete")
     if require_deployed:
+        for field in (
+            "hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper"
+        ):
+            if str(core.get(field, ZERO)).lower() == ZERO:
+                errors.append(f"core.{field} is not deployed")
         errors.extend(_validate_gates(config.get("gates", {})))
     if not config.get("nonAtomicTransactionsAcknowledged"):
         errors.append("nonAtomicTransactionsAcknowledged must be true")
@@ -248,7 +266,7 @@ def _validate_risk(slug: str, risk: Any, errors: list[str]) -> None:
         errors.append(f"{slug}.risk.tickSpacing is out of range")
     for field in (
         "kScaled", "baseFeeBps", "toleranceBps", "hardThresholdBps",
-        "drawdownBps", "vaultFeeBps", "buybackBps",
+        "drawdownBps", "vaultFeeBps", "treasuryFeeBps",
     ):
         value = _positive(risk.get(field), f"{slug}.risk.{field}", errors)
         if field != "kScaled" and value > 10_000:
@@ -258,14 +276,32 @@ def _validate_risk(slug: str, risk: Any, errors: list[str]) -> None:
 def _validate_manifest(
     manifest: dict[str, Any], core: dict[str, Any], errors: list[str]
 ) -> set[str]:
+    start_blocks = manifest.get("startBlocks", {})
+    receipts = manifest.get("receipts", [])
+    if not isinstance(start_blocks, dict):
+        errors.append("manifest startBlocks must be an object")
+        start_blocks = {}
+    if not isinstance(receipts, list) or any(not isinstance(item, str) or not TX_HASH.fullmatch(item) for item in receipts):
+        errors.append("manifest receipts must contain transaction hashes")
+        receipts = []
     for manifest_field, config_field in (
         ("poolManager", "poolManager"), ("stakingToken", "stakingToken"),
         ("hook", "hook"), ("positionManager", "positionManager"), ("governor", "governor"),
+        ("swapRouter", "swapRouter"), ("rebateDistributor", "rebateDistributor"),
+        ("liquidityZapper", "liquidityZapper"), ("externalSwapExecutor", "externalSwapExecutor"),
+        ("urufuNft", "urufuNft"),
     ):
         current = str(manifest.get(manifest_field, ZERO)).lower()
         expected = str(core.get(config_field, ZERO)).lower()
         if current != ZERO and expected != ZERO and current != expected:
             errors.append(f"manifest {manifest_field} conflicts with config")
+        if current != ZERO and manifest_field not in (
+            "poolManager", "stakingToken", "externalSwapExecutor", "urufuNft"
+        ):
+            if not isinstance(start_blocks.get(manifest_field), int) or start_blocks[manifest_field] <= 0:
+                errors.append(f"manifest {manifest_field} lacks a receipt-backed start block")
+            if not receipts:
+                errors.append(f"manifest {manifest_field} lacks a deployment receipt")
     pools = manifest.get("pools", [])
     if manifest.get("poolCount") != len(pools):
         errors.append("manifest poolCount does not match pools length")
@@ -288,6 +324,10 @@ def _validate_manifest(
         for field in ("poolId", "oracle0", "oracle1", "vault"):
             if str(pool.get(field, ZERO)).lower() in ("", ZERO):
                 errors.append(f"manifest {slug}.{field} is incomplete")
+        if not isinstance(pool.get("startBlock"), int) or pool["startBlock"] <= 0:
+            errors.append(f"manifest {slug}.startBlock is incomplete")
+        if not isinstance(pool.get("receipt"), str) or not TX_HASH.fullmatch(pool["receipt"]):
+            errors.append(f"manifest {slug}.receipt is incomplete")
         if slug != "weth-usdg" and str(pool.get("marketHours", ZERO)).lower() == ZERO:
             errors.append(f"manifest {slug}.marketHours is incomplete")
     return deployed

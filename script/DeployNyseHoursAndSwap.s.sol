@@ -86,16 +86,16 @@ contract DeployNyseHoursAndSwap is Script {
             .updatePoolConfig(
                 key,
                 WoolFiHook.AuthParams({
-                oracle0: MockPriceOracle(e.oracle0),
-                oracle1: MockPriceOracle(e.oracle1),
-                // type-cheat: NyseHoursOracle implements the same IMarketHoursOracle interface
-                // that MultisigMarketHours does. The hook only calls isMarketOpen() on it.
-                marketHours: MultisigMarketHours(nyse),
-                kScaled: cfg.kScaled,
-                baseFeeBps: cfg.baseFeeBps,
-                toleranceBps: cfg.toleranceBps,
-                hardThresholdBps: cfg.hardThresholdBps
-            })
+                    oracle0: MockPriceOracle(e.oracle0),
+                    oracle1: MockPriceOracle(e.oracle1),
+                    // type-cheat: NyseHoursOracle implements the same IMarketHoursOracle interface
+                    // that MultisigMarketHours does. The hook only calls isMarketOpen() on it.
+                    marketHours: MultisigMarketHours(nyse),
+                    kScaled: cfg.kScaled,
+                    baseFeeBps: cfg.baseFeeBps,
+                    toleranceBps: cfg.toleranceBps,
+                    hardThresholdBps: cfg.hardThresholdBps
+                })
             );
     }
 

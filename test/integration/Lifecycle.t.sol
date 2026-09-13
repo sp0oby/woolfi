@@ -50,7 +50,7 @@ contract LifecycleTest is Deployers {
     // ----- actors -----
     address multisig = makeAddr("multisig");
     address rebalancer = makeAddr("rebalancer");
-    address buyback = makeAddr("buyback");
+    address treasury = makeAddr("treasury");
     address lp1 = makeAddr("lp1");
     address lp2 = makeAddr("lp2");
     address staker1 = makeAddr("staker1");
@@ -63,7 +63,7 @@ contract LifecycleTest is Deployers {
     uint16 constant HARD_THRESHOLD_BPS = 1500;
     uint16 constant DRAWDOWN_BPS = 2000; // 20%
     uint16 constant VAULT_FEE_BPS = 2000;
-    uint16 constant BUYBACK_BPS = 1000;
+    uint16 constant TREASURY_FEE_BPS = 1000;
     uint32 constant K_SCALED = 40_000;
 
     // shorthand
@@ -138,12 +138,12 @@ contract LifecycleTest is Deployers {
         manager.initialize(poolKey, SQRT_PRICE_1_1);
 
         vault = new WoolFiUnderwritingVault(
-            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer
+            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer, 2_000e18
         );
 
         vm.startPrank(multisig);
         governor.setVault(poolKey, address(vault), DRAWDOWN_BPS);
-        pm.setFeeConfig(poolKey, address(vault), VAULT_FEE_BPS, buyback, BUYBACK_BPS);
+        pm.setFeeConfig(poolKey, address(vault), VAULT_FEE_BPS, treasury, TREASURY_FEE_BPS);
         strand.mint(staker1, 1_000e18);
         strand.mint(staker2, 1_000e18);
         vm.stopPrank();
@@ -224,19 +224,19 @@ contract LifecycleTest is Deployers {
 
         // lp1 collects → PM realizes the position's fees and routes them
         uint256 vaultT0Before = _t0().balanceOf(address(vault));
-        uint256 buybackT0Before = _t0().balanceOf(buyback);
+        uint256 treasuryT0Before = _t0().balanceOf(treasury);
         uint256 lp1T0Before = _t0().balanceOf(lp1);
         vm.prank(lp1);
         pm.collectFees(poolKey, lp1);
 
         uint256 vaultGot = _t0().balanceOf(address(vault)) - vaultT0Before;
-        uint256 buybackGot = _t0().balanceOf(buyback) - buybackT0Before;
+        uint256 treasuryGot = _t0().balanceOf(treasury) - treasuryT0Before;
         uint256 lp1Got = _t0().balanceOf(lp1) - lp1T0Before;
         assertGt(vaultGot, 0);
-        assertGt(buybackGot, 0);
+        assertGt(treasuryGot, 0);
         assertGt(lp1Got, 0);
-        // vault cut (20%) == 2 x buyback cut (10%) ± rounding
-        assertApproxEqAbs(vaultGot, buybackGot * 2, 4);
+        // vault cut (20%) == 2 x treasury cut (10%) ± rounding
+        assertApproxEqAbs(vaultGot, treasuryGot * 2, 4);
 
         // =================================================================
         // Phase E — stakers claim accrued rewards (pro-rata to shares)
@@ -428,8 +428,8 @@ contract LifecycleTest is Deployers {
         // rebalancer holds exactly what was seized
         assertEq(strand.balanceOf(rebalancer), seizedExpected);
 
-        // buyback sink received its 10% cut on each fee realization
-        assertGt(_t0().balanceOf(buyback), 0);
+        // treasury policy sink received its 10% cut on each fee realization
+        assertGt(_t0().balanceOf(treasury), 0);
     }
 
     function test_hookSafetyLifecycle_reopenSkewBreakRecoveryResolve() public {

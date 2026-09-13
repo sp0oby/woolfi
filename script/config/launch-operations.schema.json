@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WoolFi launch operation plan",
+  "type": "object",
+  "required": ["chainId", "broadcastEnabled", "launchEnabled", "operations"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "chainId": {"const": 4663},
+    "broadcastEnabled": {"const": false},
+    "launchEnabled": {"const": false},
+    "operations": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "required": ["id", "phase", "dependsOn", "approvalReference"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "phase": {
+            "enum": ["core", "router-rebate", "oracles-pools", "liquidity", "rebate-funding", "ownership", "services"]
+          },
+          "dependsOn": {"type": "array", "items": {"type": "string"}},
+          "argv": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "env": {
+            "type": "object",
+            "additionalProperties": {"type": ["string", "number", "boolean"]}
+          },
+          "evidence": {"type": "string", "minLength": 1},
+          "approvalReference": {"const": ""}
+        },
+        "oneOf": [{"required": ["argv"]}, {"required": ["evidence"]}]
+      }
+    }
+  }
+}

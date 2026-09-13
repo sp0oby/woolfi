@@ -9,13 +9,14 @@ import {isDeployed, loadManifest} from "../src/manifest";
 const hook = "0x1111111111111111111111111111111111111111";
 
 describe("keeper manifest", () => {
-  it("discovers only complete live pools", () => {
+  it("refuses a partial live catalog", () => {
     const path = join(mkdtempSync(join(tmpdir(), "woolfi-keeper-")), "robinhood.json");
     writeFileSync(
       path,
       JSON.stringify({
         chainId: 4663,
         hook,
+        launchStatus: "live",
         pools: [
           {
             slug: "mstr-usdg",
@@ -23,13 +24,15 @@ describe("keeper manifest", () => {
             token0: "0x2222222222222222222222222222222222222222",
             token1: "0x3333333333333333333333333333333333333333",
             tickSpacing: 60,
+            startBlock: 123,
+            receipt: `0x${"a".repeat(64)}`,
           },
           {slug: "pending", poolId: "0x0000000000000000000000000000000000000000000000000000000000000000"},
         ],
       }),
     );
     const manifest = loadManifest(path);
-    expect(isDeployed(manifest)).toBe(true);
+    expect(isDeployed(manifest)).toBe(false);
     expect(manifest.pools).toHaveLength(1);
     expect(manifest.pools[0]?.key.hooks).toBe(hook.toLowerCase());
   });
@@ -38,6 +41,22 @@ describe("keeper manifest", () => {
     const path = join(mkdtempSync(join(tmpdir(), "woolfi-keeper-")), "robinhood.json");
     writeFileSync(path, JSON.stringify({chainId: 4663, hook: "0x0000000000000000000000000000000000000000", pools: []}));
     expect(isDeployed(loadManifest(path))).toBe(false);
+  });
+
+  it("accepts exactly eighteen distinct live pools", () => {
+    const pools = Array.from({length: 18}, (_, index) => ({
+      slug: `pool-${index}`,
+      poolId: `0x${(index + 1).toString(16).padStart(64, "0")}` as `0x${string}`,
+      startBlock: 123,
+      key: {
+        currency0: "0x2222222222222222222222222222222222222222" as const,
+        currency1: "0x3333333333333333333333333333333333333333" as const,
+        fee: 0x800000,
+        tickSpacing: 60,
+        hooks: hook as `0x${string}`,
+      },
+    }));
+    expect(isDeployed({chainId: 4663, hook: hook as `0x${string}`, pools})).toBe(true);
   });
 });
 
@@ -62,6 +81,7 @@ describe("keepPools", () => {
         {
           slug: "mstr-usdg",
           poolId: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          startBlock: 123,
           key: {
             currency0: "0x2222222222222222222222222222222222222222",
             currency1: "0x3333333333333333333333333333333333333333",

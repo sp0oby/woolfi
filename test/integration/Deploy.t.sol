@@ -101,7 +101,8 @@ contract DeployTest is Deployers {
             address(hook),
             Currency.unwrap(currency0),
             Currency.unwrap(currency1),
-            makeAddr("rebalancer")
+            makeAddr("rebalancer"),
+            1_000e18
         );
 
         PoolKey memory key = PoolKey({
@@ -112,7 +113,7 @@ contract DeployTest is Deployers {
             hooks: IHooks(address(hook))
         });
         uint256 id = uint256(PoolId.unwrap(key.toId()));
-        address buyback = makeAddr("buyback");
+        address treasury = makeAddr("treasury");
 
         vm.startPrank(multisig);
         gov.authorizePool(
@@ -133,16 +134,17 @@ contract DeployTest is Deployers {
 
         vm.startPrank(multisig);
         gov.setVault(key, address(vault), 2000);
-        pm.setFeeConfig(key, address(vault), 2000, buyback, 1000);
+        pm.setFeeConfig(key, address(vault), 2000, treasury, 1000);
         vm.stopPrank();
 
         assertTrue(hook.poolConfig(key.toId()).configured);
         assertEq(hook.poolConfig(key.toId()).vault, address(vault));
+        assertEq(vault.maxTotalStaked(), 1_000e18);
 
-        (address fv, uint16 vb, address bs, uint16 bb) = pm.feeConfig(id);
+        (address fv, uint16 vb, address ts, uint16 tb) = pm.feeConfig(id);
         assertEq(fv, address(vault));
         assertEq(vb, 2000);
-        assertEq(bs, buyback);
-        assertEq(bb, 1000);
+        assertEq(ts, treasury);
+        assertEq(tb, 1000);
     }
 }

@@ -97,8 +97,8 @@ export const woolfiPositionManagerAbi = [
       {indexed: true, name: "id", type: "uint256"},
       {indexed: false, name: "vault0", type: "uint256"},
       {indexed: false, name: "vault1", type: "uint256"},
-      {indexed: false, name: "buyback0", type: "uint256"},
-      {indexed: false, name: "buyback1", type: "uint256"},
+      {indexed: false, name: "treasury0", type: "uint256"},
+      {indexed: false, name: "treasury1", type: "uint256"},
     ],
     anonymous: false,
   },
@@ -131,6 +131,57 @@ export const woolfiUnderwritingVaultAbi = [
     inputs: [
       {indexed: false, name: "seized", type: "uint256"},
       {indexed: false, name: "totalStakedAfter", type: "uint256"},
+    ],
+    anonymous: false,
+  },
+] as const;
+
+export const urufuFeeRebateDistributorAbi = [
+  {
+    type: "event",
+    name: "RouterSet",
+    inputs: [{indexed: true, name: "router", type: "address"}],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WeeklyCapSet",
+    inputs: [
+      {indexed: true, name: "token", type: "address"},
+      {indexed: false, name: "cap", type: "uint256"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "Funded",
+    inputs: [
+      {indexed: true, name: "funder", type: "address"},
+      {indexed: true, name: "token", type: "address"},
+      {indexed: false, name: "amount", type: "uint256"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RebateAccrued",
+    inputs: [
+      {indexed: true, name: "trader", type: "address"},
+      {indexed: true, name: "poolId", type: "bytes32"},
+      {indexed: true, name: "token", type: "address"},
+      {indexed: false, name: "amount", type: "uint256"},
+      {indexed: false, name: "week", type: "uint64"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RebateClaimed",
+    inputs: [
+      {indexed: true, name: "trader", type: "address"},
+      {indexed: true, name: "token", type: "address"},
+      {indexed: true, name: "recipient", type: "address"},
+      {indexed: false, name: "amount", type: "uint256"},
     ],
     anonymous: false,
   },

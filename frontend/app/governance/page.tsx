@@ -1,15 +1,13 @@
 "use client";
 
-import {useChainId} from "wagmi";
+import {useChainId, useReadContracts} from "wagmi";
 
 import {Header} from "@/components/Header";
 import {Footer} from "@/components/Footer";
 import {explorerAddress} from "@/lib/wagmi";
+import {robinhoodDeployment} from "@/lib/woolfi";
 
-// Displayed as the protocol multisig. On testnet the on-chain owner of WoolFiGovernor is the
-// deployer EOA (iteration mode); this is the address that owns it on mainnet from genesis and
-// the one we want partners to see on /governance. Update when the mainnet Safe is finalized.
-const MULTISIG_ADDRESS = "0x935B53040Bf112A9E93297Ac9603b5BA9F0c7Aa0" as const;
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 export default function GovernancePage() {
   const chainId = useChainId();
@@ -31,11 +29,11 @@ export default function GovernancePage() {
           <p>
             A multisig controls the protocol's admin surface. The signers can authorize new pools,
             re-tune live pool parameters, pause the hook in an emergency, and resolve a structural
-            break once the underlying market has reconverged. The multisig <em>cannot</em> seize
-            user funds, alter LP balances, or change vault staker positions - those rules are
-            enforced by the contracts themselves.
+            break once the underlying market has reconverged. It can also configure vault
+            drawdowns and fee routing within contract limits, but cannot directly edit an
+            account&apos;s LP-share or vault-share balance.
           </p>
-          <Address label="Multisig" address={MULTISIG_ADDRESS} chainId={chainId} />
+          <GovernanceStatus chainId={chainId} />
         </Section>
 
         <Section label="Underwriting is separate">
@@ -52,23 +50,107 @@ export default function GovernancePage() {
               v1 administration
             </p>
             <p className="mt-3 text-[15px] text-ink/85">
-              Multisig controlled. No token vote is active.
+              Multisig controlled. No token vote or browser-based admin console is active.
             </p>
           </div>
         </Section>
 
-        <Section label="What can't change, ever">
+        <Section label="Contract boundaries">
           <ul className="space-y-2 text-[15px] text-ink/85 list-disc pl-5 marker:text-muted">
-            <li>WoolFi never custodies user assets - they live in Uniswap v4's PoolManager and the per-pool vault contract.</li>
-            <li>Governance cannot move LP positions or vault stakes between accounts.</li>
+            <li>Pool assets settle through Uniswap v4&apos;s PoolManager; URU underwriting is held by per-pool vaults.</li>
+            <li>Governance cannot directly move LP shares or vault shares between accounts.</li>
             <li>WoolFi cannot issue Robinhood Stock Tokens; their issuer controls issuance and applicable transfer restrictions.</li>
-            <li>The asymmetric-fee mechanic and the structural-break drawdown rules are coded into the hook; the multisig can pause them, not rewrite them.</li>
+            <li>The hook&apos;s code is immutable after deployment, while its documented parameters and authorized pools remain multisig-configurable.</li>
           </ul>
         </Section>
       </article>
       <Footer />
     </main>
   );
+}
+
+function GovernanceStatus({chainId}: {chainId: number}) {
+  const {governor, hook, positionManager} = robinhoodDeployment;
+  const deployed = governor !== ZERO && hook !== ZERO && positionManager !== ZERO;
+  if (!deployed) {
+    return (
+      <div className="mt-5 border border-line px-5 py-4 font-mono text-[12px] text-muted">
+        Not deployed. No production governor or multisig owner is recorded in the manifest.
+      </div>
+    );
+  }
+  return (
+    <LiveGovernance
+      chainId={chainId}
+      governor={governor}
+      hook={hook}
+      positionManager={positionManager}
+    />
+  );
+}
+
+const ownerAbi = [{
+  type: "function",
+  name: "owner",
+  stateMutability: "view",
+  inputs: [],
+  outputs: [{name: "", type: "address"}],
+}] as const;
+
+const governorAbi = [{
+  type: "function",
+  name: "hook",
+  stateMutability: "view",
+  inputs: [],
+  outputs: [{name: "", type: "address"}],
+}] as const;
+
+const hookGovernorAbi = [{
+  type: "function",
+  name: "governor",
+  stateMutability: "view",
+  inputs: [],
+  outputs: [{name: "", type: "address"}],
+}] as const;
+
+function LiveGovernance({
+  chainId,
+  governor,
+  hook,
+  positionManager,
+}: {
+  chainId: number;
+  governor: `0x${string}`;
+  hook: `0x${string}`;
+  positionManager: `0x${string}`;
+}) {
+  const reads = useReadContracts({
+    contracts: [
+      {address: governor, abi: ownerAbi, functionName: "owner"},
+      {address: governor, abi: governorAbi, functionName: "hook"},
+      {address: hook, abi: hookGovernorAbi, functionName: "governor"},
+      {address: positionManager, abi: ownerAbi, functionName: "owner"},
+    ],
+  });
+  const owner = reads.data?.[0]?.result;
+  const governorHook = reads.data?.[1]?.result;
+  const hookGovernor = reads.data?.[2]?.result;
+  const positionOwner = reads.data?.[3]?.result;
+  const wired = same(governorHook, hook) && same(hookGovernor, governor) && same(positionOwner, owner);
+
+  return (
+    <div className="mt-5">
+      <div className="border border-line px-5 py-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
+        {reads.isLoading ? "Checking on-chain wiring…" : wired ? "On-chain wiring verified" : "Wiring mismatch"}
+      </div>
+      <Address label="Governor contract" address={governor} chainId={chainId} />
+      <Address label="Multisig owner" address={owner} chainId={chainId} />
+    </div>
+  );
+}
+
+function same(a: string | undefined, b: string | undefined): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
 }
 
 function Section({label, children}: {label: string; children: React.ReactNode}) {

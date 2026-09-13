@@ -5,7 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @title MockERC20
 /// @notice Test-only ERC-20 with configurable decimals and open minting.
-/// @dev Stands in for MSTRX / cbBTC on testnet and in local tests until real tokens are wired.
+/// @dev Generic test token used only by local and testnet fixtures.
 contract MockERC20 is ERC20 {
     uint8 private immutable _dec;
 

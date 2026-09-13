@@ -29,11 +29,12 @@ import {RobinhoodDeploymentArtifact} from "./lib/RobinhoodDeploymentArtifact.sol
 ///        TOKEN0, TOKEN1                — sorted (currency0 address < currency1 address)
 ///        ORACLE0, ORACLE1              — IPriceOracle for each leg (1e18-normalized USD)
 ///        MARKET_HOURS                  — IMarketHoursOracle (use address(0) for crypto/crypto pairs)
-///        REBALANCER, BUYBACK_SINK      — treasury / keeper addresses
+///        REBALANCER, TREASURY_FEE_SINK — treasury / policy addresses
+///        URU_CAP                       — maximum staking-token assets accepted by this vault
 ///        SQRT_PRICE_X96                — initial pool price (Q64.96)
 ///      Optional env (defaults per PROJECT_SPEC.md §3, §7.3):
 ///        TICK_SPACING (60), K_SCALED (40000), BASE_FEE_BPS (30), TOLERANCE_BPS (500),
-///        HARD_THRESHOLD_BPS (1500), DRAWDOWN_BPS (2000), VAULT_FEE_BPS (2000), BUYBACK_BPS (1000),
+///        HARD_THRESHOLD_BPS (1500), DRAWDOWN_BPS (2000), VAULT_FEE_BPS (2000), TREASURY_FEE_BPS (1000),
 ///        STABILIZATION_SECONDS (0), MAX_ORACLE_SKEW (0)
 ///      Robinhood broadcast env:
 ///        POOL_SLUG, TOKEN0_SYMBOL, TOKEN1_SYMBOL
@@ -47,7 +48,8 @@ contract CreatePool is RobinhoodDeploymentArtifact {
         IPriceOracle oracle1;
         IMarketHoursOracle marketHours;
         address rebalancer;
-        address buybackSink;
+        address treasuryFeeSink;
+        uint256 uruCap;
         uint160 sqrtPriceX96;
         int24 tickSpacing;
         uint32 kScaled;
@@ -56,7 +58,7 @@ contract CreatePool is RobinhoodDeploymentArtifact {
         uint16 hardThresholdBps;
         uint16 drawdownBps;
         uint16 vaultFeeBps;
-        uint16 buybackBps;
+        uint16 treasuryFeeBps;
         uint32 stabilizationSeconds;
         uint32 maxOracleSkew;
     }
@@ -82,12 +84,15 @@ contract CreatePool is RobinhoodDeploymentArtifact {
         _requireContract(address(c.oracle0), "ORACLE0");
         _requireContract(address(c.oracle1), "ORACLE1");
         require(c.rebalancer != address(0), "CreatePool: REBALANCER is zero");
-        require(c.buybackSink != address(0), "CreatePool: BUYBACK_SINK is zero");
+        require(c.treasuryFeeSink != address(0), "CreatePool: TREASURY_FEE_SINK is zero");
+        require(c.uruCap != 0, "CreatePool: URU_CAP is zero");
 
         vm.startBroadcast(pk);
 
         // 1. per-pool underwriting vault (token0/1 = the pool's tokens for fee rewards)
-        vault = address(new WoolFiUnderwritingVault(stakingToken, address(hook), c.token0, c.token1, c.rebalancer));
+        vault = address(
+            new WoolFiUnderwritingVault(stakingToken, address(hook), c.token0, c.token1, c.rebalancer, c.uruCap)
+        );
 
         // 2. build the pool key (dynamic fee, with the hook)
         key = PoolKey({
@@ -122,7 +127,7 @@ contract CreatePool is RobinhoodDeploymentArtifact {
 
         // 5. wire the vault into the hook (drawdown on structural break) and into the PM (fee routing)
         governor.setVault(key, vault, c.drawdownBps);
-        pm.setFeeConfig(key, vault, c.vaultFeeBps, c.buybackSink, c.buybackBps);
+        pm.setFeeConfig(key, vault, c.vaultFeeBps, c.treasuryFeeSink, c.treasuryFeeBps);
 
         vm.stopBroadcast();
 
@@ -149,7 +154,7 @@ contract CreatePool is RobinhoodDeploymentArtifact {
                     hardThresholdBps: c.hardThresholdBps,
                     drawdownBps: c.drawdownBps,
                     vaultFeeBps: c.vaultFeeBps,
-                    buybackBps: c.buybackBps
+                    treasuryFeeBps: c.treasuryFeeBps
                 })
             );
         }
@@ -162,7 +167,8 @@ contract CreatePool is RobinhoodDeploymentArtifact {
         c.oracle1 = IPriceOracle(vm.envAddress("ORACLE1"));
         c.marketHours = IMarketHoursOracle(vm.envOr("MARKET_HOURS", address(0)));
         c.rebalancer = vm.envAddress("REBALANCER");
-        c.buybackSink = vm.envAddress("BUYBACK_SINK");
+        c.treasuryFeeSink = vm.envAddress("TREASURY_FEE_SINK");
+        c.uruCap = vm.envUint("URU_CAP");
         c.sqrtPriceX96 = uint160(vm.envUint("SQRT_PRICE_X96"));
         c.tickSpacing = int24(int256(vm.envOr("TICK_SPACING", uint256(60))));
         c.kScaled = uint32(vm.envOr("K_SCALED", uint256(40_000)));
@@ -171,7 +177,7 @@ contract CreatePool is RobinhoodDeploymentArtifact {
         c.hardThresholdBps = uint16(vm.envOr("HARD_THRESHOLD_BPS", uint256(1500)));
         c.drawdownBps = uint16(vm.envOr("DRAWDOWN_BPS", uint256(2000)));
         c.vaultFeeBps = uint16(vm.envOr("VAULT_FEE_BPS", uint256(2000)));
-        c.buybackBps = uint16(vm.envOr("BUYBACK_BPS", uint256(1000)));
+        c.treasuryFeeBps = uint16(vm.envOr("TREASURY_FEE_BPS", uint256(1000)));
         c.stabilizationSeconds = uint32(vm.envOr("STABILIZATION_SECONDS", uint256(0)));
         c.maxOracleSkew = uint32(vm.envOr("MAX_ORACLE_SKEW", uint256(0)));
     }

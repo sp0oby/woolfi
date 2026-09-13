@@ -1,5 +1,14 @@
 import {ponder} from "ponder:registry";
-import {swap, structuralBreak, oracleSkew, poolSafety, lpMovement, feeRouting, vaultEvent} from "ponder:schema";
+import {
+  swap,
+  structuralBreak,
+  oracleSkew,
+  poolSafety,
+  lpMovement,
+  feeRouting,
+  vaultEvent,
+  rebateEvent,
+} from "ponder:schema";
 import {poolIdForVault} from "../vaults";
 
 /**
@@ -125,8 +134,8 @@ ponder.on("WoolFiPositionManager:FeesRouted", async ({event, context}) => {
     timestamp: event.block.timestamp,
     vault0: event.args.vault0,
     vault1: event.args.vault1,
-    buyback0: event.args.buyback0,
-    buyback1: event.args.buyback1,
+    treasury0: event.args.treasury0,
+    treasury1: event.args.treasury1,
   });
 });
 
@@ -169,5 +178,42 @@ ponder.on("WoolFiUnderwritingVault:Drawdown", async ({event, context}) => {
     amount: event.args.seized,
     shares: null,
     totalStakedAfter: event.args.totalStakedAfter,
+  });
+});
+
+ponder.on("UrufuFeeRebateDistributor:RouterSet", async ({event, context}) => {
+  await context.db.insert(rebateEvent).values({
+    id: eventId(event), blockNumber: event.block.number, timestamp: event.block.timestamp,
+    kind: "router-set", router: event.args.router,
+  });
+});
+
+ponder.on("UrufuFeeRebateDistributor:WeeklyCapSet", async ({event, context}) => {
+  await context.db.insert(rebateEvent).values({
+    id: eventId(event), blockNumber: event.block.number, timestamp: event.block.timestamp,
+    kind: "cap-set", token: event.args.token, amount: event.args.cap,
+  });
+});
+
+ponder.on("UrufuFeeRebateDistributor:Funded", async ({event, context}) => {
+  await context.db.insert(rebateEvent).values({
+    id: eventId(event), blockNumber: event.block.number, timestamp: event.block.timestamp,
+    kind: "funded", trader: event.args.funder, token: event.args.token, amount: event.args.amount,
+  });
+});
+
+ponder.on("UrufuFeeRebateDistributor:RebateAccrued", async ({event, context}) => {
+  await context.db.insert(rebateEvent).values({
+    id: eventId(event), blockNumber: event.block.number, timestamp: event.block.timestamp,
+    kind: "accrued", trader: event.args.trader, poolId: event.args.poolId,
+    token: event.args.token, amount: event.args.amount, week: event.args.week,
+  });
+});
+
+ponder.on("UrufuFeeRebateDistributor:RebateClaimed", async ({event, context}) => {
+  await context.db.insert(rebateEvent).values({
+    id: eventId(event), blockNumber: event.block.number, timestamp: event.block.timestamp,
+    kind: "claimed", trader: event.args.trader, token: event.args.token,
+    recipient: event.args.recipient, amount: event.args.amount,
   });
 });

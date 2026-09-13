@@ -48,7 +48,7 @@ def _pool_env(
         "POOL_MANAGER": core["poolManager"], "HOOK": core["hook"],
         "GOVERNOR": core["governor"], "POSITION_MANAGER": core["positionManager"],
         "STAKING_TOKEN": core["stakingToken"], "REBALANCER": core["rebalancer"],
-        "BUYBACK_SINK": core["buybackSink"],
+        "TREASURY_FEE_SINK": core["treasuryFeeSink"],
         "MARKET_HOURS": ZERO if pool["slug"] == "weth-usdg" else core["marketHours"],
         "TOKEN0": ASSETS[ordered[0]], "TOKEN1": ASSETS[ordered[1]],
         "ORACLE0": assets[ordered[0]]["oracle"], "ORACLE1": assets[ordered[1]]["oracle"],
@@ -57,7 +57,7 @@ def _pool_env(
         "TICK_SPACING": str(risk["tickSpacing"]), "K_SCALED": str(risk["kScaled"]),
         "BASE_FEE_BPS": str(risk["baseFeeBps"]), "TOLERANCE_BPS": str(risk["toleranceBps"]),
         "HARD_THRESHOLD_BPS": str(risk["hardThresholdBps"]), "DRAWDOWN_BPS": str(risk["drawdownBps"]),
-        "VAULT_FEE_BPS": str(risk["vaultFeeBps"]), "BUYBACK_BPS": str(risk["buybackBps"]),
+        "VAULT_FEE_BPS": str(risk["vaultFeeBps"]), "TREASURY_FEE_BPS": str(risk["treasuryFeeBps"]),
         "STABILIZATION_SECONDS": str(safety["stabilizationSeconds"]),
         "MAX_ORACLE_SKEW": str(safety["maxOracleSkew"]),
     }

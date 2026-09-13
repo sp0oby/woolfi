@@ -9,7 +9,7 @@ import {useSelectedPool} from "./useSelectedPool";
 const FEES_QUERY = `
   query PoolFees($poolId: String!) {
     feeRoutings(where: {poolId: $poolId}, orderBy: "timestamp", orderDirection: "asc", limit: 500) {
-      items { id timestamp vault0 vault1 buyback0 buyback1 }
+      items { id timestamp vault0 vault1 treasury0 treasury1 }
     }
   }
 `;
@@ -19,12 +19,12 @@ type FeeNode = {
   timestamp: string | number | bigint;
   vault0: string | number | bigint;
   vault1: string | number | bigint;
-  buyback0: string | number | bigint;
-  buyback1: string | number | bigint;
+  treasury0: string | number | bigint;
+  treasury1: string | number | bigint;
 };
 
 /**
- * Sums vault + buyback cuts for the selected pool from the Ponder fee-routing table.
+ * Sums vault + treasury cuts for the selected pool from the Ponder fee-routing table.
  */
 export function useRoutedFees({refetchMs = 30_000}: {refetchMs?: number} = {}) {
   const {deployment} = useSelectedPool();
@@ -53,8 +53,8 @@ export function useRoutedFees({refetchMs = 30_000}: {refetchMs?: number} = {}) {
         let next1 = 0n;
         let newest: bigint | undefined;
         for (const row of rows) {
-          next0 += parseIndexedInt(row.vault0) + parseIndexedInt(row.buyback0);
-          next1 += parseIndexedInt(row.vault1) + parseIndexedInt(row.buyback1);
+          next0 += parseIndexedInt(row.vault0) + parseIndexedInt(row.treasury0);
+          next1 += parseIndexedInt(row.vault1) + parseIndexedInt(row.treasury1);
           const timestamp = parseIndexedInt(row.timestamp);
           if (newest === undefined || timestamp > newest) newest = timestamp;
         }
