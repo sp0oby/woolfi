@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "script"))
 
 from robinhood_batch import DEFAULT_CONFIG, validate  # noqa: E402
+from robinhood_batch_deploy import pool_env, seed_env  # noqa: E402
 from robinhood_catalog import (  # noqa: E402
     ASSETS,
     CHAIN_ID,
@@ -158,6 +159,34 @@ class RobinhoodBatchTest(unittest.TestCase):
         pool["safety"] = {"stabilizationSeconds": 900, "maxOracleSkew": 0}
         errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
         self.assertTrue(any("aapl-msft.safety.maxOracleSkew must be positive" in error for error in errors))
+
+    def test_pool_env_forwards_uru_cap(self):
+        pool = self.config["pools"][0]
+        ordered = sorted((pool["base"], pool["quote"]), key=lambda symbol: int(ASSETS[symbol], 16))
+        env = pool_env(
+            self.config["core"],
+            self.config["assets"],
+            pool,
+            ordered,
+            self.config["defaultRisk"],
+            self.config["defaultSafety"],
+        )
+        self.assertEqual(env["URU_CAP"], str(pool["vaultAllocationCap"]))
+
+    def test_seed_env_orders_base_and_quote_amounts(self):
+        pool = next(item for item in self.config["pools"] if item["slug"] == "weth-usdg")
+        pool["initialLiquidity"] = {"base": 11, "quote": 22, "slippageBps": 100, "minShares": 7}
+        env = seed_env(self.config["core"], pool, self.config["defaultRisk"])
+        token0, token1 = sorted((ASSETS["WETH"], ASSETS["USDG"]))
+        self.assertEqual(env["TOKEN0"], token0)
+        self.assertEqual(env["TOKEN1"], token1)
+        if token0 == ASSETS["WETH"]:
+            self.assertEqual(env["INITIAL_LIQUIDITY_0"], "11")
+            self.assertEqual(env["INITIAL_LIQUIDITY_1"], "22")
+        else:
+            self.assertEqual(env["INITIAL_LIQUIDITY_0"], "22")
+            self.assertEqual(env["INITIAL_LIQUIDITY_1"], "11")
+        self.assertEqual(env["MIN_SHARES"], "7")
 
     def test_manifest_mismatch_fails_closed(self):
         self.manifest["poolManager"] = "0x0000000000000000000000000000000000009999"

@@ -145,7 +145,12 @@ Dry-run (no broadcast):
 
 ```text
 python script/robinhood_batch.py deploy --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL
+python script/robinhood_batch.py seed --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL
 ```
+
+`deploy` forwards each pool's approved `vaultAllocationCap` as `URU_CAP`. `seed` skips
+undeployed or already-seeded pools, maps base/quote amounts onto token0/token1 order, and
+still requires `CONFIRM_MAINNET=true` before broadcast.
 
 Broadcast remains blocked unless `CONFIRM_MAINNET=true` is set immediately before an approved
 run. Interrupted sequences resume from the existing manifest; they are not atomic.

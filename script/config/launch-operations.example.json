@@ -36,7 +36,7 @@
       "id": "seed-initial-liquidity",
       "phase": "liquidity",
       "dependsOn": ["deploy-oracles-and-pools"],
-      "evidence": "18 approved LP seed simulation artifacts and balances",
+      "argv": ["python", "script/robinhood_batch.py", "seed", "--config", "script/config/robinhood-batch.json"],
       "approvalReference": ""
     },
     {

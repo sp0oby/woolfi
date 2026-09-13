@@ -168,11 +168,60 @@ contract RobinhoodStockOracleAdapterTest is Test {
         assertEq(adapter.heartbeat(), HEARTBEAT);
         assertEq(adapter.gracePeriod(), GRACE_PERIOD);
         assertEq(adapter.feedDecimals(), 8);
+        assertTrue(adapter.sequencerEnabled());
     }
 
-    function testRevert_constructor_rejectsZeroAddress() public {
+    function test_constructor_allowsSequencerDisabled() public {
+        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
+            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
+        );
+        assertFalse(disabled.sequencerEnabled());
+        assertEq(address(disabled.sequencerUptimeFeed()), address(0));
+        assertEq(disabled.gracePeriod(), 0);
+    }
+
+    function test_getPrice_worksWithSequencerDisabled() public {
+        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
+            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
+        );
+        assertEq(disabled.getPrice(), 250e18);
+    }
+
+    function test_requireRuntimeGuards_allowsWithSequencerDisabled() public {
+        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
+            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
+        );
+        disabled.requireRuntimeGuards();
+    }
+
+    function testRevert_requireRuntimeGuards_rejectsOraclePausedWithoutSequencer() public {
+        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
+            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
+        );
+        stock.setOraclePaused(true);
+        vm.expectRevert(RobinhoodStockOracleAdapter.OraclePaused.selector);
+        disabled.requireRuntimeGuards();
+    }
+
+    function testRevert_constructor_rejectsIncompleteSequencerConfig() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RobinhoodStockOracleAdapter.IncompleteSequencerConfig.selector, address(0), GRACE_PERIOD
+            )
+        );
+        new RobinhoodStockOracleAdapter(address(stock), address(priceFeed), address(0), HEARTBEAT, GRACE_PERIOD);
+    }
+
+    function testRevert_constructor_rejectsZeroSequencerFeedWithNonzeroGracePeriod() public {
+        vm.expectRevert(RobinhoodStockOracleAdapter.ZeroGracePeriod.selector);
+        new RobinhoodStockOracleAdapter(address(stock), address(priceFeed), address(sequencerFeed), HEARTBEAT, 0);
+    }
+
+    function testRevert_constructor_rejectsZeroStockOrFeed() public {
         vm.expectRevert(RobinhoodStockOracleAdapter.ZeroAddress.selector);
         new RobinhoodStockOracleAdapter(address(0), address(priceFeed), address(sequencerFeed), HEARTBEAT, GRACE_PERIOD);
+        vm.expectRevert(RobinhoodStockOracleAdapter.ZeroAddress.selector);
+        new RobinhoodStockOracleAdapter(address(stock), address(0), address(sequencerFeed), HEARTBEAT, GRACE_PERIOD);
     }
 
     function testRevert_constructor_rejectsAddressWithoutCode() public {

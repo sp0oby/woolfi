@@ -32,6 +32,8 @@ contract ChainlinkOracleAdapter is IPriceOracleMetadata {
     error InvalidPrice(int256 answer);
     /// @notice Thrown when the latest answer is older than the staleness threshold.
     error StalePrice(uint256 updatedAt, uint256 maxStaleness);
+    /// @notice Thrown when the latest round is incomplete or unanswered.
+    error IncompleteRound(uint80 roundId, uint80 answeredInRound);
 
     /// @param _feed Address of the Chainlink aggregator.
     /// @param _heartbeat Published heartbeat of the feed, in seconds.
@@ -57,22 +59,24 @@ contract ChainlinkOracleAdapter is IPriceOracleMetadata {
 
     /// @notice Rejects a non-positive or timestamp-invalid print without applying heartbeat age.
     function requireRuntimeGuards() external view {
-        (, int256 answer,, uint256 updatedAt,) = feed.latestRoundData();
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = feed.latestRoundData();
         if (answer <= 0) revert InvalidPrice(answer);
+        if (roundId == 0 || answeredInRound < roundId) revert IncompleteRound(roundId, answeredInRound);
         if (updatedAt == 0 || updatedAt > block.timestamp) revert StalePrice(updatedAt, heartbeat * STALENESS_FACTOR);
     }
 
     function _priceData() private view returns (uint256 priceWad, uint256 updatedAt) {
+        uint80 roundId;
         int256 answer;
-        (, answer,, updatedAt,) = feed.latestRoundData();
+        uint80 answeredInRound;
+        (roundId, answer,, updatedAt, answeredInRound) = feed.latestRoundData();
         if (answer <= 0) revert InvalidPrice(answer);
+        if (roundId == 0 || answeredInRound < roundId) revert IncompleteRound(roundId, answeredInRound);
 
         uint256 maxStaleness = heartbeat * STALENESS_FACTOR;
-        // An incomplete round (updatedAt == 0) yields a huge age and is caught here too.
         uint256 age = block.timestamp > updatedAt ? block.timestamp - updatedAt : 0;
         if (age > maxStaleness) revert StalePrice(updatedAt, maxStaleness);
 
-        // Up-scale to 1e18. feedDecimals <= 18 is enforced in the constructor.
         priceWad = uint256(answer) * (10 ** (WAD_DECIMALS - feedDecimals));
     }
 }

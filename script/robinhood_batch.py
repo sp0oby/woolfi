@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from robinhood_batch_deploy import deploy
+from robinhood_batch_deploy import deploy, seed
 from robinhood_catalog import (
     ALWAYS_OPEN_SLUGS,
     ASSETS,
@@ -340,7 +340,7 @@ def _load(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("readiness", "deploy"))
+    parser.add_argument("command", choices=("readiness", "deploy", "seed"))
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--rpc-url", default=os.getenv("ROBINHOOD_RPC_URL", ""))
@@ -358,6 +358,8 @@ def main() -> int:
     if args.broadcast and os.getenv("CONFIRM_MAINNET", "").lower() != "true":
         print(json.dumps({"ready": False, "errors": ["set CONFIRM_MAINNET=true before broadcast"]}))
         return 1
+    if args.command == "seed":
+        return seed(config, manifest, args.rpc_url, args.broadcast)
     return deploy(config, manifest, args.rpc_url, args.broadcast)
 
 

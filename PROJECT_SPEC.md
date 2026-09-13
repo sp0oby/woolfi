@@ -140,20 +140,39 @@ available at the flat base fee, asymmetric convergence is not promised, new liqu
 and withdrawals remain open. WETH/USDG is always open.
 
 Every production stock leg uses a guarded adapter that checks the Robinhood token's
-`oraclePaused()` state, Chainlink round validity and freshness, and Robinhood sequencer status plus
-post-recovery grace period. Every non-stock leg also requires a verified production oracle.
+`oraclePaused()` state and Chainlink round validity/freshness. On chains that publish an L2
+sequencer uptime feed the adapter also checks sequencer status and the post-recovery grace
+period; on Robinhood Chain today no such feed is available (see §5.1). Every non-stock leg also
+requires a verified production oracle.
 
 The following conditions are fail-closed and hard-revert swaps and liquidity additions on every
 open-market fair-value path:
 
 - stale, invalid, incomplete, or future-dated price data;
 - a paused stock-token oracle;
-- a down, invalid, or recently recovered sequencer;
+- a down, invalid, or recently recovered sequencer when a sequencer uptime feed is configured;
 - missing required oracle configuration.
 
 Closed-market and post-open stabilization paths skip *price freshness* so weekend or holiday
 prints do not freeze the pool. They still call `requireRuntimeGuards()` on both legs, so a
-paused stock oracle, down sequencer, or invalid last print continues to hard-revert.
+paused stock oracle, invalid last print, or (when configured) sequencer failure continues to
+hard-revert.
+
+### 5.1 Sequencer safety on Robinhood Chain
+
+Robinhood Chain (4663) is an Arbitrum Orbit L2 whose sequencer is operated by the chain itself.
+No L2 sequencer uptime feed is published for 4663, and [Chainlink has stated](https://docs.chain.link/data-feeds/l2-sequencer-feeds)
+it is not expanding that product to new networks. `RobinhoodStockOracleAdapter` therefore accepts
+`sequencerUptimeFeed == address(0)` (paired with `gracePeriod == 0`) as an explicit opt-out that
+skips the sequencer guard while preserving `oraclePaused()` and price-freshness enforcement.
+A partial configuration reverts with `IncompleteSequencerConfig`.
+
+The launch disclosure is that Robinhood Chain sequencer downtime is not distinguished from
+ordinary block-production stall. Users of WoolFi on chain 4663 accept the operator's liveness
+directly: the chain operator, the sequencer operator, and the stock-token issuer are the same
+entity, so a WoolFi-operated uptime attestation reading the same chain would not add an
+independent trust boundary. If Chainlink or another provider publishes a compatible sequencer
+feed on 4663 in the future, governance may redeploy affected adapters with the guard enabled.
 
 For two-leg fair-value calculations, an approved `maxOracleSkew` compares `getPriceData()`
 timestamps. Excessive skew is a degraded mode: swaps continue at the flat base fee and

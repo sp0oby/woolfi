@@ -75,9 +75,14 @@ contract ChainlinkOracleAdapterTest is Test {
     }
 
     function testRevert_getPrice_incompleteRound() public {
-        // updatedAt == 0 -> astronomically stale -> revert
         feed.setAnswer(100_000e8, 0);
         vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.StalePrice.selector, 0, MAX_STALENESS));
+        adapter.getPrice();
+    }
+
+    function testRevert_getPrice_rejectsUnansweredRound() public {
+        feed.setRoundIds(4, 3);
+        vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.IncompleteRound.selector, uint80(4), uint80(3)));
         adapter.getPrice();
     }
 

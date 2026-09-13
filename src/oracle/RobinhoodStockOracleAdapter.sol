@@ -17,7 +17,12 @@ interface IChainlinkAggregator {
 }
 
 /// @title RobinhoodStockOracleAdapter
-/// @notice WAD-normalized stock-token price guarded by corporate-action and L2 sequencer status.
+/// @notice WAD-normalized stock-token price guarded by corporate-action pause and, when
+///         available on the deployment chain, an L2 sequencer uptime feed.
+/// @dev Robinhood Chain (4663) publishes no L2 sequencer uptime feed and Chainlink has stated it
+///      is not expanding that product to new networks. Deploying with `sequencerUptimeFeed_ ==
+///      address(0)` and `gracePeriod_ == 0` explicitly opts out of the sequencer guard; the
+///      `oraclePaused()` and price-freshness checks remain. Any half-configured pair reverts.
 contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
     uint8 private constant WAD_DECIMALS = 18;
     uint256 private constant STALENESS_FACTOR = 2;
@@ -28,11 +33,13 @@ contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
     uint256 public immutable heartbeat;
     uint256 public immutable gracePeriod;
     uint8 public immutable feedDecimals;
+    bool public immutable sequencerEnabled;
 
     error ZeroAddress();
     error NotContract(address target);
     error InvalidHeartbeat();
     error ZeroGracePeriod();
+    error IncompleteSequencerConfig(address feed, uint256 gracePeriod);
     error UnsupportedDecimals(uint8 decimals);
     error OraclePaused();
     error SequencerDown(int256 answer);
@@ -49,14 +56,18 @@ contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
         uint256 heartbeat_,
         uint256 gracePeriod_
     ) {
-        if (stockToken_ == address(0) || feed_ == address(0) || sequencerUptimeFeed_ == address(0)) {
-            revert ZeroAddress();
-        }
+        if (stockToken_ == address(0) || feed_ == address(0)) revert ZeroAddress();
         _requireContract(stockToken_);
         _requireContract(feed_);
-        _requireContract(sequencerUptimeFeed_);
         if (heartbeat_ == 0 || heartbeat_ > type(uint256).max / STALENESS_FACTOR) revert InvalidHeartbeat();
-        if (gracePeriod_ == 0) revert ZeroGracePeriod();
+
+        bool sequencerEnabled_ = sequencerUptimeFeed_ != address(0);
+        if (sequencerEnabled_) {
+            _requireContract(sequencerUptimeFeed_);
+            if (gracePeriod_ == 0) revert ZeroGracePeriod();
+        } else if (gracePeriod_ != 0) {
+            revert IncompleteSequencerConfig(sequencerUptimeFeed_, gracePeriod_);
+        }
 
         uint8 decimals_ = IChainlinkAggregator(feed_).decimals();
         if (decimals_ > WAD_DECIMALS) revert UnsupportedDecimals(decimals_);
@@ -67,6 +78,7 @@ contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
         heartbeat = heartbeat_;
         gracePeriod = gracePeriod_;
         feedDecimals = decimals_;
+        sequencerEnabled = sequencerEnabled_;
     }
 
     /// @notice Return the latest validated WAD price.
@@ -85,13 +97,15 @@ contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
     }
 
     function _requireRuntimeGuards() private view {
-        (, int256 sequencerAnswer, uint256 sequencerStartedAt, uint256 sequencerUpdatedAt,) =
-            sequencerUptimeFeed.latestRoundData();
-        if (sequencerAnswer != 0) revert SequencerDown(sequencerAnswer);
-        _validateTimestamp(address(sequencerUptimeFeed), sequencerUpdatedAt);
-        _validateTimestamp(address(sequencerUptimeFeed), sequencerStartedAt);
-        if (block.timestamp - sequencerStartedAt <= gracePeriod) {
-            revert GracePeriodActive(sequencerStartedAt, gracePeriod);
+        if (sequencerEnabled) {
+            (, int256 sequencerAnswer, uint256 sequencerStartedAt, uint256 sequencerUpdatedAt,) =
+                sequencerUptimeFeed.latestRoundData();
+            if (sequencerAnswer != 0) revert SequencerDown(sequencerAnswer);
+            _validateTimestamp(address(sequencerUptimeFeed), sequencerUpdatedAt);
+            _validateTimestamp(address(sequencerUptimeFeed), sequencerStartedAt);
+            if (block.timestamp - sequencerStartedAt <= gracePeriod) {
+                revert GracePeriodActive(sequencerStartedAt, gracePeriod);
+            }
         }
         if (stockToken.oraclePaused()) revert OraclePaused();
     }
