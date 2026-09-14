@@ -32,6 +32,12 @@ export function DisclosureModal() {
       // Best-effort; ignore quota / privacy errors.
     }
     setOpen(false);
+    // Let anyone listening (e.g. the tutorial tour) know the disclosure just cleared.
+    try {
+      window.dispatchEvent(new CustomEvent("woolfi:disclosure-acked"));
+    } catch {
+      /* older environments without CustomEvent */
+    }
   }
 
   if (!open || pool.tradingHours === "always-open") return null;

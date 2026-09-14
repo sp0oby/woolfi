@@ -4,23 +4,25 @@ import {WalletButton} from "@/components/WalletButton";
 
 export function Header() {
   return (
-    <header className="mx-auto max-w-2xl px-6 pt-10 flex items-baseline justify-between">
-      <Link href="/" className="font-mono text-sm tracking-tight">
-        WOOLFI <span className="text-[10px] text-muted">by Urufu Labs</span>
+    <header className="flex h-14 items-center justify-between border-b border-line bg-bg px-5">
+      <Link href="/" className="flex items-baseline gap-2">
+        <span className="font-display text-[26px] font-semibold leading-none tracking-tight text-ink">
+          woolfi
+        </span>
+        <span className="font-mono text-micro uppercase tracking-[0.22em] text-subtle">
+          by Urufu Labs
+        </span>
       </Link>
-      <nav className="flex items-baseline gap-4 font-mono text-xs uppercase tracking-[0.18em] text-muted">
-        <Link href="/app" className="hover:text-ink transition-colors">
-          App
+      <nav className="flex items-center gap-6 font-mono text-2xs uppercase tracking-[0.22em] text-muted">
+        <Link href="/app" className="text-ink transition-colors hover:text-signal">
+          Terminal
         </Link>
-        <span aria-hidden className="text-line">·</span>
-        <Link href="/docs" className="hover:text-ink transition-colors">
+        <Link href="/docs" className="transition-colors hover:text-ink">
           Docs
         </Link>
-        <span aria-hidden className="text-line">·</span>
-        <Link href="/governance" className="hover:text-ink transition-colors">
+        <Link href="/governance" className="transition-colors hover:text-ink">
           Gov
         </Link>
-        <span aria-hidden className="text-line">·</span>
         <WalletButton />
       </nav>
     </header>

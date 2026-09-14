@@ -1,86 +1,62 @@
 import Link from "next/link";
 
-import {Header} from "@/components/Header";
 import {Footer} from "@/components/Footer";
-import {LivePoolStrip} from "@/components/LivePoolStrip";
+import {Header} from "@/components/Header";
+import {TerminalTicker} from "@/components/terminal/TerminalTicker";
 
 export default function SplashPage() {
   return (
-    <main className="min-h-screen">
+    <main className="flex min-h-screen flex-col bg-bg">
       <Header />
-      <article className="mx-auto max-w-2xl px-6 pt-24">
-        <h1 className="text-[44px] sm:text-5xl font-medium tracking-[-0.02em] leading-[1.05]">
-          A market for the spread.
-        </h1>
-        <p className="mt-8 text-[17px] leading-relaxed text-ink/85">
-          WoolFi is a multi-pool market for Robinhood Stock Tokens on Robinhood Chain. Each
-          Uniswap v4 pool trades the relationship between a stock token and{" "}
-          <span className="font-mono text-white">USDG</span> or{" "}
-          <span className="font-mono text-white">WETH</span>.
+
+      <section className="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center">
+        <p className="font-mono text-2xs uppercase tracking-[0.32em] text-signal">
+          A market for the spread · Robinhood Chain
         </p>
 
-        <Section label="Mechanic">
-          Each WoolFi pool enforces dollar-neutrality between its two reserves. The hook intercepts
-          every swap and applies an asymmetric fee based on which direction the swap pushes the pool.
-          Swaps toward the oracle-implied fair price are discounted; swaps away are surcharged. The
-          spread mean-reverts. Liquidity providers capture the elevated fees from the directional
-          flow.
-        </Section>
+        <h1 className="mt-8 font-display font-medium leading-[0.9] tracking-tight text-ink text-[120px] sm:text-[180px] lg:text-[220px]">
+          woolfi.
+        </h1>
 
-        <Section label="Pool catalog">
-          Browse stock/USDG, stock/WETH, stock/stock spread, and crypto pools. The catalog shows
-          both live and pending pools; pending pools remain disabled until their verified oracles
-          and production deployments are ready.
-        </Section>
+        <p className="mt-10 max-w-2xl text-[18px] leading-relaxed text-ink/85 sm:text-[20px]">
+          A Uniswap v4 multi-pool market for Robinhood Stock Tokens, WETH, and USDG. Every pool
+          trades the <em className="not-italic text-ink">relationship</em> between two assets -
+          the hook discounts flow toward oracle-implied fair value and surcharges flow away from
+          it.
+        </p>
 
-        <Section label="Market hours">
-          Hours are configured per pool. Stock-token pools follow their underlying market schedule
-          and use flat fees while that market is closed. The pool stays usable, but does not promise
-          convergence in those windows. <span className="font-mono text-white">WETH/USDG</span> is
-          always open. Per-pool vaults use URU as the underwriting asset for structural breaks.
-        </Section>
+        <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-muted">
+          Sixteen pools, coordinated launch, URU underwriting per pool. No rocket emojis.
+        </p>
 
-        <Section label="Catalog status">
-          <p className="mt-3 text-[15px] leading-[1.75] text-ink/85">
-            Pools are listed as pending or live on Robinhood Chain. For live pools, drift, fair
-            price, and vault stake are read directly from deployed contracts.
-          </p>
-          <LivePoolStrip />
-        </Section>
+        <div className="mt-12 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/app"
+            className="inline-flex items-center gap-2 border border-signal bg-signal/10 px-6 py-3 font-mono text-2xs uppercase tracking-[0.24em] text-signal transition-colors hover:bg-signal/20"
+          >
+            Open the terminal
+            <span aria-hidden>→</span>
+          </Link>
+          <Link
+            href="/docs"
+            className="inline-flex items-center gap-2 border border-line bg-panel px-6 py-3 font-mono text-2xs uppercase tracking-[0.24em] text-ink transition-colors hover:border-line-strong"
+          >
+            Read the docs
+          </Link>
+        </div>
+      </section>
 
-        <Section label="Stock-token disclosure">
-          Robinhood Stock Tokens issued by Robinhood Assets (Jersey) Limited (RHJ) provide economic
-          exposure to referenced securities but not ownership of those securities. Issuer terms and
-          geographic restrictions apply; confirm eligibility before holding or trading a token.
-        </Section>
+      <div className="mx-auto w-full max-w-3xl px-6 pb-10">
+        <p className="text-center font-mono text-micro leading-relaxed text-subtle">
+          Robinhood Stock Tokens are issued by Robinhood Assets (Jersey) Limited (RHJ) and
+          provide economic exposure to referenced securities - not ownership, voting rights, or
+          other shareholder rights. Issuer terms and geographic restrictions apply. WoolFi is
+          pre-launch, unaudited, and provides no investment advice.
+        </p>
+      </div>
 
-        <Section label="Open">
-          <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:gap-6 items-stretch sm:items-baseline">
-            <Link
-              href="/app"
-              className="inline-flex items-center justify-center border border-line px-6 py-3 font-mono text-[12px] uppercase tracking-[0.22em] text-white hover:bg-white/5 transition-colors"
-            >
-              Open the dashboard →
-            </Link>
-            <Link
-              href="/docs"
-              className="inline-flex items-center justify-center px-2 py-3 font-mono text-[12px] uppercase tracking-[0.22em] text-muted hover:text-white transition-colors"
-            >
-              Read the docs
-            </Link>
-          </div>
-        </Section>
-      </article>
+      <TerminalTicker />
       <Footer />
     </main>
-  );
-}
-
-function Section({label, children}: {label: string; children: React.ReactNode}) {
-  return (
-    <section className="mt-20">
-      <h2 className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted">{label}</h2>
-      <div className="mt-4 text-[15px] leading-[1.75] text-ink/85">{children}</div>
-    </section>
   );
 }
