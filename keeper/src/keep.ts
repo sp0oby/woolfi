@@ -11,6 +11,13 @@ export type PoolOutcome = {
   error?: string;
 };
 
+export type TickSummary = {
+  tick: string;
+  pools: number;
+  failures: number;
+  ready: boolean;
+};
+
 export type KeeperClients = {
   publicClient: {
     simulateContract: (args: Record<string, unknown>) => Promise<{request: Record<string, unknown>}>;
@@ -64,4 +71,39 @@ export async function keepPools(
     }
   }
   return outcomes;
+}
+
+/** Roll a tick's outcomes into the shape the exit code and alert webhook key off. */
+export function summarize(outcomes: PoolOutcome[], tick: string = new Date().toISOString()): TickSummary {
+  const failures = outcomes.filter((o) => !o.simulated).length;
+  return {tick, pools: outcomes.length, failures, ready: failures === 0};
+}
+
+/**
+ * POST the summary to an alert webhook. Never throws: a broken webhook must not take the
+ * keeper down with it. Returns true on 2xx, false otherwise.
+ */
+export async function notifyWebhook(url: string, summary: TickSummary, timeoutMs = 5_000): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify(summary),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      console.error(JSON.stringify({alertWebhook: "non-2xx", status: response.status}));
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error(
+      JSON.stringify({alertWebhook: "failed", error: error instanceof Error ? error.message : String(error)}),
+    );
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }

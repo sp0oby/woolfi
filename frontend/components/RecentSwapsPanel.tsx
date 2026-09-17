@@ -25,7 +25,7 @@ export function RecentSwapsPanel() {
         Each row is a <code className="font-mono">SwapProcessed</code> event from the hook. The
         label is derived from whether the swap reduced (<span className="text-emerald-300">corrective</span>)
         or increased (<span className="text-amber-200">adversarial</span>) the absolute drift
-        relative to the previous swap. "Asym" = the asymmetric fee was active.
+        relative to the previous swap. &quot;Asym&quot; = the asymmetric fee was active.
       </p>
 
       {stale ? (

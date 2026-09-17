@@ -65,16 +65,31 @@ and approval reference. Re-check them before every broadcast.
 ## Resumable, non-atomic sequence
 
 1. Reconcile on-chain state and the local manifest; never assume a previous transaction landed.
-2. Deploy and verify shared core contracts.
-3. Deploy the router/rebate distributor pair, bind the verified Urufu Gemu NFT, and transfer
+2. Deploy and verify shared core contracts with `MULTISIG` set to the production multisig.
+   `Deploy.s.sol` hard-fails if `MULTISIG` is unset or equals the deployer on chain 4663. It
+   mines and deploys the hook, proposes and accepts the hook `governor` role for
+   `WoolFiGovernor`, wires hook ↔ position manager, and *starts* the two-step handoff of
+   `WoolFiGovernor` ownership to `MULTISIG` (`Ownable2Step`: the script only proposes).
+3. From the multisig, call `acceptOwnership()` on `WoolFiGovernor`. Until that call lands the
+   deployer key still owns governance and no pool may be authorized. Verify `owner()` equals
+   the multisig and `pendingOwner()` is zero on the governor, and that
+   `WoolFiPositionManager.owner()` is the multisig, before continuing.
+4. Deploy the router/rebate distributor pair, bind the verified Urufu Gemu NFT, and transfer
    distributor ownership to the multisig.
-4. Deploy the liquidity zapper, allow only the verified Robinhood Uniswap v3 `SwapRouter02`
+5. Deploy the liquidity zapper, allow only the verified Robinhood Uniswap v3 `SwapRouter02`
    executor, and transfer zapper ownership to the multisig.
-5. Wire hook ↔ position manager and transfer all intended ownership to the multisig.
-6. Deploy and verify required oracle and market-hours adapters.
+6. Deploy one oracle adapter per catalog asset with `script/deploy_oracle_adapters.py`
+   (`RobinhoodStockOracleAdapter` for stocks and ETFs, `ChainlinkOracleAdapter` for WETH and
+   USDG). It reads `assets.<SYMBOL>.{token,feed,heartbeat,oracleKind}` from the batch config,
+   skips any asset whose `oracle` is already recorded, and on broadcast writes each new adapter
+   address back into `assets.<SYMBOL>.oracle` so an interrupted run resumes cleanly. With
+   `core.sequencerUptimeFeed` zero (spec §5.1) stock adapters deploy with the sequencer guard
+   disabled. Verify each adapter's `getPrice()` on a fork, then bind the market-hours source in
+   `core.marketHours`.
 7. Create each approved pool and capped URU vault in the canonical catalog.
 8. Seed each pool through `SeedInitialLiquidity.s.sol` using approved maxima, minimum shares, and
-   deadlines; reset token approvals after each mint.
+   deadlines; reset token approvals after each mint. On broadcast `robinhood_batch.py seed`
+   records every seeded slug in `manifest.seededPools`, so a resumed run never double-seeds.
 9. Configure each rebate token with multisig-approved weekly caps and funding. For an EOA-owned
    simulation deployment, `ConfigureRebate.s.sol` performs the same calls; production Safe
    transactions must execute the reviewed calldata directly.
@@ -95,6 +110,10 @@ After a successful approved broadcast, record only receipt-backed addresses and 
 The additive writer may update a matching pool in place, but it must reject the wrong chain, zero
 required values, or conflicts with already verified shared addresses. Dry runs and tests must not
 write production deployment state.
+
+`launchStatus` is the single public-launch switch read by the frontend, indexer, and keeper. No
+script writes it; it stays `"pending"` through the entire deployment and is flipped by hand only
+at the go/no-go step described under "Funding and launch".
 
 For every pool, record its vault mapping and start block in the indexer. Verify that the router,
 position manager, hook, governor, vault, and oracle references all resolve to the same deployment.
@@ -136,31 +155,40 @@ receipt block, unsupported fields, and conflicts with existing manifest values.
 It fails closed unless the config contains the exact 16-pool catalog, canonical token addresses,
 nonzero approved feeds/adapters/heartbeats, hours policies, safety parameters, treasury caps,
 initial prices/liquidity, a receipt-backed 16-pool manifest, RPC code checks on chain 4663, and
-every operational gate below set to `true`.
+every operational gate below set to `true`. `core.sequencerUptimeFeed` is the one address that
+may be zero (spec §5.1 sequencer opt-out); when it is zero, `core.sequencerGracePeriod` must
+also be zero, and when it is set it must have code and a positive grace period.
 
 Do not treat the example overlay (`script/config/robinhood-batch.example.json`) as production
-input. Zero addresses and `false` gates are the honest pre-approval state.
+input. Zero addresses and `false` gates are the honest pre-approval state. The real
+`script/config/robinhood-batch.json` and `launch-operations.json` are gitignored on purpose.
 
 Dry-run (no broadcast):
 
 ```text
+python script/deploy_oracle_adapters.py --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL
 python script/robinhood_batch.py deploy --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL
 python script/robinhood_batch.py seed --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL
 ```
 
-`deploy` forwards each pool's approved `vaultAllocationCap` as `URU_CAP`. `seed` skips
-undeployed or already-seeded pools, maps base/quote amounts onto token0/token1 order, and
-still requires `CONFIRM_MAINNET=true` before broadcast.
+`deploy_oracle_adapters.py` deploys one adapter per asset whose `oracle` is still zero and, on
+broadcast, writes the address back into the config. `deploy` forwards each pool's approved
+`vaultAllocationCap` as `URU_CAP`. `seed` skips undeployed or already-seeded pools, maps
+base/quote amounts onto token0/token1 order, records seeded slugs in `manifest.seededPools` on
+broadcast, and still requires `CONFIRM_MAINNET=true` before broadcast.
 
 Broadcast remains blocked unless `CONFIRM_MAINNET=true` is set immediately before an approved
 run. Interrupted sequences resume from the existing manifest; they are not atomic.
 
 Do not run any of the following until audit approval, complete production inputs, and an
-explicit confirmation are all present:
+explicit confirmation are all present. `Deploy.s.sol`, `DeployRouter.s.sol`, and
+`DeployLiquidityZapper.s.sol` additionally require `MULTISIG` in the environment and refuse to
+run if it equals the deployer:
 
 ```text
-CONFIRM_MAINNET=true forge script script/Deploy.s.sol:Deploy --rpc-url $ROBINHOOD_RPC_URL --broadcast
-CONFIRM_MAINNET=true forge script script/DeployRouter.s.sol:DeployRouter --rpc-url $ROBINHOOD_RPC_URL --broadcast
+CONFIRM_MAINNET=true MULTISIG=<safe> forge script script/Deploy.s.sol:Deploy --rpc-url $ROBINHOOD_RPC_URL --broadcast
+CONFIRM_MAINNET=true MULTISIG=<safe> forge script script/DeployRouter.s.sol:DeployRouter --rpc-url $ROBINHOOD_RPC_URL --broadcast
+CONFIRM_MAINNET=true python script/deploy_oracle_adapters.py --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL --broadcast
 CONFIRM_MAINNET=true python script/robinhood_batch.py deploy --config script/config/robinhood-batch.json --rpc-url $ROBINHOOD_RPC_URL --broadcast
 ```
 
@@ -184,12 +212,18 @@ python script/robinhood_batch.py readiness --config script/config/robinhood-batc
 
 ## Funding and launch
 
-- Seed no vault above its approved URU cap.
-- Seed no pool above its approved liquidity amount.
-- Confirm all 16 pools are indexed, readable, correctly gated, and capable of expected dry-run
-  user flows.
-- Confirm pending/live UI behavior from the final manifest.
-- Obtain a separate coordinated go/no-go approval after deployment verification.
+1. Seed no vault above its approved URU cap.
+2. Seed no pool above its approved liquidity amount.
+3. Confirm all 16 pools are indexed, readable, correctly gated, and capable of expected dry-run
+   user flows.
+4. Confirm pending/live UI behavior from the final manifest.
+5. Obtain a separate coordinated go/no-go approval after deployment verification.
+6. Only after that approval, flip the launch switch. Nothing in the tooling writes it. Hand-edit
+   `frontend/lib/deployments/robinhood.json` and change `"launchStatus": "pending"` to
+   `"launchStatus": "live"`, commit it with the approval reference, then redeploy the indexer,
+   the keeper, and the frontend. All three gate on this field: until they read `"live"` the
+   frontend shows every pool as pending, the indexer indexes nothing, and the keeper exits with
+   `{ready:false}`. Verify each of the three reports live before announcing.
 
 Deployment completion does not authorize public launch. If any one pool, feed, vault, service,
 audit gate, or safety mechanism is not ready, the launch decision is no-go and all pools remain

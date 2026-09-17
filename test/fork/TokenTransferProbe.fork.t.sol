@@ -49,8 +49,7 @@ contract TokenTransferProbeForkTest is Test {
 
         // 2. Can Alice transfer to Bob?
         vm.prank(alice);
-        (bool ok, bytes memory reason) =
-            token.call(abi.encodeWithSelector(IERC20.transfer.selector, bob, amount / 2));
+        (bool ok, bytes memory reason) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, bob, amount / 2));
         if (ok) {
             emit log_named_string(label, "transfer(alice->bob) OK");
             uint256 bobBalance = IERC20(token).balanceOf(bob);

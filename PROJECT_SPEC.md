@@ -57,7 +57,7 @@ GLD/SLV, and the GLD and SLV assets were removed from the launch catalog because
 does not publish a GLD/USD feed on Robinhood Chain (see `docs/oracles.md`); those pools may be
 re-added by future spec revision once a verified feed is available.
 
-### 3.1 Stock/USDG — oracle-guided spot pools
+### 3.1 Stock/USDG - oracle-guided spot pools
 
 These pools provide stock-token spot exposure quoted in USDG. Fair value is the stock/USD price
 relative to USDG/USD.
@@ -70,7 +70,7 @@ relative to USDG/USD.
 6. AAPL/USDG
 7. TSLA/USDG
 
-### 3.2 Stock/WETH — crypto-beta pools
+### 3.2 Stock/WETH - crypto-beta pools
 
 These pools trade the relationship between a stock token and ETH rather than claiming a dollar
 spot market.
@@ -81,7 +81,7 @@ spot market.
 11. NVDA/WETH
 12. PLTR/WETH
 
-### 3.3 Stock/stock — relative-value spreads
+### 3.3 Stock/stock - relative-value spreads
 
 These pools express relative value between related equities or ETFs.
 
@@ -133,6 +133,9 @@ multisig-approved per-wallet weekly cap, and only against the hook's configured 
 distributor reserves funded assets as credits accrue, preventing unfunded liabilities. Its
 post-swap call is fail-open: rebate failure must never revert an otherwise valid swap. Rebate
 funding is a capped loyalty budget and is separate from LP principal and URU underwriting assets.
+The rebate is computed from the pool's configured base fee, not the fee actually charged, so a
+corrective swap that paid a discounted fee still receives the full base-fee rebate. This is
+bounded by funding and the weekly cap.
 
 ## 5. Market hours and oracle safety
 
@@ -190,7 +193,8 @@ model is:
 3. Permit only swaps proven to reduce drift against that cached `breakFair`.
 4. Draw only within the approved per-pool URU cap and configured drawdown.
 5. Keep withdrawals open.
-6. Require governed resolution and a post-open stabilization period before normal operation.
+6. Require governed resolution. If the referenced market opens within the configured
+   stabilization window, asymmetric operation stays off until that window elapses.
 
 Using cached break fair prevents a moving or compromised oracle from redefining what “corrective”
 means during containment. The post-open stabilization period is measured from

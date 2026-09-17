@@ -20,7 +20,7 @@
     "treasuryFeeSink": "0x0000000000000000000000000000000000000000",
     "marketHours": "0x0000000000000000000000000000000000000000",
     "sequencerUptimeFeed": "0x0000000000000000000000000000000000000000",
-    "sequencerGracePeriod": 3600,
+    "sequencerGracePeriod": 0,
     "totalTreasuryAllocationCap": 0
   },
   "defaultRisk": {

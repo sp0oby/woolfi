@@ -80,7 +80,7 @@ The frontend is configured exclusively for Robinhood Chain and presents the exac
 |---|---|
 | Spec | [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) v1.0-draft |
 | Source | Solidity 0.8.26, Foundry, BUSL-1.1 hook, MIT elsewhere |
-| Tests | 181 passing &middot; 100k invariant calls clean &middot; [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
+| Tests | 308 passing &middot; 100k invariant calls clean &middot; [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
 | Network | Robinhood Chain |
 | Catalog | Exact 16 pools; all currently pending |
 | Audit | Not done; bug bounty pending audit |

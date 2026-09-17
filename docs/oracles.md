@@ -74,7 +74,7 @@ Open-market swaps and liquidity additions hard-revert when:
 - either required leg is stale, invalid, incomplete, or future-dated;
 - a Robinhood stock-token oracle is paused;
 - a required adapter or feed is missing;
-- the sequencer is down, has invalid status data, or is inside the recovery grace period —
+- the sequencer is down, has invalid status data, or is inside the recovery grace period -
   when a sequencer uptime feed is configured on the adapter.
 
 Closed-market and stabilization paths still hard-revert on pause, invalid last-print, and (when
@@ -125,7 +125,7 @@ adapter deployment.
 
 GLD and SLV were removed from the launch catalog (spec §3) because Chainlink does not publish
 GLD/USD on 4663. Re-adding those pools would require a future spec revision that binds them to
-verified feeds — do not fabricate a GLD address or launch a partial catalog.
+verified feeds - do not fabricate a GLD address or launch a partial catalog.
 
 ## Structural-break pricing
 

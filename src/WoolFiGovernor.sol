@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 
 import {WoolFiHook} from "./WoolFiHook.sol";
@@ -13,9 +14,12 @@ import {WoolFiHook} from "./WoolFiHook.sol";
 /// @dev Deliberately minimal — a thin, audited forwarding layer rather than premature voting/timelock
 ///      machinery. Its value is a durable, immutable-to-the-hook governance endpoint whose *control*
 ///      can transition (multisig -> on-chain governor) two ways without redeploying the hook:
-///        1. transfer ownership of this contract to the new controller (`transferOwnership`), or
-///        2. repoint the hook's governor role entirely (`setHookGovernor`).
-contract WoolFiGovernor is Ownable {
+///        1. transfer ownership of this contract to the new controller (`transferOwnership`, then
+///           the new owner calls `acceptOwnership`), or
+///        2. repoint the hook's governor role entirely (`proposeHookGovernor`, then the new governor
+///           accepts on the hook).
+///      Both handoffs are two-step so a mistyped address cannot strand control.
+contract WoolFiGovernor is Ownable2Step {
     /// @notice The hook this governor controls.
     WoolFiHook public immutable hook;
 
@@ -67,10 +71,18 @@ contract WoolFiGovernor is Ownable {
         hook.setPaused(false);
     }
 
-    /// @notice Hand the hook's `governor` role to a new controller (e.g. on-chain governance in v2).
-    /// @dev After this, only `newGovernor` can manage the hook; this contract loses the role.
-    function setHookGovernor(address newGovernor) external onlyOwner {
-        hook.setGovernor(newGovernor);
+    /// @notice Propose a new holder of the hook's `governor` role (e.g. on-chain governance in v2).
+    /// @dev Takes effect only after `newGovernor` calls `WoolFiHook.acceptGovernor()`. Until then
+    ///      this contract keeps the role.
+    function proposeHookGovernor(address newGovernor) external onlyOwner {
+        hook.proposeGovernor(newGovernor);
+    }
+
+    /// @notice Accept a pending hook-governor proposal addressed to this contract.
+    /// @dev Used during deployment (hook is constructed with the deployer as governor, then proposes
+    ///      this contract) and in any future migration back to a WoolFiGovernor instance.
+    function acceptHookGovernor() external onlyOwner {
+        hook.acceptGovernor();
     }
 
     /// @notice Repoint the hook's position manager (e.g. during a PM upgrade). Passing

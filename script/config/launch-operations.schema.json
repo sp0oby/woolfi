@@ -11,7 +11,7 @@
     "launchEnabled": {"const": false},
     "operations": {
       "type": "array",
-      "minItems": 7,
+      "minItems": 8,
       "items": {
         "type": "object",
         "required": ["id", "phase", "dependsOn", "approvalReference"],
@@ -19,7 +19,16 @@
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "phase": {
-            "enum": ["core", "router-rebate", "oracles-pools", "liquidity", "rebate-funding", "ownership", "services"]
+            "enum": [
+              "core",
+              "router-rebate",
+              "oracle-adapters",
+              "oracles-pools",
+              "liquidity",
+              "rebate-funding",
+              "ownership",
+              "services"
+            ]
           },
           "dependsOn": {"type": "array", "items": {"type": "string"}},
           "argv": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},

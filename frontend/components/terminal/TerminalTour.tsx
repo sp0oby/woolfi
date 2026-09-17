@@ -3,7 +3,7 @@
 import {useEffect, useState} from "react";
 import {createPortal} from "react-dom";
 
-// Tutorial reopens on every visit — user preference. If a "don't show again" UX becomes
+// Tutorial reopens on every visit (user preference). If a "don't show again" UX becomes
 // desirable later, add a checkbox in the tour card and write this key back.
 const STORAGE_KEY = "";
 
@@ -30,6 +30,13 @@ type Step = {
  */
 const STEPS: Step[] = [
   {
+    title: "Connect and approve",
+    body:
+      "Click Connect in the top right. The first time you trade or deposit a token, you'll sign one extra Approve transaction so the router or position manager can move it. That's once per token.",
+    region: {top: "0", right: "0", width: "420px", height: "56px"},
+    cardPos: "left",
+  },
+  {
     title: "Pick a pool",
     body:
       "The left rail lists all 16 pools. Green dot means live, gray means pending. Use the search or the category chips to filter.",
@@ -39,7 +46,7 @@ const STEPS: Step[] = [
   {
     title: "Read the drift",
     body:
-      "The header shows the pair, current state, fair price, live drift in bps, and the tolerance and hard-threshold rails. Green drift is below fair, red is above.",
+      "Drift is how far the pool price sits from the Chainlink price, in basis points (1 bp = 0.01%). The header shows the pair, current state, fair price, live drift in bps, and the tolerance and hard-threshold rails. Green drift is below fair, red is above.",
     region: {top: "56px", left: "320px", right: "480px", height: "84px"},
     cardPos: "center-bottom",
   },
@@ -60,7 +67,7 @@ const STEPS: Step[] = [
   {
     title: "Track your position",
     body:
-      "Wallet balances, LP shares, staked URU, and pending fees or rewards for the selected pool. Updates as your wallet does.",
+      "Wallet balances, LP shares, staked URU, and pending fees or rewards for the selected pool. Updates as your wallet does. Unfamiliar term? See the glossary in /docs.",
     region: {top: "496px", right: "0", width: "480px", bottom: "32px"},
     cardPos: "left",
   },

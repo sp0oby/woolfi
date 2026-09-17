@@ -3,7 +3,7 @@ import {resolve} from "node:path";
 import {createPublicClient, createWalletClient, http} from "viem";
 import {privateKeyToAccount} from "viem/accounts";
 
-import {keepPools} from "./keep.js";
+import {keepPools, notifyWebhook, summarize} from "./keep.js";
 import {isDeployed, loadManifest} from "./manifest.js";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -13,6 +13,10 @@ async function main() {
   const rpcUrl = process.env.ROBINHOOD_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
   const cadenceMs = Number(process.env.KEEPER_CADENCE_MS ?? 60_000);
   const broadcast = process.env.KEEPER_BROADCAST === "true";
+  // Default true: a failed simulation is a signal something is wrong with the pool, the RPC,
+  // or the manifest, and should surface as a non-zero exit for whatever supervises this.
+  const failOnError = (process.env.KEEPER_FAIL_ON_ERROR ?? "true") === "true";
+  const alertWebhook = process.env.KEEPER_ALERT_WEBHOOK;
   const keeper = optionalAddress(process.env.KEEPER_ADDRESS);
   const manifest = loadManifest(manifestPath);
 
@@ -50,7 +54,16 @@ async function main() {
       manifest.pools,
       {keeper, broadcast},
     );
-    console.log(JSON.stringify({at: new Date().toISOString(), dryRun: !broadcast, outcomes}, null, 2));
+    const summary = summarize(outcomes);
+    console.log(JSON.stringify({at: summary.tick, dryRun: !broadcast, outcomes, summary}, null, 2));
+
+    if (summary.failures > 0) {
+      if (alertWebhook) await notifyWebhook(alertWebhook, summary);
+      if (failOnError) {
+        console.error(JSON.stringify(summary));
+        process.exit(1);
+      }
+    }
   };
 
   await run();

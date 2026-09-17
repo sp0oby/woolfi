@@ -763,30 +763,96 @@ contract WoolFiHookTest is Deployers {
         hook.setVault(_freshKey(), address(0xCAFE), 2000);
     }
 
-    function testRevert_setVault_bpsTooHigh() public {
+    /// @notice 100% drawdown is rejected: it would zero `totalStaked` with shares outstanding and
+    ///         brick every future `stake` in the vault (division by zero backing).
+    function testRevert_setVault_bpsFullSeizure() public {
         vm.expectRevert(WoolFiHook.InvalidConfig.selector);
-        hook.setVault(poolKey, address(0xCAFE), 10_001);
+        hook.setVault(poolKey, address(0xCAFE), 10_000);
     }
 
-    function test_setGovernor_updatesGovernor() public {
+    function test_setVault_bpsJustBelowFull() public {
+        hook.setVault(poolKey, address(0xCAFE), 9_999);
+        assertEq(hook.poolConfig(poolId).drawdownBps, 9_999);
+    }
+
+    /// @notice A vault whose `drawdown` reverts must not brick the swap path: the break flag and
+    ///         cached fair persist, the swap succeeds, and `DrawdownFailed` is emitted.
+    function test_structuralBreak_persistsWhenDrawdownReverts() public {
+        RevertingVault vault = new RevertingVault();
+        hook.setVault(poolKey, address(vault), 2000);
+
+        oracle0.setPrice(1.2e18); // drift beyond the hard threshold
+
+        vm.expectEmit(true, false, false, false, address(hook));
+        emit WoolFiHook.DrawdownFailed(poolId, address(vault), "");
+        swap(poolKey, true, EXACT_IN, ZERO_BYTES); // must NOT revert
+
+        assertTrue(hook.poolConfig(poolId).structuralBreak);
+        assertGt(hook.poolConfig(poolId).cachedFairPriceWad, 0);
+    }
+
+    function test_proposeGovernor_requiresAccept() public {
         address newGov = makeAddr("newGov");
-        hook.setGovernor(newGov);
+        hook.proposeGovernor(newGov);
+        // Proposal alone changes nothing.
+        assertEq(hook.governor(), address(this));
+        assertEq(hook.pendingGovernor(), newGov);
+        hook.setPaused(true); // current governor still in control
+        hook.setPaused(false);
+
+        vm.prank(newGov);
+        hook.acceptGovernor();
         assertEq(hook.governor(), newGov);
+        assertEq(hook.pendingGovernor(), address(0));
+
+        vm.expectRevert(WoolFiHook.NotGovernor.selector);
+        hook.setPaused(true); // old governor locked out
     }
 
-    function testRevert_setGovernor_zeroAddress() public {
+    function testRevert_proposeGovernor_zeroAddress() public {
         vm.expectRevert(WoolFiHook.InvalidConfig.selector);
-        hook.setGovernor(address(0));
+        hook.proposeGovernor(address(0));
     }
 
-    function testRevert_setGovernor_notGovernor() public {
+    function testRevert_proposeGovernor_notGovernor() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(WoolFiHook.NotGovernor.selector);
-        hook.setGovernor(address(0xBEEF));
+        hook.proposeGovernor(address(0xBEEF));
+    }
+
+    function testRevert_acceptGovernor_notPending() public {
+        hook.proposeGovernor(makeAddr("newGov"));
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(WoolFiHook.NotPendingGovernor.selector);
+        hook.acceptGovernor();
+    }
+
+    function testRevert_acceptGovernor_nothingPending() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(WoolFiHook.NotPendingGovernor.selector);
+        hook.acceptGovernor();
     }
 
     function _freshKey() internal view returns (PoolKey memory k) {
         k = poolKey;
         k.tickSpacing = 30; // distinct poolId, never authorized
     }
+}
+
+/// @dev Minimal IUnderwritingVault whose `drawdown` always reverts. Models a mis-bound or
+///      transfer-hooked vault so the hook's try/catch containment path can be exercised. (No
+///      call counter: state written before the revert is rolled back with it, so the
+///      `DrawdownFailed` event is the only durable evidence the call was attempted.)
+contract RevertingVault {
+    error DrawdownRejected();
+
+    function drawdown(uint256) external pure returns (uint256) {
+        revert DrawdownRejected();
+    }
+
+    function totalShares() external pure returns (uint256) {
+        return 1;
+    }
+
+    function depositRewards(uint256, uint256) external {}
 }

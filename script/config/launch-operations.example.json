@@ -26,9 +26,16 @@
       "approvalReference": ""
     },
     {
+      "id": "deploy-oracle-adapters",
+      "phase": "oracle-adapters",
+      "dependsOn": ["deploy-liquidity-zapper"],
+      "argv": ["python", "script/deploy_oracle_adapters.py", "--config", "script/config/robinhood-batch.json"],
+      "approvalReference": ""
+    },
+    {
       "id": "deploy-oracles-and-pools",
       "phase": "oracles-pools",
-      "dependsOn": ["deploy-liquidity-zapper"],
+      "dependsOn": ["deploy-oracle-adapters"],
       "argv": ["python", "script/robinhood_batch.py", "deploy", "--config", "script/config/robinhood-batch.json"],
       "approvalReference": ""
     },

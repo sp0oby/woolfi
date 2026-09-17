@@ -172,32 +172,28 @@ contract RobinhoodStockOracleAdapterTest is Test {
     }
 
     function test_constructor_allowsSequencerDisabled() public {
-        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
-            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
-        );
+        RobinhoodStockOracleAdapter disabled =
+            new RobinhoodStockOracleAdapter(address(stock), address(priceFeed), address(0), HEARTBEAT, 0);
         assertFalse(disabled.sequencerEnabled());
         assertEq(address(disabled.sequencerUptimeFeed()), address(0));
         assertEq(disabled.gracePeriod(), 0);
     }
 
     function test_getPrice_worksWithSequencerDisabled() public {
-        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
-            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
-        );
+        RobinhoodStockOracleAdapter disabled =
+            new RobinhoodStockOracleAdapter(address(stock), address(priceFeed), address(0), HEARTBEAT, 0);
         assertEq(disabled.getPrice(), 250e18);
     }
 
     function test_requireRuntimeGuards_allowsWithSequencerDisabled() public {
-        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
-            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
-        );
+        RobinhoodStockOracleAdapter disabled =
+            new RobinhoodStockOracleAdapter(address(stock), address(priceFeed), address(0), HEARTBEAT, 0);
         disabled.requireRuntimeGuards();
     }
 
     function testRevert_requireRuntimeGuards_rejectsOraclePausedWithoutSequencer() public {
-        RobinhoodStockOracleAdapter disabled = new RobinhoodStockOracleAdapter(
-            address(stock), address(priceFeed), address(0), HEARTBEAT, 0
-        );
+        RobinhoodStockOracleAdapter disabled =
+            new RobinhoodStockOracleAdapter(address(stock), address(priceFeed), address(0), HEARTBEAT, 0);
         stock.setOraclePaused(true);
         vm.expectRevert(RobinhoodStockOracleAdapter.OraclePaused.selector);
         disabled.requireRuntimeGuards();

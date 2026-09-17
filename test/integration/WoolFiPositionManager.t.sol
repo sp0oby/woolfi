@@ -386,15 +386,34 @@ contract WoolFiPositionManagerTest is Deployers {
         pm.setFeeConfig(poolKey, address(0xCAFE), 4000, address(0xBEEF), 1001); // > 50%
     }
 
-    function test_setOwner_updates() public {
-        pm.setOwner(alice);
+    function test_transferOwnership_requiresAccept() public {
+        pm.transferOwnership(alice);
+        // Staged only; current owner keeps control until alice accepts.
+        assertEq(pm.owner(), address(this));
+        assertEq(pm.pendingOwner(), alice);
+
+        vm.prank(alice);
+        pm.acceptOwnership();
         assertEq(pm.owner(), alice);
+        assertEq(pm.pendingOwner(), address(0));
     }
 
-    function testRevert_setOwner_notOwner() public {
+    function testRevert_transferOwnership_notOwner() public {
         vm.prank(alice);
         vm.expectRevert(WoolFiPositionManager.NotOwner.selector);
-        pm.setOwner(alice);
+        pm.transferOwnership(alice);
+    }
+
+    function testRevert_transferOwnership_zeroAddress() public {
+        vm.expectRevert(WoolFiPositionManager.InvalidFeeConfig.selector);
+        pm.transferOwnership(address(0));
+    }
+
+    function testRevert_acceptOwnership_notPending() public {
+        pm.transferOwnership(alice);
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(WoolFiPositionManager.NotPendingOwner.selector);
+        pm.acceptOwnership();
     }
 
     /// @notice `pendingFees` (post-poke) equals what the LP then collects.

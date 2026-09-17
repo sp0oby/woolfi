@@ -64,7 +64,8 @@ contract TransferOwnership is Script {
         console2.log(string.concat("xfer  ", label));
     }
 
-    /// @dev WoolFiPositionManager uses a custom `setOwner(address)` rather than OZ Ownable.
+    /// @dev WoolFiPositionManager uses a custom two-step `transferOwnership` / `acceptOwnership`
+    ///      pair rather than OZ Ownable. This stages the handoff; the multisig must accept.
     function _maybeTransferPm(address target, address deployer, address multisig) internal {
         if (target == address(0)) {
             console2.log("skip  WoolFiPositionManager (address unset)");
@@ -79,8 +80,8 @@ contract TransferOwnership is Script {
             console2.log("skip  WoolFiPositionManager (owner is not deployer)");
             return;
         }
-        WoolFiPositionManager(target).setOwner(multisig);
-        console2.log("xfer  WoolFiPositionManager");
+        WoolFiPositionManager(target).transferOwnership(multisig);
+        console2.log("stage WoolFiPositionManager (multisig must acceptOwnership)");
     }
 
     function _envOr(string memory key, address fallback_) internal view returns (address) {

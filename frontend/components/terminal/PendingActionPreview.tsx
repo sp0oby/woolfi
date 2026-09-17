@@ -15,7 +15,10 @@ export function PreviewSwap({pool}: {pool: CuratedPool}) {
   const from = pool.base.symbol;
   const to = pool.quote.symbol;
   return (
-    <Frame title="Trade" hint="Swap unlocks at coordinated launch.">
+    <Frame
+      title="Trade"
+      hint="Swap one pool token for the other. Fee is lower if your trade moves the pool toward the Chainlink price, higher if away."
+    >
       <TokenInput label="From" symbol={from} />
       <SwapChips />
       <SwapDirection />
@@ -33,7 +36,10 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
     (s) => s !== pool.base.symbol && s !== pool.quote.symbol,
   );
   return (
-    <Frame title="Provide liquidity" hint="Full-range LP mint. Withdrawals always open.">
+    <Frame
+      title="Provide liquidity"
+      hint="Deposit both tokens at the pool ratio (or zap in one). You earn 70% of swap fees. You do not bear structural-break drawdown; you do bear normal price risk."
+    >
       <div className="grid grid-cols-2 border border-line p-0.5 font-mono text-micro uppercase tracking-[0.2em]">
         {(["balanced", "single"] as const).map((m) => (
           <button
@@ -89,7 +95,10 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
 
 export function PreviewStake({pool}: {pool: CuratedPool}) {
   return (
-    <Frame title="Stake URU" hint="Underwriter earns pool-token fees, bears break drawdown.">
+    <Frame
+      title="Stake URU"
+      hint="Stake URU to backstop this pool. You earn 20% of its swap fees. If the pool price breaks more than 15% from the oracle, up to 20% of the vault is used to fix it and you lose that share."
+    >
       <TokenInput label="Stake" symbol="URU" />
       <QuickAmounts />
       <MiniRow label="Drawdown on break" value={`${pool.risk.drawdownBps / 100}% of vault`} />
@@ -101,7 +110,10 @@ export function PreviewStake({pool}: {pool: CuratedPool}) {
 
 export function PreviewRebate({pool}: {pool: CuratedPool}) {
   return (
-    <Frame title="Urufu Gemu rebate" hint="15% of base-fee portion, funded, per-token weekly cap.">
+    <Frame
+      title="Urufu Gemu rebate"
+      hint="Hold an Urufu Gemu NFT and 15% of the base fee on your swaps comes back to you, funded in advance, capped weekly."
+    >
       <MiniRow label="Eligibility" value="Connect wallet · check NFT" />
       <MiniRow label="Rebate rate" value="15% of base-fee portion" />
       <MiniRow label="Pool" value={`${pool.base.symbol} / ${pool.quote.symbol}`} />

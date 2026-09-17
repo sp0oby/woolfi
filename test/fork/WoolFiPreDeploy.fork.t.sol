@@ -111,8 +111,7 @@ contract WoolFiPreDeployForkTest is Test {
         _requireCreate2Factory();
         Deploy script = new Deploy();
         address multisig = makeAddr("multisig");
-        Deploy.Deployment memory dep =
-            script.deployWoolFi(IPoolManager(POOL_MANAGER), URU, address(script), multisig);
+        Deploy.Deployment memory dep = script.deployWoolFi(IPoolManager(POOL_MANAGER), URU, address(script), multisig);
 
         assertEq(dep.stakingToken, URU, "staking token wired");
         assertGt(dep.hook.code.length, 0, "hook has code");
@@ -120,6 +119,10 @@ contract WoolFiPreDeployForkTest is Test {
         assertGt(dep.governor.code.length, 0, "governor has code");
         assertEq(WoolFiHook(dep.hook).governor(), dep.governor, "hook governor set");
         assertEq(WoolFiHook(dep.hook).positionManager(), dep.positionManager, "hook pm set");
+        // Ownable2Step: deploy stages the handoff, the multisig must accept.
+        assertEq(WoolFiGovernor(dep.governor).pendingOwner(), multisig, "governor handoff staged");
+        vm.prank(multisig);
+        WoolFiGovernor(dep.governor).acceptOwnership();
         assertEq(WoolFiGovernor(dep.governor).owner(), multisig, "governor owned by multisig");
         assertEq(WoolFiPositionManager(dep.positionManager).owner(), multisig, "pm owned by multisig");
     }
@@ -179,6 +182,7 @@ contract WoolFiPreDeployForkTest is Test {
         Deploy.Deployment memory dep = script.deployWoolFi(IPoolManager(POOL_MANAGER), URU, address(script), me);
         WoolFiHook hook = WoolFiHook(dep.hook);
         WoolFiGovernor governor = WoolFiGovernor(dep.governor);
+        governor.acceptOwnership(); // Ownable2Step: complete the staged handoff to `me`
         WoolFiPositionManager pm = WoolFiPositionManager(dep.positionManager);
 
         RobinhoodStockOracleAdapter mstrAdapter =

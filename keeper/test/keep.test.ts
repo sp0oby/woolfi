@@ -3,7 +3,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {describe, expect, it} from "vitest";
 
-import {keepPools} from "../src/keep";
+import {keepPools, notifyWebhook, summarize} from "../src/keep";
 import {isDeployed, loadManifest} from "../src/manifest";
 
 const hook = "0x1111111111111111111111111111111111111111";
@@ -95,5 +95,57 @@ describe("keepPools", () => {
     );
     expect(calls).toEqual(["checkStructuralBreak"]);
     expect(outcomes[0]).toMatchObject({slug: "mstr-usdg", simulated: true, broadcast: false});
+  });
+
+  it("records a simulate failure for one pool and keeps going for the rest", async () => {
+    const key = {
+      currency0: "0x2222222222222222222222222222222222222222" as const,
+      currency1: "0x3333333333333333333333333333333333333333" as const,
+      fee: 0x800000,
+      tickSpacing: 60,
+      hooks: hook as `0x${string}`,
+    };
+    const boomKey = {...key};
+    const pools = [
+      {slug: "ok-a", poolId: `0x${"1".repeat(64)}` as `0x${string}`, startBlock: 1, key},
+      {slug: "boom", poolId: `0x${"2".repeat(64)}` as `0x${string}`, startBlock: 1, key: boomKey},
+      {slug: "ok-b", poolId: `0x${"3".repeat(64)}` as `0x${string}`, startBlock: 1, key},
+    ];
+    const outcomes = await keepPools(
+      {
+        publicClient: {
+          simulateContract: async ({args}) => {
+            if ((args as [typeof key])[0] === boomKey) throw new Error("revert: StructuralBreakActive");
+            return {request: {}} as never;
+          },
+        },
+      },
+      pools,
+      {broadcast: false},
+    );
+    expect(outcomes.map((o) => o.slug)).toEqual(["ok-a", "boom", "ok-b"]);
+    expect(outcomes[1]).toMatchObject({slug: "boom", simulated: false, error: "revert: StructuralBreakActive"});
+    const summary = summarize(outcomes, "2026-09-16T00:00:00.000Z");
+    expect(summary).toEqual({tick: "2026-09-16T00:00:00.000Z", pools: 3, failures: 1, ready: false});
+  });
+
+  it("summarize reports ready when every pool simulated", () => {
+    const summary = summarize(
+      [
+        {slug: "a", poolId: `0x${"1".repeat(64)}`, action: "checkStructuralBreak", simulated: true, broadcast: false},
+        {slug: "b", poolId: `0x${"2".repeat(64)}`, action: "checkStructuralBreak", simulated: true, broadcast: false},
+      ],
+      "t",
+    );
+    expect(summary).toEqual({tick: "t", pools: 2, failures: 0, ready: true});
+  });
+
+  it("notifyWebhook never throws when the endpoint is unreachable", async () => {
+    const ok = await notifyWebhook(
+      "http://127.0.0.1:9/unreachable",
+      {tick: "t", pools: 1, failures: 1, ready: false},
+      500,
+    );
+    expect(ok).toBe(false);
   });
 });

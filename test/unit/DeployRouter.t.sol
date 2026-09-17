@@ -19,6 +19,8 @@ contract DeployRouterTest is Test {
         vm.setEnv("POOL_MANAGER", vm.toString(POOL_MANAGER));
         vm.setEnv("HOOK", vm.toString(HOOK));
         vm.setEnv("URUFU_NFT", vm.toString(URUFU_NFT));
+        // DeployRouter hard-requires MULTISIG on 4663 and rejects the deployer address.
+        vm.setEnv("MULTISIG", vm.toString(makeAddr("multisig")));
     }
 
     function test_dryRunDeploysRouterWithoutMutatingManifest() public {

@@ -16,7 +16,16 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "script/config/launch-operations.example.json"
 ZERO = "0x0000000000000000000000000000000000000000"
-PHASES = ("core", "router-rebate", "oracles-pools", "liquidity", "rebate-funding", "ownership", "services")
+PHASES = (
+    "core",
+    "router-rebate",
+    "oracle-adapters",
+    "oracles-pools",
+    "liquidity",
+    "rebate-funding",
+    "ownership",
+    "services",
+)
 
 
 def load(path: Path) -> dict[str, Any]:

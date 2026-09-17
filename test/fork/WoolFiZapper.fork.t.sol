@@ -188,6 +188,7 @@ contract WoolFiZapperForkTest is Test {
         Deploy.Deployment memory dep = script.deployWoolFi(IPoolManager(POOL_MANAGER), URU, address(script), me);
         hook = WoolFiHook(dep.hook);
         governor = WoolFiGovernor(dep.governor);
+        governor.acceptOwnership(); // Ownable2Step: complete the staged handoff to `me`
         pm = WoolFiPositionManager(dep.positionManager);
 
         mstrOracle = new RobinhoodStockOracleAdapter(TOK_MSTR, FEED_MSTR, address(0), FORK_HEARTBEAT, 0);

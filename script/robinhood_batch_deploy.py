@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -11,6 +14,8 @@ from typing import Any
 from robinhood_catalog import ASSETS, ZERO
 
 ROOT = Path(__file__).resolve().parents[1]
+# forge prints `Hash: 0x...` for each broadcast transaction receipt.
+BROADCAST_HASH = re.compile(r"Hash:\s*(0x[0-9a-fA-F]{64})")
 
 
 def deploy(config: dict[str, Any], manifest: dict[str, Any], rpc_url: str, broadcast: bool) -> int:
@@ -35,7 +40,16 @@ def deploy(config: dict[str, Any], manifest: dict[str, Any], rpc_url: str, broad
     return 0
 
 
-def seed(config: dict[str, Any], manifest: dict[str, Any], rpc_url: str, broadcast: bool) -> int:
+def seed(
+    config: dict[str, Any],
+    manifest: dict[str, Any],
+    rpc_url: str,
+    broadcast: bool,
+    manifest_path: Path | None = None,
+) -> int:
+    """Seed each deployed, not-yet-seeded pool. On broadcast, record the slug in
+    `manifest.seededPools` (and persist when `manifest_path` is given) so a resumed run never
+    seeds the same pool twice. Dry runs record nothing."""
     deployed = {pool.get("slug") for pool in manifest.get("pools", [])}
     seeded = {pool.get("slug") for pool in manifest.get("seededPools", [])}
     for pool in config["pools"]:
@@ -58,10 +72,25 @@ def seed(config: dict[str, Any], manifest: dict[str, Any], rpc_url: str, broadca
         if broadcast:
             command.append("--broadcast")
         print(f"{'broadcast' if broadcast else 'dry-run'} seed {slug}")
-        result = subprocess.run(command, cwd=ROOT, env=env, check=False)
+        result = subprocess.run(command, cwd=ROOT, env=env, check=False, capture_output=True, text=True)
+        sys.stdout.write(result.stdout or "")
+        sys.stderr.write(result.stderr or "")
         if result.returncode:
             return result.returncode
+        if broadcast:
+            entry: dict[str, str] = {"slug": slug}
+            match = BROADCAST_HASH.search(result.stdout or "")
+            if match:
+                entry["txHash"] = match.group(1)
+            manifest.setdefault("seededPools", []).append(entry)
+            seeded.add(slug)
+            if manifest_path is not None:
+                write_manifest(manifest_path, manifest)
     return 0
+
+
+def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
 def _ordered_symbols(pool: dict[str, Any]) -> list[str]:

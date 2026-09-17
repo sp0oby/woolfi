@@ -20,6 +20,7 @@ const SECTIONS = [
   {id: "hours", label: "Market hours"},
   {id: "rht", label: "Robinhood Stock Tokens"},
   {id: "breaks", label: "Structural breaks"},
+  {id: "glossary", label: "Glossary"},
   {id: "status", label: "Status"},
   {id: "source", label: "Source"},
 ] as const;
@@ -146,6 +147,60 @@ export default function DocsPage() {
             </p>
           </Section>
 
+          <Section id="glossary" label="Glossary">
+            <dl className="border border-line bg-panel">
+              <Term name="Drift">
+                How far the pool price sits from the Chainlink price, measured in basis points.
+              </Term>
+              <Term name="Fair value">
+                The price implied by the two Chainlink feeds for the pair; the target the hook
+                pulls the pool toward.
+              </Term>
+              <Term name="Corrective / Adversarial">
+                A swap that moves the pool toward fair value is corrective and pays a lower fee;
+                one that moves it away is adversarial and pays a higher fee.
+              </Term>
+              <Term name="Tolerance band">
+                The drift range (default 500 bps either side) inside which the pool charges only
+                the flat base fee.
+              </Term>
+              <Term name="Hard threshold">
+                The drift level (default 1500 bps) at which the hook declares a structural break.
+              </Term>
+              <Term name="Structural break">
+                The contained state after a hard-threshold crossing: fair price is cached, only
+                corrective swaps are admitted, new deposits are blocked, withdrawals stay open.
+              </Term>
+              <Term name="Stabilization">
+                A short window after the referenced market opens during which asymmetric fees stay
+                off so the first prints can settle.
+              </Term>
+              <Term name="bps">
+                Basis points. 1 bp = 0.01%, so 100 bps = 1%.
+              </Term>
+              <Term name="URU">
+                An external token, bought elsewhere, that is staked into per-pool vaults as
+                underwriting capital. It carries no WoolFi governance rights.
+              </Term>
+              <Term name="Underwriting">
+                Staking URU to backstop a pool in exchange for a share of its swap fees, while
+                accepting drawdown risk if the pool breaks.
+              </Term>
+              <Term name="Drawdown">
+                The portion of a pool&apos;s URU vault (default 20%) seized to fund a rebalance when
+                a structural break triggers.
+              </Term>
+              <Term name="Urufu Gemu">
+                An NFT collection. Holding one entitles the wallet to a 15% rebate on the base-fee
+                portion of its swaps, funded in advance and capped weekly.
+              </Term>
+              <Term name="Zap">
+                Depositing a single token; the zapper swaps half of it through an approved
+                executor so you end up with both pool tokens and LP shares in one transaction.
+              </Term>
+            </dl>
+          </Section>
+
           <Section id="status" label="Status">
             <div className="border border-line bg-panel">
               <StatusRow label="Network" value="Robinhood Chain · 4663" />
@@ -223,6 +278,15 @@ function Section({id, label, children}: {id: string; label: string; children: Re
       <p className="font-mono text-2xs uppercase tracking-[0.24em] text-signal">{label}</p>
       <div className="mt-4 space-y-4 text-[15px] leading-[1.7] text-ink/85">{children}</div>
     </section>
+  );
+}
+
+function Term({name, children}: {name: string; children: React.ReactNode}) {
+  return (
+    <div className="border-b border-line px-4 py-3 last:border-b-0">
+      <dt className="font-mono text-2xs uppercase tracking-[0.22em] text-signal">{name}</dt>
+      <dd className="mt-1.5 text-[14px] leading-[1.6] text-ink/80">{children}</dd>
+    </div>
   );
 }
 

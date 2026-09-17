@@ -122,9 +122,17 @@ def validate(
     contract_addresses.append(("core.multisig", multisig))
     market_hours = _address(core.get("marketHours"), "core.marketHours", errors)
     contract_addresses.append(("core.marketHours", market_hours))
-    sequencer = _address(core.get("sequencerUptimeFeed"), "core.sequencerUptimeFeed", errors)
+    # Spec 5.1: Robinhood Chain publishes no L2 sequencer uptime feed, so zero is a valid,
+    # deliberate opt-out. A nonzero feed must have code (checked below) and a positive grace
+    # period; a zero feed must pair with a zero grace period, mirroring the adapter's
+    # IncompleteSequencerConfig revert.
+    sequencer = _address(core.get("sequencerUptimeFeed"), "core.sequencerUptimeFeed", errors, allow_zero=True)
     contract_addresses.append(("core.sequencerUptimeFeed", sequencer))
-    _positive(core.get("sequencerGracePeriod"), "core.sequencerGracePeriod", errors)
+    grace = _nonneg(core.get("sequencerGracePeriod"), "core.sequencerGracePeriod", errors)
+    if sequencer == ZERO and grace != 0:
+        errors.append("core.sequencerGracePeriod must be 0 when sequencerUptimeFeed is zero (spec 5.1 opt-out)")
+    if sequencer != ZERO and grace == 0:
+        errors.append("core.sequencerGracePeriod must be positive when sequencerUptimeFeed is set")
     total_cap = _positive(core.get("totalTreasuryAllocationCap"), "core.totalTreasuryAllocationCap", errors)
 
     assets = config.get("assets", {})
@@ -359,7 +367,7 @@ def main() -> int:
         print(json.dumps({"ready": False, "errors": ["set CONFIRM_MAINNET=true before broadcast"]}))
         return 1
     if args.command == "seed":
-        return seed(config, manifest, args.rpc_url, args.broadcast)
+        return seed(config, manifest, args.rpc_url, args.broadcast, manifest_path=args.manifest)
     return deploy(config, manifest, args.rpc_url, args.broadcast)
 
 

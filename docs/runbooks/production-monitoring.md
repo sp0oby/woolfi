@@ -42,7 +42,7 @@ invented values.
 
 ## Shift checklist
 
-- Confirm all-18 catalog and `launchStatus`.
+- Confirm all-16 catalog and `launchStatus`.
 - Review unresolved structural breaks, paused feeds, stale rounds, and sequencer state.
 - Reconcile keeper and indexer failures with transaction receipts.
 - Review privileged events and ownership against the approved multisig record.

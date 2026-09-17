@@ -36,6 +36,10 @@ __pycache__/
 .idea/
 .vscode/
 
+# Real launch inputs live outside version control; only the .example.json overlays are tracked
+script/config/robinhood-batch.json
+script/config/launch-operations.json
+
 # Tooling / sessions
 .claude/
 .cursor/

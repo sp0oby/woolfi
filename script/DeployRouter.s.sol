@@ -11,8 +11,8 @@ import {RobinhoodBroadcastGuard} from "./lib/RobinhoodBroadcastGuard.sol";
 
 /// @notice Deploys the swap router and its Urufu Gemu NFT-holder rebate distributor.
 /// @dev Idempotent: reuses and verifies a complete existing pair, or deploys both together.
-///      Requires POOL_MANAGER, URUFU_NFT, DEPLOYER_PRIVATE_KEY, and either a receipt-backed
-///      manifest hook or HOOK for a dry run. MULTISIG defaults to the deployer.
+///      Requires POOL_MANAGER, URUFU_NFT, DEPLOYER_PRIVATE_KEY, MULTISIG (must not be the
+///      deployer), and either a receipt-backed manifest hook or HOOK for a dry run.
 contract DeployRouter is RobinhoodBroadcastGuard {
     string internal constant MANIFEST = "frontend/lib/deployments/robinhood.json";
     address internal constant URUFU_NFT = 0x60cB7082c8C14B4237C6a24c65E7C2E7abe2Bd17;
@@ -23,7 +23,9 @@ contract DeployRouter is RobinhoodBroadcastGuard {
 
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(pk);
-        address multisig = vm.envOr("MULTISIG", deployer);
+        address multisig = vm.envAddress("MULTISIG");
+        require(multisig != address(0), "DeployRouter: MULTISIG is zero");
+        require(multisig != deployer, "DeployRouter: MULTISIG must not be the deployer");
         IPoolManager poolManager = IPoolManager(vm.envAddress("POOL_MANAGER"));
         address urufuNft = vm.envOr("URUFU_NFT", URUFU_NFT);
         require(address(poolManager).code.length > 0, "DeployRouter: POOL_MANAGER has no code");

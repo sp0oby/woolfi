@@ -7,8 +7,8 @@ import {WoolFiLiquidityZapper, IWoolFiPositionManagerMint} from "../src/WoolFiLi
 import {RobinhoodBroadcastGuard} from "./lib/RobinhoodBroadcastGuard.sol";
 
 /// @notice Deploys the dedicated one-token LP zapper.
-/// @dev Requires DEPLOYER_PRIVATE_KEY, POSITION_MANAGER, WRAPPED_NATIVE, SWAP_EXECUTOR.
-///      MULTISIG defaults to deployer.
+/// @dev Requires DEPLOYER_PRIVATE_KEY, POSITION_MANAGER, WRAPPED_NATIVE, SWAP_EXECUTOR, and
+///      MULTISIG (the zapper owner; must not be the deployer on Robinhood Chain).
 contract DeployLiquidityZapper is RobinhoodBroadcastGuard {
     string private constant MANIFEST = "frontend/lib/deployments/robinhood.json";
 
@@ -16,7 +16,10 @@ contract DeployLiquidityZapper is RobinhoodBroadcastGuard {
         _requireRobinhoodBroadcastApproval();
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(pk);
-        address owner = vm.envOr("MULTISIG", deployer);
+        address owner = vm.envAddress("MULTISIG");
+        if (block.chainid == ROBINHOOD_CHAIN_ID) {
+            require(owner != deployer, "DeployZapper: MULTISIG must not be the deployer");
+        }
         address positionManager = vm.envAddress("POSITION_MANAGER");
         address wrappedNative = vm.envAddress("WRAPPED_NATIVE");
         address swapExecutor = vm.envAddress("SWAP_EXECUTOR");

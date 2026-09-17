@@ -101,7 +101,9 @@ contract LifecycleTest is Deployers {
 
         pm = new WoolFiPositionManager(manager, multisig);
         governor = new WoolFiGovernor(deployed, multisig);
-        hook.setGovernor(address(governor));
+        hook.proposeGovernor(address(governor));
+        vm.prank(multisig);
+        governor.acceptHookGovernor();
         keeper = new RebalanceKeeper(hook, pm);
 
         // oracles + market-hours
@@ -380,7 +382,10 @@ contract LifecycleTest is Deployers {
         // =================================================================
         address newGov = makeAddr("v2Governor");
         vm.prank(multisig);
-        governor.setHookGovernor(newGov);
+        governor.proposeHookGovernor(newGov);
+        assertEq(hook.governor(), address(governor)); // still the old governor until accepted
+        vm.prank(newGov);
+        hook.acceptGovernor();
         assertEq(hook.governor(), newGov);
 
         // old governor contract can no longer manage the hook

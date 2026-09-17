@@ -1,14 +1,18 @@
 import copy
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "script"))
 
+import robinhood_batch_deploy  # noqa: E402
 from robinhood_batch import DEFAULT_CONFIG, validate  # noqa: E402
-from robinhood_batch_deploy import pool_env, seed_env  # noqa: E402
+from robinhood_batch_deploy import pool_env, seed, seed_env  # noqa: E402
 from robinhood_catalog import (  # noqa: E402
     ASSETS,
     CHAIN_ID,
@@ -40,6 +44,7 @@ class RobinhoodBatchTest(unittest.TestCase):
         ):
             core[field] = f"0x{index:040x}"
         core["urufuNft"] = URUFU_NFT
+        core["sequencerGracePeriod"] = 3600  # setUp binds a nonzero (fake) sequencer feed above
         core["totalTreasuryAllocationCap"] = 18_000
         self.config["nonAtomicTransactionsAcknowledged"] = True
         for index, asset in enumerate(self.config["assets"].values(), start=100):
@@ -192,6 +197,73 @@ class RobinhoodBatchTest(unittest.TestCase):
         self.manifest["poolManager"] = "0x0000000000000000000000000000000000009999"
         errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
         self.assertIn("manifest poolManager conflicts with config", errors)
+
+    def test_sequencer_feed_may_be_zero_with_zero_grace(self):
+        core = self.config["core"]
+        core["sequencerUptimeFeed"] = ZERO
+        core["sequencerGracePeriod"] = 0
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertFalse(any("sequencer" in error.lower() for error in errors), errors)
+
+    def test_zero_sequencer_feed_rejects_nonzero_grace(self):
+        core = self.config["core"]
+        core["sequencerUptimeFeed"] = ZERO
+        core["sequencerGracePeriod"] = 3600
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertTrue(any("sequencerGracePeriod must be 0" in error for error in errors), errors)
+
+    def test_nonzero_sequencer_feed_requires_code_and_grace(self):
+        core = self.config["core"]
+        core["sequencerGracePeriod"] = 0
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertTrue(any("sequencerGracePeriod must be positive" in error for error in errors), errors)
+
+        class NoCodeRpc(CodeBearingRpc):
+            def has_code(self, address):
+                return address != core["sequencerUptimeFeed"].lower()
+
+        core["sequencerGracePeriod"] = 3600
+        errors = validate(self.config, self.manifest, NoCodeRpc(), require_deployed=False)
+        self.assertIn("core.sequencerUptimeFeed has no contract code", errors)
+
+    def _seed_fixture(self):
+        pool = self.config["pools"][0]
+        manifest = {
+            "chainId": CHAIN_ID,
+            "pools": [{"slug": pool["slug"]}],
+            "seededPools": [],
+        }
+        config = copy.deepcopy(self.config)
+        config["pools"] = [pool]
+        return config, manifest
+
+    def test_seed_records_seeded_pools_on_broadcast_only(self):
+        config, manifest = self._seed_fixture()
+        slug = config["pools"][0]["slug"]
+        forge_output = SimpleNamespace(
+            returncode=0, stdout="##### robinhood\nHash: 0x" + "b" * 64 + "\n", stderr=""
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "robinhood.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            with mock.patch.object(robinhood_batch_deploy.subprocess, "run", return_value=forge_output) as run:
+                self.assertEqual(seed(config, manifest, "http://rpc", False, manifest_path=path), 0)
+                self.assertEqual(run.call_count, 1)
+            self.assertEqual(manifest["seededPools"], [])
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["seededPools"], [])
+
+            with mock.patch.object(robinhood_batch_deploy.subprocess, "run", return_value=forge_output) as run:
+                self.assertEqual(seed(config, manifest, "http://rpc", True, manifest_path=path), 0)
+                self.assertEqual(run.call_count, 1)
+                self.assertIn("--broadcast", run.call_args.args[0])
+            self.assertEqual(manifest["seededPools"], [{"slug": slug, "txHash": "0x" + "b" * 64}])
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["seededPools"], manifest["seededPools"])
+
+            # Resumed broadcast must skip the recorded slug instead of double-seeding.
+            with mock.patch.object(robinhood_batch_deploy.subprocess, "run", return_value=forge_output) as run:
+                self.assertEqual(seed(config, manifest, "http://rpc", True, manifest_path=path), 0)
+                self.assertEqual(run.call_count, 0)
 
     def _deployed(self, index, pair, slug):
         token0, token1 = sorted((ASSETS[pair[0]], ASSETS[pair[1]]))

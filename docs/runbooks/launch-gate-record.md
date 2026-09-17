@@ -39,7 +39,7 @@ Do not prefill names, addresses, decisions, or references.
 - Rebate budget approval/reference:
 - Operations readiness approval/reference:
 - Per-operation broadcast approval/reference:
-- Final all-18 go/no-go decision/reference:
+- Final all-16 go/no-go decision/reference:
 
 ## Decision
 

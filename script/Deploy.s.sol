@@ -18,7 +18,10 @@ import {RobinhoodBroadcastGuard} from "./lib/RobinhoodBroadcastGuard.sol";
 ///        POOL_MANAGER             — v4 PoolManager on the target chain
 ///        STAKING_TOKEN            — existing standard ERC-20 used by underwriting vaults (URU on Robinhood)
 ///        DEPLOYER_PRIVATE_KEY     — the broadcaster
-///        MULTISIG (optional)      — owner of PM and WoolFiGovernor; defaults to deployer
+///        MULTISIG                 — REQUIRED. Owner of the PM (from construction) and owner-to-be of
+///                                   WoolFiGovernor. Must differ from the deployer on Robinhood Chain.
+///                                   Governor ownership is two-step: this script only proposes; the
+///                                   multisig must call `WoolFiGovernor.acceptOwnership()` afterwards.
 ///      Per-pool wiring (vault, fee config, oracles) is `CreatePool.s.sol`.
 contract Deploy is RobinhoodBroadcastGuard {
     struct Deployment {
@@ -32,7 +35,12 @@ contract Deploy is RobinhoodBroadcastGuard {
         _requireRobinhoodBroadcastApproval();
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(pk);
-        address multisig = vm.envOr("MULTISIG", deployer);
+        // Hard-fail when unset: a silent deployer fallback would hand governance to a hot key.
+        address multisig = vm.envAddress("MULTISIG");
+        require(multisig != address(0), "Deploy: MULTISIG is zero");
+        if (block.chainid == ROBINHOOD_CHAIN_ID) {
+            require(multisig != deployer, "Deploy: MULTISIG must not be the deployer");
+        }
         IPoolManager poolManager = IPoolManager(vm.envAddress("POOL_MANAGER"));
         address stakingToken = vm.envAddress("STAKING_TOKEN");
         require(address(poolManager).code.length > 0, "Deploy: POOL_MANAGER has no code");
@@ -46,6 +54,11 @@ contract Deploy is RobinhoodBroadcastGuard {
         console2.log("WoolFiHook           ", dep.hook);
         console2.log("WoolFiPositionManager", dep.positionManager);
         console2.log("WoolFiGovernor       ", dep.governor);
+        console2.log("");
+        console2.log("ACTION REQUIRED: governor ownership handoff is two-step and is NOT complete.");
+        console2.log("  From MULTISIG", multisig, "submit: WoolFiGovernor.acceptOwnership() at", dep.governor);
+        console2.log("  Until it lands, the deployer key still owns governance. Do not authorize pools.");
+        console2.log("  WoolFiPositionManager is owned by MULTISIG from construction; no action needed.");
     }
 
     /// @dev Deploy logic, separated so a test (or another script) can drive it without broadcast.
@@ -69,14 +82,21 @@ contract Deploy is RobinhoodBroadcastGuard {
         if (deployed != minedHook) revert HookMiner.AddressMismatch(minedHook, deployed);
         WoolFiHook hook = WoolFiHook(deployed);
 
-        // 2. PM owned by multisig; per-pool fee routing configured later via setFeeConfig
+        // 2. PM owned by the multisig from construction (no handoff needed); per-pool fee routing
+        //    is configured later via setFeeConfig.
         WoolFiPositionManager pm = new WoolFiPositionManager(poolManager, multisig);
 
         // 3. Governor temporarily belongs to the deployer so all privileged wiring goes through
         //    the production governance surface before ownership is handed to the multisig.
         WoolFiGovernor governor = new WoolFiGovernor(address(hook), deployer);
-        hook.setGovernor(address(governor));
+        // Two-step hook-governor handoff: deployer (bootstrap governor) proposes, the governor
+        // contract (owned by deployer at this point) accepts.
+        hook.proposeGovernor(address(governor));
+        governor.acceptHookGovernor();
         governor.setHookPositionManager(address(pm));
+        // Ownable2Step: this only stages the handoff. The multisig must call
+        // `governor.acceptOwnership()` in a separate approved tx. The PM needs no acceptance:
+        // it is owned by the multisig from construction (step 2).
         governor.transferOwnership(multisig);
 
         dep = Deployment({

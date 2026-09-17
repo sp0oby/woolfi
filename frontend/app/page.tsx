@@ -19,10 +19,13 @@ export default function SplashPage() {
         </h1>
 
         <p className="mt-10 max-w-2xl text-[18px] leading-relaxed text-ink/85 sm:text-[20px]">
-          A Uniswap v4 multi-pool market for Robinhood Stock Tokens, WETH, and USDG. Every pool
-          trades the <em className="not-italic text-ink">relationship</em> between two assets -
-          the hook discounts flow toward oracle-implied fair value and surcharges flow away from
-          it.
+          Swap Robinhood stock tokens like MSTR, NVDA, and SPY against USDG or WETH on Robinhood
+          Chain. Provide liquidity to earn the fees, or stake URU to backstop a pool for a cut.
+        </p>
+
+        <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-ink/70">
+          Fees are cheaper when your trade pushes the pool toward the real price and pricier
+          when it pushes away.
         </p>
 
         <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-muted">

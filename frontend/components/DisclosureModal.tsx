@@ -68,7 +68,7 @@ export function DisclosureModal() {
           </p>
           <p>
             WoolFi is a smart-contract protocol and does not determine your eligibility. The pool
-            inherits the issuer's geographic, transfer, and market-access restrictions. You are
+            inherits the issuer&apos;s geographic, transfer, and market-access restrictions. You are
             responsible for confirming that you may hold and trade this token.
           </p>
           <p>

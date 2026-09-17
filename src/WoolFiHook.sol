@@ -42,7 +42,10 @@ contract WoolFiHook is BaseHook {
     /// @dev bps -> v4 pip fee units (1 bps = 100 pips).
     uint256 private constant BPS_TO_PIPS = 100;
     /// @dev Hard ceilings for config sanity (governance cannot exceed these).
-    uint16 private constant MAX_BASE_FEE_BPS = 1000; // 10%
+    /// @dev Matches {SpreadMath.MAX_FEE_CAP_BPS} so the in-band flat fee can never exceed the ceiling
+    ///      the out-of-band asymmetric fee is clamped to. A higher base fee would invert the mechanic
+    ///      (out-of-band cheaper than in-band).
+    uint16 private constant MAX_BASE_FEE_BPS = 100; // 1%
     uint16 private constant MAX_THRESHOLD_BPS = 10_000; // 100%
 
     /// @notice Per-pool WoolFi configuration.
@@ -92,6 +95,8 @@ contract WoolFiHook is BaseHook {
     /// @notice Governance address authorized to manage pools and pause. Updatable so control can be
     ///         handed from the v1 multisig/`WoolFiGovernor` to on-chain governance later (spec §7.4).
     address public governor;
+    /// @notice Address that must call {acceptGovernor} to become `governor`. Zero when nothing is pending.
+    address public pendingGovernor;
     /// @notice Position manager that owns the shared full-range LP position for every WoolFi pool
     ///         this hook serves. When set, the hook pokes its `realizeFromHook` from `afterSwap`
     ///         so vault rewards and treasury-policy cuts route automatically on every trade — no keeper
@@ -112,10 +117,13 @@ contract WoolFiHook is BaseHook {
     event PoolSafetyUpdated(PoolId indexed id, uint32 stabilizationSeconds, uint32 maxOracleSkew);
     event PausedSet(bool paused);
     event VaultSet(PoolId indexed id, address vault, uint16 drawdownBps);
+    event GovernorProposed(address indexed currentGovernor, address indexed pendingGovernor);
     event GovernorUpdated(address indexed oldGovernor, address indexed newGovernor);
     event PositionManagerUpdated(address indexed oldPm, address indexed newPm);
+    event DrawdownFailed(PoolId indexed id, address vault, bytes reason);
 
     error NotGovernor();
+    error NotPendingGovernor();
     error Paused();
     error PoolNotConfigured();
     error PoolAlreadyConfigured();
@@ -271,11 +279,21 @@ contract WoolFiHook is BaseHook {
         emit PausedSet(_paused);
     }
 
-    /// @notice Hand the governor role to a new address (e.g. v1 multisig -> on-chain governance).
-    function setGovernor(address newGovernor) external onlyGovernor {
+    /// @notice Propose a new governor (e.g. v1 multisig -> on-chain governance). Takes effect only
+    ///         when `newGovernor` calls {acceptGovernor}; the current governor keeps the role until then,
+    ///         so a mistyped address cannot strand the hook.
+    function proposeGovernor(address newGovernor) external onlyGovernor {
         if (newGovernor == address(0)) revert InvalidConfig();
-        emit GovernorUpdated(governor, newGovernor);
-        governor = newGovernor;
+        pendingGovernor = newGovernor;
+        emit GovernorProposed(governor, newGovernor);
+    }
+
+    /// @notice Complete a pending governor handoff. Callable only by `pendingGovernor`.
+    function acceptGovernor() external {
+        if (msg.sender != pendingGovernor) revert NotPendingGovernor();
+        emit GovernorUpdated(governor, msg.sender);
+        governor = msg.sender;
+        pendingGovernor = address(0);
     }
 
     /// @notice Point the hook at its {WoolFiPositionManager}. Once set, every swap's `afterSwap`
@@ -291,12 +309,14 @@ contract WoolFiHook is BaseHook {
 
     /// @notice Wire (or update) a pool's underwriting vault and the fraction of it seized on a break.
     /// @param vault The per-pool vault (address(0) disables drawdown wiring).
-    /// @param drawdownBps Fraction of the vault to seize on a structural break (<= 10_000).
+    /// @param drawdownBps Fraction of the vault to seize on a structural break. Must be strictly
+    ///        below 10_000: a full seizure would leave `totalStaked == 0` with shares outstanding
+    ///        and brick every future `stake` in the vault.
     function setVault(PoolKey calldata key, address vault, uint16 drawdownBps) external onlyGovernor {
         PoolId id = key.toId();
         WoolFiConfig storage c = _config[id];
         if (!c.configured) revert PoolNotConfigured();
-        if (drawdownBps > 10_000) revert InvalidConfig();
+        if (drawdownBps >= 10_000) revert InvalidConfig();
         c.vault = vault;
         c.drawdownBps = drawdownBps;
         emit VaultSet(id, vault, drawdownBps);
@@ -491,6 +511,9 @@ contract WoolFiHook is BaseHook {
 
     /// @dev Flags a structural break if drift has crossed the hard threshold, emits the event, and
     ///      triggers vault drawdown when wired. Returns true if a fresh break was just flagged.
+    ///      The drawdown call is isolated in try/catch: containment (break flag + cached fair) must
+    ///      persist even if the vault reverts, otherwise the flag would roll back with the swap and
+    ///      every subsequent threshold-crossing swap would revert too, leaving no corrective path.
     function _flagBreakIfReached(WoolFiConfig memory c, PoolId id, int256 drift, uint256 fair)
         internal
         returns (bool triggered)
@@ -503,7 +526,10 @@ contract WoolFiHook is BaseHook {
             emit StructuralBreakTriggered(id, drift);
             emit StructuralBreakTargetCached(id, fair);
             if (c.vault != address(0) && c.drawdownBps > 0) {
-                IUnderwritingVault(c.vault).drawdown(c.drawdownBps);
+                try IUnderwritingVault(c.vault).drawdown(c.drawdownBps) {}
+                catch (bytes memory reason) {
+                    emit DrawdownFailed(id, c.vault, reason);
+                }
             }
         }
     }

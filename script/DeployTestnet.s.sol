@@ -122,10 +122,11 @@ contract DeployTestnet is Script {
 
         dep.pm = address(new WoolFiPositionManager(poolManager, deployer));
         dep.governor = address(new WoolFiGovernor(dep.hook, deployer));
-        // Wire the PM into the hook BEFORE handing the governor role over — once setGovernor
-        // runs, only the WoolFiGovernor contract can call setPositionManager.
+        // Wire the PM into the hook BEFORE handing the governor role over — once the governor
+        // contract accepts, only it can call setPositionManager.
         WoolFiHook(dep.hook).setPositionManager(dep.pm);
-        WoolFiHook(dep.hook).setGovernor(dep.governor);
+        WoolFiHook(dep.hook).proposeGovernor(dep.governor);
+        WoolFiGovernor(dep.governor).acceptHookGovernor();
     }
 
     function _createPool(address deployer, address multisig, IPoolManager poolManager, Deployed memory dep) internal {
@@ -161,10 +162,11 @@ contract DeployTestnet is Script {
         // The multisig applies treasury policy to its fee allocation.
         WoolFiPositionManager(dep.pm).setFeeConfig(key, dep.vault, 2000, multisig, 1000);
 
-        // Ownership handoff: deployer keeps no privileges after the script finishes.
+        // Ownership handoff (two-step): this stages both transfers; the multisig must call
+        // `acceptOwnership()` on the governor and on the PM to complete them.
         if (multisig != deployer) {
             WoolFiGovernor(dep.governor).transferOwnership(multisig);
-            WoolFiPositionManager(dep.pm).setOwner(multisig);
+            WoolFiPositionManager(dep.pm).transferOwnership(multisig);
         }
     }
 

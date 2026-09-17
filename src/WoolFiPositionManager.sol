@@ -65,6 +65,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     IPoolManager public immutable poolManager;
     /// @notice Governance address allowed to set fee routing.
     address public owner;
+    /// @notice Address that must call {acceptOwnership} to become `owner`. Zero when no handoff is pending.
+    address public pendingOwner;
 
     /// @notice Per-pool fee routing config (unset = 100% of fees to LPs).
     mapping(uint256 id => FeeConfig) public feeConfig;
@@ -84,9 +86,11 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     event FeesRouted(uint256 indexed id, uint256 vault0, uint256 vault1, uint256 treasury0, uint256 treasury1);
     event FeeConfigSet(uint256 indexed id, address vault, uint16 vaultBps, address treasurySink, uint16 treasuryBps);
     event OwnerUpdated(address indexed oldOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed currentOwner, address indexed pendingOwner);
 
     error NotPoolManager();
     error NotOwner();
+    error NotPendingOwner();
     error NotHook();
     error ZeroLiquidity();
     error TransfersDisabled();
@@ -105,11 +109,20 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         owner = _owner;
     }
 
-    /// @notice Hand ownership (fee-routing control) to a new address.
-    function setOwner(address newOwner) external onlyOwner {
+    /// @notice Start handing ownership (fee-routing control) to `newOwner`. Takes effect only when
+    ///         `newOwner` calls {acceptOwnership}; the current owner keeps control until then.
+    function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert InvalidFeeConfig();
-        emit OwnerUpdated(owner, newOwner);
-        owner = newOwner;
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Complete a pending ownership handoff. Callable only by `pendingOwner`.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner();
+        emit OwnerUpdated(owner, msg.sender);
+        owner = msg.sender;
+        pendingOwner = address(0);
     }
 
     /// @notice Configure how a pool's swap fees are split (vault rewards / treasury policy / LPs).
@@ -254,7 +267,7 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     ///
     ///      This is what makes fee realization automatic in production — without it WoolFi
     ///      depends on an off-chain keeper or an LP touch to make `FeesRouted` fire.
-    function realizeFromHook(PoolKey calldata key) external {
+    function realizeFromHook(PoolKey calldata key) external nonReentrant {
         if (msg.sender != address(key.hooks)) revert NotHook();
         uint256 id = _id(key);
         (int24 tickLower, int24 tickUpper) = _fullRange(key.tickSpacing);

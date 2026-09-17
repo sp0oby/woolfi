@@ -55,9 +55,12 @@ contract DeployTest is Deployers {
 
         pm = new WoolFiPositionManager(manager, multisig);
         gov = new WoolFiGovernor(address(hook), address(this));
-        hook.setGovernor(address(gov));
+        hook.proposeGovernor(address(gov));
+        gov.acceptHookGovernor();
         gov.setHookPositionManager(address(pm));
         gov.transferOwnership(multisig);
+        vm.prank(multisig);
+        gov.acceptOwnership();
     }
 
     function test_deploy_wiresEverything() public {
@@ -80,6 +83,10 @@ contract DeployTest is Deployers {
         assertEq(dep.stakingToken, address(stakingToken));
         assertEq(WoolFiHook(dep.hook).governor(), dep.governor);
         assertEq(WoolFiHook(dep.hook).positionManager(), dep.positionManager);
+        // Ownable2Step: the script only stages the governor handoff; the multisig completes it.
+        assertEq(WoolFiGovernor(dep.governor).pendingOwner(), multisig);
+        vm.prank(multisig);
+        WoolFiGovernor(dep.governor).acceptOwnership();
         assertEq(WoolFiGovernor(dep.governor).owner(), multisig);
         assertEq(WoolFiPositionManager(dep.positionManager).owner(), multisig);
     }

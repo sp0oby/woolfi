@@ -44,7 +44,9 @@ contract WoolFiGovernorTest is Deployers {
         hook = WoolFiHook(hookAddr);
 
         governor = new WoolFiGovernor(address(hook), multisig);
-        hook.setGovernor(address(governor));
+        hook.proposeGovernor(address(governor));
+        vm.prank(multisig);
+        governor.acceptHookGovernor();
 
         oracle0 = new MockPriceOracle(1e18);
         oracle1 = new MockPriceOracle(1e18);
@@ -184,11 +186,22 @@ contract WoolFiGovernorTest is Deployers {
     // role handoff (v2 migration path)
     // -----------------------------------------------------------------
 
-    function test_setHookGovernor_handsOffRole() public {
+    function test_proposeHookGovernor_handsOffRoleAfterAccept() public {
         address newGov = makeAddr("onchainGovernor");
         vm.prank(multisig);
-        governor.setHookGovernor(newGov);
+        governor.proposeHookGovernor(newGov);
+        // Proposal alone changes nothing; the governor contract still controls the hook.
+        assertEq(hook.governor(), address(governor));
+        assertEq(hook.pendingGovernor(), newGov);
+        vm.prank(multisig);
+        governor.pauseHook();
+        vm.prank(multisig);
+        governor.unpauseHook();
+
+        vm.prank(newGov);
+        hook.acceptGovernor();
         assertEq(hook.governor(), newGov);
+        assertEq(hook.pendingGovernor(), address(0));
 
         // the governor contract no longer controls the hook
         vm.prank(multisig);
@@ -196,9 +209,45 @@ contract WoolFiGovernorTest is Deployers {
         governor.pauseHook();
     }
 
-    function testRevert_setHookGovernor_notOwner() public {
+    function testRevert_proposeHookGovernor_notOwner() public {
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
-        governor.setHookGovernor(stranger);
+        governor.proposeHookGovernor(stranger);
+    }
+
+    function testRevert_acceptHookGovernor_notOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        governor.acceptHookGovernor();
+    }
+
+    // -----------------------------------------------------------------
+    // Ownable2Step on the governor contract itself
+    // -----------------------------------------------------------------
+
+    function test_transferOwnership_requiresAccept() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(multisig);
+        governor.transferOwnership(newOwner);
+        // Still owned by multisig until the pending owner accepts.
+        assertEq(governor.owner(), multisig);
+        assertEq(governor.pendingOwner(), newOwner);
+        vm.prank(multisig);
+        governor.pauseHook(); // multisig retains control
+        vm.prank(multisig);
+        governor.unpauseHook();
+
+        vm.prank(newOwner);
+        governor.acceptOwnership();
+        assertEq(governor.owner(), newOwner);
+        assertEq(governor.pendingOwner(), address(0));
+    }
+
+    function testRevert_acceptOwnership_notPending() public {
+        vm.prank(multisig);
+        governor.transferOwnership(makeAddr("newOwner"));
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        governor.acceptOwnership();
     }
 }
