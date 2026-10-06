@@ -4,7 +4,7 @@
 **State:** pre-launch; no WoolFi production deployment exists
 
 This is the operational checklist beneath [`PROJECT_SPEC.md`](../PROJECT_SPEC.md). The public
-rollout is all 16 curated pools ready or no launch. The broadcasts themselves are resumable and
+rollout is all 18 curated pools ready or no launch. The broadcasts themselves are resumable and
 non-atomic.
 
 ## Known chain inputs
@@ -22,11 +22,11 @@ Stock assets use `RobinhoodStockOracleAdapter`; WETH and USDG use the plain
 
 ## Required launch set
 
-Stock/USDG: MSTR, COIN, CRCL, NVDA, SPY, AAPL, and TSLA against USDG.
+Stock/USDG: MSTR, COIN, CRCL, NVDA, SPY, GLD, AAPL, and TSLA against USDG.
 
 Stock/WETH: MSTR, COIN, QQQ, NVDA, and PLTR against WETH.
 
-Relative-value: AAPL/MSFT, SPY/NVDA, and SPY/QQQ.
+Relative-value: AAPL/MSFT, SPY/NVDA, SPY/QQQ, and GLD/SLV.
 
 Always open: WETH/USDG.
 
@@ -47,8 +47,8 @@ launched or marked live.
 - [ ] Per-vault URU caps and aggregate URU treasury cap explicitly approved.
 - [ ] All stock token, WETH, and USDG contracts verified.
 - [ ] All price feeds, heartbeats, sequencer settings, market-hours settings, and oracle adapters
-      verified for the 16 pool configurations.
-- [ ] Initial Q64.96 prices, risk settings, slippage bounds, and liquidity for all 16 approved.
+      verified for the 18 pool configurations.
+- [ ] Initial Q64.96 prices, risk settings, slippage bounds, and liquidity for all 18 approved.
 - [ ] Fork tests, formatting, build, tests, and dry-run scripts pass.
 - [ ] Frontend and indexer configuration reviewed against the intended manifest.
 - [ ] No zero, placeholder, or fabricated production address is presented as deployed.
@@ -99,7 +99,7 @@ and approval reference. Re-check them before every broadcast.
 
 Do not “repair” an interrupted rollout by inventing addresses or rewriting history. Failed
 transactions are not rollbacks of earlier successful transactions. Keep every pool pending until
-all 16 and all shared services pass final checks.
+all 18 and all shared services pass final checks.
 
 ## Manifest rules
 
@@ -152,9 +152,9 @@ python script/launch_orchestrator.py reconcile --receipts <journal.json> --rpc-u
 Reconciliation rejects failed/missing receipts, block mismatches, addresses without code at the
 receipt block, unsupported fields, and conflicts with existing manifest values.
 
-It fails closed unless the config contains the exact 16-pool catalog, canonical token addresses,
+It fails closed unless the config contains the exact 18-pool catalog, canonical token addresses,
 nonzero approved feeds/adapters/heartbeats, hours policies, safety parameters, treasury caps,
-initial prices/liquidity, a receipt-backed 16-pool manifest, RPC code checks on chain 4663, and
+initial prices/liquidity, a receipt-backed 18-pool manifest, RPC code checks on chain 4663, and
 every operational gate below set to `true`. `core.sequencerUptimeFeed` is the one address that
 may be zero (spec §5.1 sequencer opt-out); when it is zero, `core.sequencerGracePeriod` must
 also be zero, and when it is set it must have code and a positive grace period.
@@ -205,7 +205,7 @@ python script/robinhood_batch.py readiness --config script/config/robinhood-batc
 - `multisigApproved`: production signer set, threshold, recovery, and policy recorded.
 - `uruCapsApproved`: per-vault and aggregate URU caps approved.
 - `oraclesVerified`: feeds, heartbeats, adapters, sequencer, and hours sources verified.
-- `initialLiquidityApproved`: Q64.96 prices, sizes, and slippage for all 16 approved.
+- `initialLiquidityApproved`: Q64.96 prices, sizes, and slippage for all 18 approved.
 - `keeperReady`: permissionless keeper configured, dry-run exercised, and monitored.
 - `indexerReady`: Ponder mappings and start blocks match the intended manifest.
 - `frontendReviewed`: dashboard, pending gating, and degraded-state copy reviewed.
@@ -214,7 +214,7 @@ python script/robinhood_batch.py readiness --config script/config/robinhood-batc
 
 1. Seed no vault above its approved URU cap.
 2. Seed no pool above its approved liquidity amount.
-3. Confirm all 16 pools are indexed, readable, correctly gated, and capable of expected dry-run
+3. Confirm all 18 pools are indexed, readable, correctly gated, and capable of expected dry-run
    user flows.
 4. Confirm pending/live UI behavior from the final manifest.
 5. Obtain a separate coordinated go/no-go approval after deployment verification.

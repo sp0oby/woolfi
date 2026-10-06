@@ -39,7 +39,7 @@ export default function GovernancePage() {
         <Group>
           <Q>What can the multisig do?</Q>
           <List>
-            <Item>Authorize a new pool (from the fixed 16-pool catalog) and set its oracle bindings.</Item>
+            <Item>Authorize a new pool (from the fixed 18-pool catalog) and set its oracle bindings.</Item>
             <Item>Re-tune parameters of a live pool (fee schedule, tolerance, hard threshold) within audited bounds.</Item>
             <Item>Pause the whole hook in an emergency, stopping swaps and liquidity adds.</Item>
             <Item>Resolve a structural break once the underlying market has reconverged.</Item>
@@ -72,7 +72,7 @@ export default function GovernancePage() {
           <Q>Why not just launch a token vote?</Q>
           <A>
             Token votes work best when there is a large, engaged holder base and a decision
-            surface that changes often. WoolFi v1 has a fixed 16-pool catalog and an audited
+            surface that changes often. WoolFi v1 has a fixed 18-pool catalog and an audited
             parameter range; there is very little to vote about that a small multisig cannot
             handle faster and more safely. If the surface grows, so will governance.
           </A>

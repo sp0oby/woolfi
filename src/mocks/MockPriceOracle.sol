@@ -44,6 +44,12 @@ contract MockPriceOracle is IPriceOracleMetadata {
         if (runtimeUnsafe) revert MockRuntimeUnsafe();
     }
 
+    /// @notice Last configured price ignoring the stale flag; still honors the runtime-unsafe flag.
+    function getLastValidPrice() external view returns (uint256) {
+        if (runtimeUnsafe) revert MockRuntimeUnsafe();
+        return priceWad;
+    }
+
     /// @notice Return the configured validated price.
     function getPrice() external view returns (uint256) {
         if (stale) revert MockStale();

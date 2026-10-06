@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 import {IMarketHoursOracle} from "../interfaces/IMarketHoursOracle.sol";
 
@@ -23,7 +24,7 @@ import {IMarketHoursOracle} from "../interfaces/IMarketHoursOracle.sol";
 ///
 ///      Anyone can `addHolidaysBulk` / `setHoliday` if owner — the owner is the WoolFi multisig
 ///      so calendar maintenance is a normal governance op, not a sysadmin task.
-contract NyseHoursOracle is IMarketHoursOracle, Ownable {
+contract NyseHoursOracle is IMarketHoursOracle, Ownable2Step {
     // ---------------------------------------------------------------------- //
     //                            STORAGE / EVENTS                            //
     // ---------------------------------------------------------------------- //

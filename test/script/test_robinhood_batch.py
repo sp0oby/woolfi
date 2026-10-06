@@ -107,9 +107,9 @@ class RobinhoodBatchTest(unittest.TestCase):
     def test_example_drawdown_matches_create_pool_default(self):
         self.assertEqual(self.config["defaultRisk"]["drawdownBps"], 2000)
 
-    def test_readiness_requires_all_sixteen_manifest_entries(self):
+    def test_readiness_requires_all_eighteen_manifest_entries(self):
         errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True)
-        self.assertIn("deployment incomplete: 0/16 canonical pools complete", errors)
+        self.assertIn("deployment incomplete: 0/18 canonical pools complete", errors)
         self.manifest.update(
             {
                 "poolManager": self.config["core"]["poolManager"],
@@ -128,7 +128,7 @@ class RobinhoodBatchTest(unittest.TestCase):
                 },
                 "receipts": ["0x" + "a" * 64],
                 "pools": [self._deployed(index, pair, slug) for index, (pair, slug) in enumerate(zip(PAIRS, SLUGS), 1)],
-                "poolCount": 16,
+                "poolCount": 18,
             }
         )
         self.assertEqual(validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True), [])
@@ -153,7 +153,7 @@ class RobinhoodBatchTest(unittest.TestCase):
                 },
                 "receipts": ["0x" + "a" * 64],
                 "pools": [self._deployed(index, pair, slug) for index, (pair, slug) in enumerate(zip(PAIRS, SLUGS), 1)],
-                "poolCount": 16,
+                "poolCount": 18,
             }
         )
         errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True)

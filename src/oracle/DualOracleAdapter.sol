@@ -64,6 +64,30 @@ contract DualOracleAdapter is IPriceOracleMetadata {
         return p;
     }
 
+    /// @inheritdoc IPriceOracle
+    /// @dev Same failover and deviation semantics as {getPrice}, over the last valid prints.
+    function getLastValidPrice() external view returns (uint256 priceWad) {
+        uint256 p;
+        uint256 b;
+        bool pOk;
+        bool bOk;
+        try primary.getLastValidPrice() returns (uint256 _p) {
+            p = _p;
+            pOk = true;
+        } catch {}
+        try backup.getLastValidPrice() returns (uint256 _b) {
+            b = _b;
+            bOk = true;
+        } catch {}
+        if (!pOk && !bOk) revert BothStale();
+        if (!pOk) return b;
+        if (!bOk) return p;
+        uint256 hi = p > b ? p : b;
+        uint256 lo = p > b ? b : p;
+        if ((hi - lo) * BPS > lo * maxDeviationBps) revert PriceDeviation(p, b);
+        return p;
+    }
+
     /// @notice Runtime guards for both wrapped sources.
     function requireRuntimeGuards() external view {
         primary.requireRuntimeGuards();

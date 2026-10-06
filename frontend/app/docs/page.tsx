@@ -205,7 +205,7 @@ export default function DocsPage() {
             <div className="border border-line bg-panel">
               <StatusRow label="Network" value="Robinhood Chain · 4663" />
               <StatusRow label="Architecture" value="Uniswap v4 multi-pool hook" />
-              <StatusRow label="Catalog" value="16 pools · coordinated launch" />
+              <StatusRow label="Catalog" value="18 pools · coordinated launch" />
               <StatusRow label="Underwriting" value="URU · per-pool vault" />
               <StatusRow label="Oracle" value="Chainlink Data Feeds" />
               <StatusRow label="Audit" value="Pending" />

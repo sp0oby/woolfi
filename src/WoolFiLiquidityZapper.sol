@@ -57,11 +57,14 @@ contract WoolFiLiquidityZapper is ReentrancyGuard {
     IWoolFiPositionManagerMint public immutable positionManager;
     address public immutable wrappedNative;
     address public owner;
+    /// @notice Address that must call {acceptOwnership} to become `owner`; zero when none is pending.
+    address public pendingOwner;
 
     mapping(address executor => bool allowed) public allowedExecutor;
 
     event ExecutorAllowed(address indexed executor, bool allowed);
     event OwnerUpdated(address indexed oldOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed currentOwner, address indexed pendingOwner);
     event Zapped(
         address indexed payer,
         address indexed recipient,
@@ -72,6 +75,7 @@ contract WoolFiLiquidityZapper is ReentrancyGuard {
     );
 
     error NotOwner();
+    error NotPendingOwner();
     error ZeroAddress();
     error InvalidAmount();
     error InvalidPoolToken();
@@ -103,10 +107,20 @@ contract WoolFiLiquidityZapper is ReentrancyGuard {
         if (msg.sender != wrappedNative) revert UnexpectedEther();
     }
 
-    function setOwner(address newOwner) external onlyOwner {
+    /// @notice Stage a new owner. Takes effect only when `newOwner` calls {acceptOwnership}, so a
+    ///         mistyped address cannot strand the executor allowlist.
+    function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
-        emit OwnerUpdated(owner, newOwner);
-        owner = newOwner;
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Complete a pending ownership transfer. Callable only by `pendingOwner`.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner();
+        emit OwnerUpdated(owner, msg.sender);
+        owner = msg.sender;
+        pendingOwner = address(0);
     }
 
     function setExecutorAllowed(address executor, bool allowed) external onlyOwner {

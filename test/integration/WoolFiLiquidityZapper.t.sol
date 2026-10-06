@@ -238,6 +238,25 @@ contract WoolFiLiquidityZapperTest is Deployers {
         zapper.setExecutorAllowed(address(executor), false);
     }
 
+    function test_zapper_twoStepOwnership() public {
+        address newOwner = makeAddr("newOwner");
+        zapper.transferOwnership(newOwner);
+        assertEq(zapper.owner(), address(this));
+        assertEq(zapper.pendingOwner(), newOwner);
+        zapper.setExecutorAllowed(address(executor), true); // old owner keeps control until accept
+
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.NotPendingOwner.selector);
+        zapper.acceptOwnership();
+
+        vm.prank(newOwner);
+        zapper.acceptOwnership();
+        assertEq(zapper.owner(), newOwner);
+        assertEq(zapper.pendingOwner(), address(0));
+        vm.expectRevert(WoolFiLiquidityZapper.NotOwner.selector);
+        zapper.setExecutorAllowed(address(executor), false);
+    }
+
     function test_nativeInput_wrapsAndRefundsAsEth() public {
         WETH weth = WETH(payable(zapper.wrappedNative()));
         MockERC20 other = new MockERC20("Other", "OTH", 18);

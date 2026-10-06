@@ -17,6 +17,7 @@ import {WoolFiSwapRouter} from "../../src/WoolFiSwapRouter.sol";
 import {UrufuFeeRebateDistributor} from "../../src/UrufuFeeRebateDistributor.sol";
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
+import {SpreadMath} from "../../src/lib/SpreadMath.sol";
 
 contract MockUrufuNft is ERC721 {
     constructor() ERC721("Urufu Gemu", "URUFU") {}
@@ -211,6 +212,79 @@ contract WoolFiSwapRouterTest is Deployers {
         assertGt(earned, 0);
         assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency0)), earned);
         assertEq(rebateDistributor.claimable(bob, Currency.unwrap(currency0)), 0);
+    }
+
+    /// @notice M-2: a discounted corrective swap is rebated on the fee actually charged, not the
+    ///         configured base fee.
+    function test_rebate_correctiveSwapUsesChargedFee() public {
+        uint256 amountIn = 1e16;
+        urufuNft.mint(ALICE, 1);
+        oracle0.setPrice(925_925_925_925_925_926); // pool 1.0 above fair: drift ~+800 bps
+        int256 drift = hook.currentDrift(poolKey);
+        uint256 charged = SpreadMath.asymmetricFee(30, drift, 40_000, true);
+        assertLt(charged, 30, "corrective fee is discounted");
+
+        vm.prank(ALICE);
+        router.swap(poolKey, true, amountIn, 0, ALICE, ZERO_BYTES); // zeroForOne lowers price: corrective
+
+        uint256 expected = amountIn * charged / 10_000 * 1_500 / 10_000;
+        uint256 baseRebate = amountIn * 30 / 10_000 * 1_500 / 10_000;
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency0)), expected);
+        assertLt(expected, baseRebate);
+    }
+
+    /// @notice An adversarial (surcharged) swap is rebated at most the base-fee amount.
+    function test_rebate_adversarialSwapCappedAtBaseFee() public {
+        uint256 amountIn = 1e16;
+        urufuNft.mint(ALICE, 1);
+        rebateDistributor.setWeeklyCap(Currency.unwrap(currency1), 1e18);
+        IERC20Minimal(Currency.unwrap(currency1)).approve(address(rebateDistributor), 1e18);
+        rebateDistributor.fund(Currency.unwrap(currency1), 1e18);
+        oracle0.setPrice(925_925_925_925_925_926); // drift ~+800 bps
+
+        vm.prank(ALICE);
+        router.swap(poolKey, false, amountIn, 0, ALICE, ZERO_BYTES); // oneForZero raises price: adversarial
+
+        uint256 baseRebate = amountIn * 30 / 10_000 * 1_500 / 10_000;
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency1)), baseRebate);
+    }
+
+    function test_withdrawUnreserved_respectsLiabilities() public {
+        address token = Currency.unwrap(currency0);
+        urufuNft.mint(ALICE, 1);
+        vm.prank(ALICE);
+        router.swap(poolKey, true, 1e16, 0, ALICE, ZERO_BYTES);
+        uint256 owed = rebateDistributor.claimable(ALICE, token);
+        assertGt(owed, 0);
+        uint256 free = rebateDistributor.unreserved(token);
+        assertEq(free, 1e18 - owed);
+
+        vm.expectRevert(abi.encodeWithSelector(UrufuFeeRebateDistributor.ExceedsUnreserved.selector, free + 1, free));
+        rebateDistributor.withdrawUnreserved(token, address(this), free + 1);
+
+        address treasury = address(0x7EA5);
+        rebateDistributor.withdrawUnreserved(token, treasury, free);
+        assertEq(IERC20Minimal(token).balanceOf(treasury), free);
+        assertEq(rebateDistributor.unreserved(token), 0);
+
+        vm.prank(ALICE);
+        assertEq(rebateDistributor.claim(token, ALICE), owed); // accrued rebate still fully claimable
+    }
+
+    function testRevert_withdrawUnreserved_notOwner() public {
+        vm.prank(ALICE);
+        vm.expectRevert();
+        rebateDistributor.withdrawUnreserved(Currency.unwrap(currency0), ALICE, 1);
+    }
+
+    function test_distributor_twoStepOwnership() public {
+        address newOwner = address(0xB0B);
+        rebateDistributor.transferOwnership(newOwner);
+        assertEq(rebateDistributor.owner(), address(this));
+        assertEq(rebateDistributor.pendingOwner(), newOwner);
+        vm.prank(newOwner);
+        rebateDistributor.acceptOwnership();
+        assertEq(rebateDistributor.owner(), newOwner);
     }
 
     function testRevert_rebateRecord_onlyRouter() public {

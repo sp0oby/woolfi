@@ -9,7 +9,14 @@ export type PoolOutcome = {
   broadcast: boolean;
   hash?: `0x${string}`;
   error?: string;
+  /** Hook-direct mode only: second step of a two-phase break. "idle" = nothing to confirm yet. */
+  confirm?: "idle" | "simulated" | "broadcast";
+  confirmHash?: `0x${string}`;
 };
+
+// Reverts that mean "no break, or confirmation window not elapsed, or already confirmed".
+// These are the normal steady state, not keeper failures.
+const CONFIRM_IDLE = /NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed/;
 
 export type TickSummary = {
   tick: string;
@@ -57,7 +64,17 @@ export async function keepPools(
         const hash = options.broadcast && clients.walletClient
           ? await clients.walletClient.writeContract(simulated.request)
           : undefined;
-        outcomes.push({slug: pool.slug, poolId: pool.poolId, action, simulated: true, broadcast: !!hash, hash});
+        const confirm = await confirmBreak(clients, pool, options.broadcast);
+        outcomes.push({
+          slug: pool.slug,
+          poolId: pool.poolId,
+          action,
+          simulated: true,
+          broadcast: !!hash,
+          hash,
+          confirm: confirm.state,
+          confirmHash: confirm.hash,
+        });
       }
     } catch (error) {
       outcomes.push({
@@ -71,6 +88,34 @@ export async function keepPools(
     }
   }
   return outcomes;
+}
+
+/**
+ * Second phase of a structural break: once the confirmation window has elapsed, confirm it so the
+ * vault drawdown fires (or the break clears if the price recovered). Expected "not ready" reverts
+ * resolve to "idle"; anything else throws and counts as a pool failure.
+ */
+async function confirmBreak(
+  clients: KeeperClients,
+  pool: LivePool,
+  broadcast: boolean,
+): Promise<{state: "idle" | "simulated" | "broadcast"; hash?: `0x${string}`}> {
+  let simulated: {request: Record<string, unknown>};
+  try {
+    simulated = await clients.publicClient.simulateContract({
+      address: pool.key.hooks,
+      abi: hookAbi,
+      functionName: "confirmStructuralBreak",
+      args: [pool.key],
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (CONFIRM_IDLE.test(message)) return {state: "idle"};
+    throw error;
+  }
+  if (!broadcast || !clients.walletClient) return {state: "simulated"};
+  const hash = await clients.walletClient.writeContract(simulated.request);
+  return {state: "broadcast", hash};
 }
 
 /** Roll a tick's outcomes into the shape the exit code and alert webhook key off. */

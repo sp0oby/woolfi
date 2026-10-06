@@ -17,6 +17,13 @@ interface IPriceOracle {
     /// @dev Implementations MUST revert on sequencer, pause, or other operational failures, and
     ///      MUST NOT revert solely because the last print is older than the heartbeat.
     function requireRuntimeGuards() external view;
+
+    /// @notice Last valid print, normalized to 1e18, without the heartbeat freshness check.
+    /// @dev Applies the same checks as {requireRuntimeGuards} plus print validity (positive answer,
+    ///      complete round, non-zero and non-future timestamp). MUST NOT revert solely because the
+    ///      print is older than the heartbeat. Used as the reference for the hook's single-swap break
+    ///      guard while the market is closed or a pool is in a flat-fee mode.
+    function getLastValidPrice() external view returns (uint256 priceWad);
 }
 
 /// @title IPriceOracleMetadata

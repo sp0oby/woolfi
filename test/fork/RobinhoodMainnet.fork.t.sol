@@ -62,8 +62,8 @@ contract RobinhoodMainnetForkTest is Test {
     }
 
     function _canonicalAssets() private pure returns (address[] memory assets, string[] memory symbols) {
-        assets = new address[](12);
-        symbols = new string[](12);
+        assets = new address[](14);
+        symbols = new string[](14);
         assets[0] = 0xec262a75e413fAfD0dF80480274532C79D42da09;
         symbols[0] = "MSTR";
         assets[1] = 0x6330D8C3178a418788dF01a47479c0ce7CCF450b;
@@ -88,11 +88,15 @@ contract RobinhoodMainnetForkTest is Test {
         symbols[10] = "MSFT";
         assets[11] = 0x322F0929c4625eD5bAd873c95208D54E1c003b2d;
         symbols[11] = "TSLA";
+        assets[12] = 0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e;
+        symbols[12] = "GLD";
+        assets[13] = 0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f;
+        symbols[13] = "SLV";
     }
 
     function _candidatePairs() private pure returns (CandidatePair[] memory pairs) {
         (address[] memory a,) = _canonicalAssets();
-        pairs = new CandidatePair[](16);
+        pairs = new CandidatePair[](18);
         pairs[0] = CandidatePair(a[0], a[6]); // MSTR/USDG
         pairs[1] = CandidatePair(a[1], a[6]); // COIN/USDG
         pairs[2] = CandidatePair(a[2], a[6]); // CRCL/USDG
@@ -109,6 +113,8 @@ contract RobinhoodMainnetForkTest is Test {
         pairs[13] = CandidatePair(a[4], a[3]); // SPY/NVDA
         pairs[14] = CandidatePair(a[4], a[7]); // SPY/QQQ
         pairs[15] = CandidatePair(a[5], a[6]); // WETH/USDG
+        pairs[16] = CandidatePair(a[12], a[6]); // GLD/USDG
+        pairs[17] = CandidatePair(a[12], a[13]); // GLD/SLV
     }
 
     function _contains(address[] memory values, address candidate) private pure returns (bool) {

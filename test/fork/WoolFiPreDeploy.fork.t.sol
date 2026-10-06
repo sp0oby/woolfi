@@ -65,6 +65,8 @@ contract WoolFiPreDeployForkTest is Test {
     address private constant TOK_AAPL = 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9;
     address private constant TOK_MSFT = 0xe93237C50D904957Cf27E7B1133b510C669c2e74;
     address private constant TOK_TSLA = 0x322F0929c4625eD5bAd873c95208D54E1c003b2d;
+    address private constant TOK_GLD = 0xC9a981FEE1F9DEc688bb123ccDeCc63D0deBFC4e;
+    address private constant TOK_SLV = 0x411eFb0E7f985935DAec3D4C3ebaEa0d0AD7D89f;
 
     // Live Chainlink proxies on 4663 (see docs/oracles.md inventory).
     address private constant FEED_MSTR = 0x396118bdFB181e6240E74D243F266B061c0edc3D;
@@ -77,6 +79,8 @@ contract WoolFiPreDeployForkTest is Test {
     address private constant FEED_AAPL = 0x6B22A786bAa607d76728168703a39Ea9C99f2cD0;
     address private constant FEED_TSLA = 0x4A1166a659A55625345e9515b32adECea5547C38;
     address private constant FEED_MSFT = 0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E;
+    address private constant FEED_GLD = 0x470A51258068043bd43dC0a56245625C9fE86eB0;
+    address private constant FEED_SLV = 0x209b73908e92Ae021826eD79609845451Ecba2ce;
     address private constant FEED_WETH = 0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9; // ETH/USD alias
     address private constant FEED_USDG = 0x61B7e5650328764B076A108EFF5fa7282a1B9aD2;
 
@@ -128,7 +132,7 @@ contract WoolFiPreDeployForkTest is Test {
     }
 
     function test_fork_allStockAdaptersReadRealFeeds() public onlyOnFork {
-        StockLeg[10] memory legs = _stockLegs();
+        StockLeg[12] memory legs = _stockLegs();
         for (uint256 i; i < legs.length; ++i) {
             StockLeg memory leg = legs[i];
             // Skip legs whose stock oracle is paused at the fork block (corporate action in flight).
@@ -239,7 +243,7 @@ contract WoolFiPreDeployForkTest is Test {
         assertLt(mstrPrice, 10_000e18);
     }
 
-    function _stockLegs() private pure returns (StockLeg[10] memory legs) {
+    function _stockLegs() private pure returns (StockLeg[12] memory legs) {
         legs[0] = StockLeg("MSTR", TOK_MSTR, FEED_MSTR, 10e18, 10_000e18);
         legs[1] = StockLeg("COIN", TOK_COIN, FEED_COIN, 10e18, 10_000e18);
         legs[2] = StockLeg("CRCL", TOK_CRCL, FEED_CRCL, 1e18, 10_000e18);
@@ -250,5 +254,7 @@ contract WoolFiPreDeployForkTest is Test {
         legs[7] = StockLeg("AAPL", TOK_AAPL, FEED_AAPL, 10e18, 10_000e18);
         legs[8] = StockLeg("TSLA", TOK_TSLA, FEED_TSLA, 10e18, 10_000e18);
         legs[9] = StockLeg("MSFT", TOK_MSFT, FEED_MSFT, 10e18, 10_000e18);
+        legs[10] = StockLeg("GLD", TOK_GLD, FEED_GLD, 50e18, 10_000e18);
+        legs[11] = StockLeg("SLV", TOK_SLV, FEED_SLV, 5e18, 10_000e18);
     }
 }

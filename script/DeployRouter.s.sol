@@ -113,6 +113,7 @@ contract DeployRouter is RobinhoodBroadcastGuard {
         UrufuFeeRebateDistributor d = new UrufuFeeRebateDistributor(hook, urufuNft, deployer);
         WoolFiSwapRouter r = new WoolFiSwapRouter(poolManager, d);
         d.setRouter(address(r));
+        // Ownable2Step: stages the multisig; it must call acceptOwnership() on the distributor.
         d.transferOwnership(multisig);
         vm.stopBroadcast();
         return (address(r), address(d));

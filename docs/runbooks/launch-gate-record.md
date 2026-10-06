@@ -15,7 +15,7 @@ configuration must keep `broadcastEnabled`, `launchEnabled`, and every productio
 
 ## Technical evidence
 
-- [ ] Exact 16-pool catalog validated; WETH/USDG is always-open.
+- [ ] Exact 18-pool catalog validated; WETH/USDG is always-open.
 - [ ] WETH and USDG use verified plain Chainlink adapters; stock legs use pause-guarded adapters.
 - [ ] Core/router/rebate/zapper bytecode, constructor arguments, executor allowlist, wiring, and ownership verified.
 - [ ] Every pool key, oracle, market-hours source, risk setting, vault, and fee route verified.
@@ -39,7 +39,7 @@ Do not prefill names, addresses, decisions, or references.
 - Rebate budget approval/reference:
 - Operations readiness approval/reference:
 - Per-operation broadcast approval/reference:
-- Final all-16 go/no-go decision/reference:
+- Final all-18 go/no-go decision/reference:
 
 ## Decision
 

@@ -36,13 +36,13 @@ invented values.
 1. Export receipt-backed addresses and start blocks from the manifest.
 2. Backfill from each contract's own start block. Do not use block zero for a deployed contract.
 3. Compare the indexer head with two independent RPC views.
-4. Run the keeper with `KEEPER_BROADCAST=false`; require all 16 simulations to succeed.
+4. Run the keeper with `KEEPER_BROADCAST=false`; require all 18 simulations to succeed.
 5. Confirm rebate events are indexed and liabilities reconcile to contract state.
 6. Verify every alert route with a non-production test signal and record the evidence.
 
 ## Shift checklist
 
-- Confirm all-16 catalog and `launchStatus`.
+- Confirm all-18 catalog and `launchStatus`.
 - Review unresolved structural breaks, paused feeds, stale rounds, and sequencer state.
 - Reconcile keeper and indexer failures with transaction receipts.
 - Review privileged events and ownership against the approved multisig record.

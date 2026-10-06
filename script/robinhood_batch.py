@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validated, resumable coordinator for the 16 Robinhood production pools."""
+"""Validated, resumable coordinator for the 18 Robinhood production pools."""
 
 from __future__ import annotations
 

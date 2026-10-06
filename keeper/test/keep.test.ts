@@ -43,8 +43,8 @@ describe("keeper manifest", () => {
     expect(isDeployed(loadManifest(path))).toBe(false);
   });
 
-  it("accepts exactly sixteen distinct live pools", () => {
-    const pools = Array.from({length: 16}, (_, index) => ({
+  it("accepts exactly eighteen distinct live pools", () => {
+    const pools = Array.from({length: 18}, (_, index) => ({
       slug: `pool-${index}`,
       poolId: `0x${(index + 1).toString(16).padStart(64, "0")}` as `0x${string}`,
       startBlock: 123,
@@ -93,8 +93,47 @@ describe("keepPools", () => {
       ],
       {broadcast: false},
     );
-    expect(calls).toEqual(["checkStructuralBreak"]);
-    expect(outcomes[0]).toMatchObject({slug: "mstr-usdg", simulated: true, broadcast: false});
+    expect(calls).toEqual(["checkStructuralBreak", "confirmStructuralBreak"]);
+    expect(outcomes[0]).toMatchObject({slug: "mstr-usdg", simulated: true, broadcast: false, confirm: "simulated"});
+  });
+
+  it("treats a not-ready confirmation as idle, not a failure, and broadcasts a ready one", async () => {
+    const key = {
+      currency0: "0x2222222222222222222222222222222222222222" as const,
+      currency1: "0x3333333333333333333333333333333333333333" as const,
+      fee: 0x800000,
+      tickSpacing: 60,
+      hooks: hook as `0x${string}`,
+    };
+    const pendingKey = {...key};
+    const writes: string[] = [];
+    const outcomes = await keepPools(
+      {
+        publicClient: {
+          simulateContract: async ({functionName, args}) => {
+            if (functionName === "confirmStructuralBreak" && (args as [typeof key])[0] === pendingKey) {
+              throw new Error('reverted with custom error "BreakConfirmationPending(1791300000)"');
+            }
+            return {request: {functionName}} as never;
+          },
+        },
+        walletClient: {
+          writeContract: async (req) => {
+            writes.push(String((req as {functionName: string}).functionName));
+            return `0x${"f".repeat(64)}`;
+          },
+        },
+      },
+      [
+        {slug: "pending", poolId: `0x${"1".repeat(64)}` as `0x${string}`, startBlock: 1, key: pendingKey},
+        {slug: "ready", poolId: `0x${"2".repeat(64)}` as `0x${string}`, startBlock: 1, key},
+      ],
+      {broadcast: true},
+    );
+    expect(outcomes[0]).toMatchObject({slug: "pending", simulated: true, confirm: "idle"});
+    expect(outcomes[1]).toMatchObject({slug: "ready", simulated: true, confirm: "broadcast"});
+    expect(writes).toEqual(["checkStructuralBreak", "checkStructuralBreak", "confirmStructuralBreak"]);
+    expect(summarize(outcomes).failures).toBe(0);
   });
 
   it("records a simulate failure for one pool and keeps going for the rest", async () => {

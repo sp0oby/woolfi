@@ -56,6 +56,11 @@ contract WoolFiGovernor is Ownable2Step {
         hook.resolveStructuralBreak(key);
     }
 
+    /// @notice Set a pool's break-confirmation window (zero selects the hook default).
+    function setBreakConfirmSeconds(PoolKey calldata key, uint32 confirmSeconds) external onlyOwner {
+        hook.setBreakConfirmSeconds(key, confirmSeconds);
+    }
+
     /// @notice Wire (or update) a pool's underwriting vault and its drawdown fraction.
     function setVault(PoolKey calldata key, address vault, uint16 drawdownBps) external onlyOwner {
         hook.setVault(key, vault, drawdownBps);

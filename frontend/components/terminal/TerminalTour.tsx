@@ -39,7 +39,7 @@ const STEPS: Step[] = [
   {
     title: "Pick a pool",
     body:
-      "The left rail lists all 16 pools. Green dot means live, gray means pending. Use the search or the category chips to filter.",
+      "The left rail lists all 18 pools. Green dot means live, gray means pending. Use the search or the category chips to filter.",
     region: {top: "56px", left: "0", width: "320px", bottom: "32px"},
     cardPos: "right",
   },

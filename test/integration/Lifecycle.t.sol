@@ -312,7 +312,7 @@ contract LifecycleTest is Deployers {
         assertFalse(hook.poolConfig(poolId).structuralBreak);
 
         // =================================================================
-        // Phase J — market reopens; the keeper forces break detection + drawdown
+        // Phase J - market reopens; the keeper flags the break, then confirms + draws down
         //   without needing a swap (closes the gap the spec §3.5 calls out)
         // =================================================================
         marketHours.setOpen(true);
@@ -320,9 +320,16 @@ contract LifecycleTest is Deployers {
         uint256 rebalancerBefore = strand.balanceOf(rebalancer);
 
         vm.prank(keeperEoa);
-        keeper.keep(poolKey);
-
+        keeper.keep(poolKey); // phase 1: flags the break (containment), no drawdown yet
         assertTrue(hook.poolConfig(poolId).structuralBreak);
+        assertEq(vault.totalStaked(), totalStakedBefore);
+
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        vm.prank(keeperEoa);
+        keeper.keep(poolKey); // phase 2: the break persisted, so the keeper confirms + draws down
+
+        (, bool confirmed,,) = hook.breakStatus(poolKey);
+        assertTrue(confirmed);
         uint256 seizedExpected = totalStakedBefore * DRAWDOWN_BPS / 10_000;
         assertEq(vault.totalStaked(), totalStakedBefore - seizedExpected);
         assertEq(strand.balanceOf(rebalancer) - rebalancerBefore, seizedExpected);

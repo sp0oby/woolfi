@@ -690,8 +690,8 @@ contract WoolFiHookTest is Deployers {
     // hook <-> underwriting vault wiring
     // -----------------------------------------------------------------
 
-    /// @notice `checkStructuralBreak` triggers detection + drawdown even when no swap has happened
-    ///         since the oracle moved (the gap RebalanceKeeper exists to close).
+    /// @notice `checkStructuralBreak` flags a break even when no swap has happened since the oracle
+    ///         moved (the gap RebalanceKeeper exists to close); the drawdown follows confirmation.
     function test_checkStructuralBreak_withoutSwap_triggersBreakAndDrawdown() public {
         STRAND strand = new STRAND(address(this));
         address rebalancer = makeAddr("rebalancer");
@@ -710,6 +710,9 @@ contract WoolFiHookTest is Deployers {
         hook.checkStructuralBreak(poolKey);
 
         assertTrue(hook.poolConfig(poolId).structuralBreak);
+        assertEq(vault.totalStaked(), 1000e18); // detection alone never draws down
+
+        _confirmAfterWindow();
         assertEq(vault.totalStaked(), 800e18);
         assertEq(strand.balanceOf(rebalancer), 200e18);
     }
@@ -732,7 +735,7 @@ contract WoolFiHookTest is Deployers {
         hook.checkStructuralBreak(poolKey);
     }
 
-    /// @notice A structural break seizes the configured fraction of the vault, end to end.
+    /// @notice A structural break seizes the configured fraction of the vault once confirmed.
     function test_structuralBreak_triggersVaultDrawdown() public {
         STRAND strand = new STRAND(address(this));
         address rebalancer = makeAddr("rebalancer");
@@ -748,6 +751,8 @@ contract WoolFiHookTest is Deployers {
         swap(poolKey, true, EXACT_IN, ZERO_BYTES);
 
         assertTrue(hook.poolConfig(poolId).structuralBreak);
+        assertEq(vault.totalStaked(), 1000e18); // flagged, not yet drawn down
+        _confirmAfterWindow();
         assertEq(vault.totalStaked(), 800e18); // 20% seized
         assertEq(strand.balanceOf(rebalancer), 200e18); // moved to the rebalancer
     }
@@ -775,20 +780,277 @@ contract WoolFiHookTest is Deployers {
         assertEq(hook.poolConfig(poolId).drawdownBps, 9_999);
     }
 
-    /// @notice A vault whose `drawdown` reverts must not brick the swap path: the break flag and
-    ///         cached fair persist, the swap succeeds, and `DrawdownFailed` is emitted.
+    /// @notice A vault whose `drawdown` reverts must not brick confirmation: the break stays flagged
+    ///         and confirmed, the cached fair persists, and `DrawdownFailed` is emitted.
     function test_structuralBreak_persistsWhenDrawdownReverts() public {
         RevertingVault vault = new RevertingVault();
         hook.setVault(poolKey, address(vault), 2000);
 
         oracle0.setPrice(1.2e18); // drift beyond the hard threshold
+        swap(poolKey, true, EXACT_IN, ZERO_BYTES); // flags the break, must NOT revert
 
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
         vm.expectEmit(true, false, false, false, address(hook));
         emit WoolFiHook.DrawdownFailed(poolId, address(vault), "");
-        swap(poolKey, true, EXACT_IN, ZERO_BYTES); // must NOT revert
+        hook.confirmStructuralBreak(poolKey); // must NOT revert
+
+        (bool broken, bool confirmed,,) = hook.breakStatus(poolKey);
+        assertTrue(broken);
+        assertTrue(confirmed);
+        assertGt(hook.poolConfig(poolId).cachedFairPriceWad, 0);
+    }
+
+    // -----------------------------------------------------------------
+    // single-swap break guard
+    // -----------------------------------------------------------------
+
+    /// @notice From fair (drift 0), one swap big enough to push |drift| past the 1500 bps hard
+    ///         threshold must revert with SwapWouldBreakPool instead of breaking the pool.
+    function testRevert_swap_singleSwapWouldBreakPool() public {
+        // 100e18 full-range liquidity at price 1.0: ~20e18 token0 in moves price ~-30%.
+        try this.externalSwap(true, -20e18) {
+            revert("expected SwapWouldBreakPool");
+        } catch (bytes memory reason) {
+            assertTrue(_containsSelector(reason, WoolFiHook.SwapWouldBreakPool.selector), "wrong revert");
+        }
+        assertFalse(hook.poolConfig(poolId).structuralBreak);
+    }
+
+    /// @notice A swap that keeps the pool inside the hard threshold is unaffected by the guard.
+    function test_swap_belowHardThreshold_succeedsWithGuard() public {
+        swap(poolKey, true, -1e18, ZERO_BYTES); // ~-2% price move
+        assertFalse(hook.poolConfig(poolId).structuralBreak);
+        assertLt(_abs(hook.currentDrift(poolKey)), 1500);
+    }
+
+    /// @notice Oracle move past the threshold: permissionless detection still flags the break and,
+    ///         after confirmation, fires the vault drawdown (the guard only stops trades from causing
+    ///         breaks).
+    function test_checkStructuralBreak_afterOracleMove_flagsAndDrawsDown() public {
+        STRAND strand = new STRAND(address(this));
+        address rebalancer = makeAddr("rebalancer");
+        WoolFiUnderwritingVault vault = new WoolFiUnderwritingVault(
+            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer, 1_000e18
+        );
+        strand.mint(address(this), 1000e18);
+        strand.approve(address(vault), type(uint256).max);
+        vault.stake(1000e18);
+        hook.setVault(poolKey, address(vault), 2000);
+
+        oracle0.setPrice(1.2e18); // drift ~-1667 bps, no swap involved
+        hook.checkStructuralBreak(poolKey);
 
         assertTrue(hook.poolConfig(poolId).structuralBreak);
-        assertGt(hook.poolConfig(poolId).cachedFairPriceWad, 0);
+        assertEq(hook.poolConfig(poolId).cachedFairPriceWad, 1.2e18);
+        _confirmAfterWindow();
+        assertEq(vault.totalStaked(), 800e18);
+        assertEq(strand.balanceOf(rebalancer), 200e18);
+    }
+
+    /// @notice During an existing break, a large corrective swap is not blocked by the guard.
+    function test_correctiveSwap_duringBreak_notBlockedByGuard() public {
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        assertTrue(hook.poolConfig(poolId).structuralBreak);
+
+        int256 before = hook.currentDrift(poolKey);
+        swap(poolKey, false, -5e18, ZERO_BYTES); // one-for-zero raises price toward cached fair 1.2
+        assertLt(_abs(hook.currentDrift(poolKey)), _abs(before));
+    }
+
+    // -----------------------------------------------------------------
+    // two-phase breaks and the guard in flat-fee modes
+    // -----------------------------------------------------------------
+
+    function _confirmAfterWindow() internal {
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        hook.confirmStructuralBreak(poolKey);
+    }
+
+    function _stakedVault() internal returns (WoolFiUnderwritingVault vault, STRAND strand, address rebalancer) {
+        strand = new STRAND(address(this));
+        rebalancer = makeAddr("rebalancer");
+        vault = new WoolFiUnderwritingVault(
+            address(strand), address(hook), Currency.unwrap(currency0), Currency.unwrap(currency1), rebalancer, 1_000e18
+        );
+        strand.mint(address(this), 1000e18);
+        strand.approve(address(vault), type(uint256).max);
+        vault.stake(1000e18);
+        hook.setVault(poolKey, address(vault), 2000);
+    }
+
+    function _expectGuardRevert() internal {
+        try this.externalSwap(true, -20e18) {
+            revert("expected SwapWouldBreakPool");
+        } catch (bytes memory reason) {
+            assertTrue(_containsSelector(reason, WoolFiHook.SwapWouldBreakPool.selector), "wrong revert");
+        }
+        assertFalse(hook.poolConfig(poolId).structuralBreak);
+    }
+
+    /// @notice H-1: market closed (flat fee) no longer lets a single swap push past the threshold.
+    function testRevert_guard_marketClosed() public {
+        marketHours.setOpen(false);
+        oracle0.setStale(true); // closed path must not need a fresh print
+        _expectGuardRevert();
+    }
+
+    /// @notice H-1: the post-open stabilization window is guarded too.
+    function testRevert_guard_stabilization() public {
+        hook.setPoolSafety(poolKey, WoolFiHook.SafetyParams({stabilizationSeconds: 300, maxOracleSkew: 0}));
+        marketHours.setSessionStart(block.timestamp);
+        _expectGuardRevert();
+    }
+
+    /// @notice H-1: oracle-skew mode (flat fee) is guarded against the skewed but valid prints.
+    function testRevert_guard_oracleSkew() public {
+        skip(1000);
+        hook.setPoolSafety(poolKey, WoolFiHook.SafetyParams({stabilizationSeconds: 0, maxOracleSkew: 60}));
+        oracle0.setPriceData(1e18, block.timestamp);
+        oracle1.setPriceData(1e18, block.timestamp - 500);
+        _expectGuardRevert();
+    }
+
+    /// @notice Flat-fee paths still hard-revert on runtime (sequencer/pause) failures.
+    function testRevert_closedSwap_runtimeUnsafe() public {
+        marketHours.setOpen(false);
+        oracle0.setRuntimeUnsafe(true);
+        try this.externalSwap(true, -1e15) {
+            revert("expected runtime guard revert");
+        } catch (bytes memory reason) {
+            assertTrue(_containsSelector(reason, MockPriceOracle.MockRuntimeUnsafe.selector), "wrong revert");
+        }
+    }
+
+    /// @notice M-1: a flagged break contains the pool immediately but does not draw down.
+    function test_break_flaggedButNotDrawnDownUntilConfirmed() public {
+        (WoolFiUnderwritingVault vault,,) = _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+
+        (bool broken, bool confirmed, uint256 detectedAt, uint256 readyAt) = hook.breakStatus(poolKey);
+        assertTrue(broken);
+        assertFalse(confirmed);
+        assertEq(detectedAt, block.timestamp);
+        assertEq(readyAt, block.timestamp + hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        assertEq(vault.totalStaked(), 1000e18);
+    }
+
+    function testRevert_confirm_tooEarly() public {
+        _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        uint256 readyAt = block.timestamp + hook.DEFAULT_BREAK_CONFIRM_SECONDS();
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS() - 1);
+        vm.expectRevert(abi.encodeWithSelector(WoolFiHook.BreakConfirmationPending.selector, readyAt));
+        hook.confirmStructuralBreak(poolKey);
+    }
+
+    function testRevert_confirm_notBroken() public {
+        vm.expectRevert(WoolFiHook.NotStructurallyBroken.selector);
+        hook.confirmStructuralBreak(poolKey);
+    }
+
+    /// @notice M-1: when the gap closes during the window, confirmation clears with no drawdown.
+    function test_confirm_clearsWithoutDrawdownWhenRecovered() public {
+        (WoolFiUnderwritingVault vault, STRAND strand, address rebalancer) = _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        oracle0.setPrice(1e18); // transient: oracle comes back toward the pool
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+
+        vm.expectEmit(true, false, false, false, address(hook));
+        emit WoolFiHook.StructuralBreakCleared(poolId, 0);
+        hook.confirmStructuralBreak(poolKey);
+
+        (bool broken, bool confirmed, uint256 detectedAt,) = hook.breakStatus(poolKey);
+        assertFalse(broken);
+        assertFalse(confirmed);
+        assertEq(detectedAt, 0);
+        assertEq(hook.poolConfig(poolId).cachedFairPriceWad, 0);
+        assertEq(vault.totalStaked(), 1000e18);
+        assertEq(strand.balanceOf(rebalancer), 0);
+    }
+
+    /// @notice A pool is drawn down at most once per break.
+    function test_confirm_drawsDownOncePerBreak() public {
+        (WoolFiUnderwritingVault vault,,) = _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        _confirmAfterWindow();
+        assertEq(vault.totalStaked(), 800e18);
+
+        vm.expectRevert(WoolFiHook.BreakAlreadyConfirmed.selector);
+        hook.confirmStructuralBreak(poolKey);
+        hook.checkStructuralBreak(poolKey); // no-op while broken
+        assertEq(vault.totalStaked(), 800e18);
+    }
+
+    /// @notice Governor resolution resets the two-phase state so the next break starts fresh.
+    function test_resolve_resetsBreakState() public {
+        _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        _confirmAfterWindow();
+        hook.resolveStructuralBreak(poolKey);
+        (bool broken, bool confirmed, uint256 detectedAt, uint256 readyAt) = hook.breakStatus(poolKey);
+        assertFalse(broken);
+        assertFalse(confirmed);
+        assertEq(detectedAt, 0);
+        assertEq(readyAt, 0);
+    }
+
+    function test_setBreakConfirmSeconds_customWindow() public {
+        hook.setBreakConfirmSeconds(poolKey, 2 hours);
+        _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        (,,, uint256 readyAt) = hook.breakStatus(poolKey);
+        assertEq(readyAt, block.timestamp + 2 hours);
+    }
+
+    function testRevert_setBreakConfirmSeconds_overMax() public {
+        vm.expectRevert(WoolFiHook.InvalidConfig.selector);
+        hook.setBreakConfirmSeconds(poolKey, 1 days + 1);
+    }
+
+    function testRevert_setBreakConfirmSeconds_notGovernor() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(WoolFiHook.NotGovernor.selector);
+        hook.setBreakConfirmSeconds(poolKey, 1 hours);
+    }
+
+    function testRevert_confirm_marketClosed() public {
+        _stakedVault();
+        oracle0.setPrice(1.2e18);
+        hook.checkStructuralBreak(poolKey);
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        marketHours.setOpen(false);
+        vm.expectRevert(WoolFiHook.MarketClosed.selector);
+        hook.confirmStructuralBreak(poolKey);
+    }
+
+    /// @notice lastSwapFeeBps is zero outside a swap transaction context.
+    function test_lastSwapFeeBps_zeroOutsideSwap() public view {
+        assertEq(hook.lastSwapFeeBps(poolId), 0);
+    }
+
+    function externalSwap(bool zeroForOne, int256 amount) external {
+        swap(poolKey, zeroForOne, amount, ZERO_BYTES);
+    }
+
+    function _containsSelector(bytes memory data, bytes4 sel) internal pure returns (bool) {
+        if (data.length < 4) return false;
+        for (uint256 i; i + 4 <= data.length; ++i) {
+            if (data[i] == sel[0] && data[i + 1] == sel[1] && data[i + 2] == sel[2] && data[i + 3] == sel[3]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function _abs(int256 x) internal pure returns (uint256) {
+        return x >= 0 ? uint256(x) : uint256(-x);
     }
 
     function test_proposeGovernor_requiresAccept() public {

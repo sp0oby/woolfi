@@ -8,7 +8,7 @@ import {TerminalShell} from "@/components/terminal/TerminalShell";
 export const metadata: Metadata = {
   title: "Terminal",
   description:
-    "WoolFi trade terminal: 16-pool rail, live drift chart, recent swaps, and stacked trade / liquidity / stake actions on Robinhood Chain.",
+    "WoolFi trade terminal: 18-pool rail, live drift chart, recent swaps, and stacked trade / liquidity / stake actions on Robinhood Chain.",
 };
 
 export default function AppPage() {

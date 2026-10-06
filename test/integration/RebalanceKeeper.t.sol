@@ -116,9 +116,17 @@ contract RebalanceKeeperTest is Deployers {
         vm.prank(makeAddr("anyone"));
         keeper.keep(poolKey);
 
-        // break + drawdown happened
+        // phase 1: break flagged, nothing seized yet
         assertTrue(hook.poolConfig(poolId).structuralBreak);
-        assertLt(vault.totalStaked(), 100e18); // some STRAND seized
+        assertEq(vault.totalStaked(), 100e18);
+
+        // phase 2: after the confirmation window the keeper confirms and the drawdown fires
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        vm.prank(makeAddr("anyone"));
+        keeper.keep(poolKey);
+        (, bool confirmed,,) = hook.breakStatus(poolKey);
+        assertTrue(confirmed);
+        assertEq(vault.totalStaked(), 80e18); // 20% seized
 
         // fee realization routed the treasury cut to its policy sink
         assertGt(IERC20(Currency.unwrap(currency0)).balanceOf(treasury), treasuryBefore);
@@ -132,6 +140,30 @@ contract RebalanceKeeperTest is Deployers {
         // keeper holds no funds afterward (fee harvest to keeper is 0 since it has no shares)
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(keeper)), 0);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(keeper)), 0);
+    }
+
+    /// @notice keep() skips a confirmation that cannot run yet instead of reverting.
+    function test_keep_skipsConfirmWhenMarketClosed() public {
+        oracle0.setPrice(1.2e18);
+        keeper.keep(poolKey);
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        marketHours.setOpen(false);
+        keeper.keep(poolKey); // must not revert
+        (bool broken, bool confirmed,,) = hook.breakStatus(poolKey);
+        assertTrue(broken);
+        assertFalse(confirmed);
+        assertEq(vault.totalStaked(), 100e18);
+    }
+
+    /// @notice keep() clears a transient break with no drawdown when the pool has recovered.
+    function test_keep_clearsRecoveredBreak() public {
+        oracle0.setPrice(1.2e18);
+        keeper.keep(poolKey);
+        oracle0.setPrice(1e18);
+        skip(hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        keeper.keep(poolKey);
+        assertFalse(hook.poolConfig(poolId).structuralBreak);
+        assertEq(vault.totalStaked(), 100e18);
     }
 
     function testRevert_constructor_zeroAddress() public {

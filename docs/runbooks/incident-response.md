@@ -40,7 +40,7 @@ previously verified service/configuration version where technically possible.
 - Fork/read-only simulation and relevant CI checks pass.
 - Monitoring catches the original failure mode.
 - Required security and operational reviewers record recovery approval.
-- A separate all-16 go/no-go decision is recorded before publication resumes.
+- A separate all-18 go/no-go decision is recorded before publication resumes.
 
 ## Evidence template
 

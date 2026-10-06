@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 import {IMarketHoursOracle} from "../interfaces/IMarketHoursOracle.sol";
 
@@ -10,7 +11,7 @@ import {IMarketHoursOracle} from "../interfaces/IMarketHoursOracle.sol";
 /// @dev PROJECT_SPEC.md §6.1 fallback: if a real NYSE market-status feed is unavailable on the target
 ///      chain, governance (a multisig) flips this flag on weekly NYSE open/close and on US market
 ///      holidays. Off-chain monitoring observes `MarketStatusUpdated` and stale `lastUpdate`.
-contract MultisigMarketHours is IMarketHoursOracle, Ownable {
+contract MultisigMarketHours is IMarketHoursOracle, Ownable2Step {
     /// @notice Whether the equity market is currently open.
     bool public open;
     /// @notice Start of the currently active session; zero while closed.

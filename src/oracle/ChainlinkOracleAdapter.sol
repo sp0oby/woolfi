@@ -65,7 +65,16 @@ contract ChainlinkOracleAdapter is IPriceOracleMetadata {
         if (updatedAt == 0 || updatedAt > block.timestamp) revert StalePrice(updatedAt, heartbeat * STALENESS_FACTOR);
     }
 
+    /// @notice Last valid print without the heartbeat freshness check.
+    function getLastValidPrice() external view returns (uint256 priceWad) {
+        (priceWad,) = _read(false);
+    }
+
     function _priceData() private view returns (uint256 priceWad, uint256 updatedAt) {
+        return _read(true);
+    }
+
+    function _read(bool enforceFreshness) private view returns (uint256 priceWad, uint256 updatedAt) {
         uint80 roundId;
         int256 answer;
         uint80 answeredInRound;
@@ -74,8 +83,12 @@ contract ChainlinkOracleAdapter is IPriceOracleMetadata {
         if (roundId == 0 || answeredInRound < roundId) revert IncompleteRound(roundId, answeredInRound);
 
         uint256 maxStaleness = heartbeat * STALENESS_FACTOR;
-        uint256 age = block.timestamp > updatedAt ? block.timestamp - updatedAt : 0;
-        if (age > maxStaleness) revert StalePrice(updatedAt, maxStaleness);
+        if (enforceFreshness) {
+            uint256 age = block.timestamp > updatedAt ? block.timestamp - updatedAt : 0;
+            if (age > maxStaleness) revert StalePrice(updatedAt, maxStaleness);
+        } else if (updatedAt == 0 || updatedAt > block.timestamp) {
+            revert StalePrice(updatedAt, maxStaleness);
+        }
 
         priceWad = uint256(answer) * (10 ** (WAD_DECIMALS - feedDecimals));
     }

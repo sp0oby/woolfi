@@ -44,14 +44,14 @@
     "gates": {"$ref": "#/$defs/gates"},
     "assets": {
       "type": "object",
-      "minProperties": 12,
-      "maxProperties": 12,
+      "minProperties": 14,
+      "maxProperties": 14,
       "additionalProperties": {"$ref": "#/$defs/asset"}
     },
     "pools": {
       "type": "array",
-      "minItems": 16,
-      "maxItems": 16,
+      "minItems": 18,
+      "maxItems": 18,
       "items": {"$ref": "#/$defs/pool"}
     }
   },

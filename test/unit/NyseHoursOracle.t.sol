@@ -216,4 +216,15 @@ contract NyseHoursOracleTest is Test {
         uint256 daysSinceEpoch = era * 146097 + doe - 719468;
         return daysSinceEpoch * 86400 + hour * 3600 + minute * 60;
     }
+
+    function test_twoStepOwnership() public {
+        address newOwner = address(0xB0B);
+        vm.prank(OWNER);
+        oracle.transferOwnership(newOwner);
+        assertEq(oracle.owner(), OWNER);
+        assertEq(oracle.pendingOwner(), newOwner);
+        vm.prank(newOwner);
+        oracle.acceptOwnership();
+        assertEq(oracle.owner(), newOwner);
+    }
 }

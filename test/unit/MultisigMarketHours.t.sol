@@ -55,4 +55,14 @@ contract MultisigMarketHoursTest is Test {
         emit MultisigMarketHours.MarketStatusUpdated(false, uint64(block.timestamp));
         mh.setOpen(false);
     }
+
+    function test_twoStepOwnership() public {
+        address newOwner = address(0xB0B);
+        mh.transferOwnership(newOwner);
+        assertEq(mh.owner(), owner);
+        assertEq(mh.pendingOwner(), newOwner);
+        vm.prank(newOwner);
+        mh.acceptOwnership();
+        assertEq(mh.owner(), newOwner);
+    }
 }

@@ -119,24 +119,37 @@ contract WoolFiLifecycleForkTest is Test {
         uint256 rebalancerBefore = IERC20(URU).balanceOf(rebalancer);
         uint256 totalStakedBefore = vault.totalStaked();
 
-        // Swap 20% of pool MSTR reserves into the pool: drift moves well past 15% hardThreshold.
+        // 1. A single swap of 20% of pool MSTR reserves would push drift past the 15% hard
+        //    threshold. The single-swap guard must reject it instead of letting it break the pool.
         uint256 mstrShock = mstrSeed / 5;
         deal(TOK_MSTR, trader, mstrShock);
         vm.prank(trader);
         IERC20(TOK_MSTR).approve(address(router), type(uint256).max);
         vm.prank(trader);
+        vm.expectRevert(); // wrapped by PoolManager: SwapWouldBreakPool(preDrift, postDrift)
         router.swap(key, false, mstrShock, 1, trader, "");
+        assertFalse(hook.poolConfig(key.toId()).structuralBreak, "guard prevented a swap-induced break");
+
+        // 2. Real-world break: the ORACLE moves. Shift the live MSTR print up 25% (same round ids
+        //    and timestamps so freshness checks pass), then permissionless detection flags it.
+        _displaceMstrFeed(125);
+        hook.checkStructuralBreak(key);
 
         WoolFiHook.WoolFiConfig memory cfg = hook.poolConfig(key.toId());
         assertTrue(cfg.structuralBreak, "break flag set");
         assertGt(cfg.cachedFairPriceWad, 0, "cached fair recorded");
+        assertEq(IERC20(URU).balanceOf(address(vault)), vaultBefore, "detection alone seizes nothing");
+
+        // 3. Two-phase: after the confirmation window, with the oracle still displaced (the mock
+        //    persists), permissionless confirmation draws the vault down exactly once.
+        _confirmAfterWindow();
 
         uint256 vaultAfter = IERC20(URU).balanceOf(address(vault));
         uint256 rebalancerAfter = IERC20(URU).balanceOf(rebalancer);
         uint256 seized = vaultBefore - vaultAfter;
         assertGt(seized, 0, "vault seized non-zero URU");
         assertEq(rebalancerAfter - rebalancerBefore, seized, "rebalancer received seized URU");
-        // drawdownBps = 2000 → 20% of totalStaked (500 URU) = 100 URU.
+        // drawdownBps = 2000: 20% of totalStaked (500 URU) = 100 URU.
         assertApproxEqAbs(seized, totalStakedBefore * 2000 / 10_000, 1, "seized matches drawdownBps");
         assertEq(vault.totalStaked(), totalStakedBefore - seized, "totalStaked updated");
         emit log_named_uint("URU seized to rebalancer", seized);
@@ -144,6 +157,30 @@ contract WoolFiLifecycleForkTest is Test {
         // Governor can resolve the break, clearing state (verifies the exit path).
         governor.resolveStructuralBreak(key);
         assertFalse(hook.poolConfig(key.toId()).structuralBreak, "break cleared by governor");
+    }
+
+    /// @dev Shift the live MSTR print by `pct`% (same round ids and timestamps so freshness checks
+    ///      pass). The mock persists across warps.
+    function _displaceMstrFeed(int256 pct) private {
+        (bool ok, bytes memory raw) = FEED_MSTR.staticcall(abi.encodeWithSignature("latestRoundData()"));
+        require(ok, "feed read failed");
+        (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) =
+            abi.decode(raw, (uint80, int256, uint256, uint256, uint80));
+        vm.mockCall(
+            FEED_MSTR,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(roundId, answer * pct / 100, startedAt, updatedAt, answeredInRound)
+        );
+    }
+
+    /// @dev Confirmation is rejected before the window, then succeeds once it has elapsed.
+    function _confirmAfterWindow() private {
+        vm.expectRevert();
+        hook.confirmStructuralBreak(key); // too early
+        vm.warp(block.timestamp + hook.DEFAULT_BREAK_CONFIRM_SECONDS());
+        hook.confirmStructuralBreak(key);
+        (, bool confirmed,,) = hook.breakStatus(key);
+        assertTrue(confirmed, "break confirmed");
     }
 
     /// @notice Simulate a corporate-action pause via vm.mockCall on the stock token's

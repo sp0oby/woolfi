@@ -20,6 +20,28 @@ export const hookAbi = [
     ],
     outputs: [],
   },
+  {
+    type: "function",
+    name: "confirmStructuralBreak",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "key",
+        type: "tuple",
+        components: [
+          {name: "currency0", type: "address"},
+          {name: "currency1", type: "address"},
+          {name: "fee", type: "uint24"},
+          {name: "tickSpacing", type: "int24"},
+          {name: "hooks", type: "address"},
+        ],
+      },
+    ],
+    outputs: [],
+  },
+  {type: "error", name: "NotStructurallyBroken", inputs: []},
+  {type: "error", name: "BreakConfirmationPending", inputs: [{name: "readyAt", type: "uint256"}]},
+  {type: "error", name: "BreakAlreadyConfirmed", inputs: []},
 ] as const;
 
 export const keeperAbi = [

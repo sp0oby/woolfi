@@ -249,4 +249,15 @@ contract RobinhoodStockOracleAdapterTest is Test {
             address(stock_), address(priceFeed_), address(sequencerFeed_), heartbeat_, gracePeriod_
         );
     }
+
+    function test_getLastValidPrice_ignoresStaleness() public {
+        priceFeed.setAnswer(250e8, block.timestamp - (2 * HEARTBEAT) - 1);
+        assertEq(adapter.getLastValidPrice(), 250e18);
+    }
+
+    function testRevert_getLastValidPrice_oraclePaused() public {
+        stock.setOraclePaused(true);
+        vm.expectRevert(RobinhoodStockOracleAdapter.OraclePaused.selector);
+        adapter.getLastValidPrice();
+    }
 }

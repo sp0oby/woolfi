@@ -119,13 +119,22 @@ adapter deployment.
 | AAPL   | `0x6B22A786bAa607d76728168703a39Ea9C99f2cD0` | Robinhood AAPL/USD, TRV, us_equities_24/5 |
 | TSLA   | `0x4A1166a659A55625345e9515b32adECea5547C38` | Robinhood TSLA/USD, TRV, us_equities_24/5 |
 | MSFT   | `0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E` | Robinhood MSFT/USD, TRV, us_equities_24/5 |
+| SLV    | `0x209b73908e92Ae021826eD79609845451Ecba2ce` | Robinhood SLV/USD, TRV, us_equities_24/5 |
+| GLD    | `0x470A51258068043bd43dC0a56245625C9fE86eB0` | Named `GLD / USD`, not `Robinhood GLD / USD`. Reads the GLD ETF price (about $381 at verification), not spot gold. May not report Total Return Value semantics; see note below. |
 | WETH   | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` | Registered as ETH/USD; WETH ↔ ETH is 1:1 by contract. Document the alias in the launch record. `ChainlinkOracleAdapter`, not stock-guarded. |
 | USDG   | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` | USDG/USD, crypto category, always-open. `ChainlinkOracleAdapter`. |
 | Sequencer uptime | **not published on 4663**            | Adapter deploys with the sequencer guard disabled; see above. |
 
-GLD and SLV were removed from the launch catalog (spec §3) because Chainlink does not publish
-GLD/USD on 4663. Re-adding those pools would require a future spec revision that binds them to
-verified feeds - do not fabricate a GLD address or launch a partial catalog.
+GLD and SLV were briefly removed from the launch catalog while Chainlink had no GLD feed on
+4663. They were restored (spec §3) once Chainlink published `GLD / USD`.
+
+The GLD feed is named `GLD / USD` rather than `Robinhood GLD / USD` like every other stock leg.
+That naming suggests it is a general ETF price feed and may not apply the Robinhood Total Return
+Value adjustment (`underlying × uiMultiplier()`). Before launch, compare the feed answer with the
+GLD token's `uiMultiplier()`-adjusted reference and the GLD/USDG Uniswap v3 price on 4663; if they
+diverge, GLD/USDG and GLD/SLV will carry a persistent drift and must not go live until resolved.
+The GLD leg still uses `RobinhoodStockOracleAdapter`, so `oraclePaused()` on the GLD token gates
+corporate actions as for every other stock leg.
 
 ## Structural-break pricing
 
@@ -137,7 +146,7 @@ pools ignore that interval.
 
 ## Per-pool launch record
 
-For each of the exact 16 pools, record and independently approve:
+For each of the exact 18 pools, record and independently approve:
 
 - token0/token1 and decimals;
 - adapter addresses and underlying feed proxies;

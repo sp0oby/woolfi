@@ -110,7 +110,16 @@ contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
         if (stockToken.oraclePaused()) revert OraclePaused();
     }
 
+    /// @notice Last valid print without heartbeat freshness; runtime guards still apply.
+    function getLastValidPrice() external view returns (uint256 priceWad) {
+        (priceWad,) = _read(false);
+    }
+
     function _priceData() private view returns (uint256 priceWad, uint256 updatedAt) {
+        return _read(true);
+    }
+
+    function _read(bool enforceFreshness) private view returns (uint256 priceWad, uint256 updatedAt) {
         _requireRuntimeGuards();
 
         uint80 roundId;
@@ -121,8 +130,10 @@ contract RobinhoodStockOracleAdapter is IPriceOracleMetadata {
         if (roundId == 0 || answeredInRound < roundId) revert IncompleteRound(roundId, answeredInRound);
         _validateTimestamp(address(feed), updatedAt);
 
-        uint256 maxStaleness = heartbeat * STALENESS_FACTOR;
-        if (block.timestamp - updatedAt > maxStaleness) revert StalePrice(updatedAt, maxStaleness);
+        if (enforceFreshness) {
+            uint256 maxStaleness = heartbeat * STALENESS_FACTOR;
+            if (block.timestamp - updatedAt > maxStaleness) revert StalePrice(updatedAt, maxStaleness);
+        }
         priceWad = uint256(answer) * (10 ** (WAD_DECIMALS - feedDecimals));
     }
 

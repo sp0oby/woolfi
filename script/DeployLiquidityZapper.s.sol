@@ -31,7 +31,8 @@ contract DeployLiquidityZapper is RobinhoodBroadcastGuard {
         vm.startBroadcast(pk);
         zapper = new WoolFiLiquidityZapper(IWoolFiPositionManagerMint(positionManager), wrappedNative, deployer);
         zapper.setExecutorAllowed(swapExecutor, true);
-        if (owner != deployer) zapper.setOwner(owner);
+        // Two-step: the multisig must call zapper.acceptOwnership() as a separate approved tx.
+        if (owner != deployer) zapper.transferOwnership(owner);
         vm.stopBroadcast();
 
         if (_isBroadcastContext()) {

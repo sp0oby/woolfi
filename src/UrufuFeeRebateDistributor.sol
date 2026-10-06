@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
@@ -16,9 +17,14 @@ interface IERC721Balance {
 /// @title UrufuFeeRebateDistributor
 /// @notice Credits Urufu Gemu NFT holders with a capped rebate in each swap's input token.
 /// @dev The authorized WoolFi router records successful swaps after settlement. Rebates equal
-///      `amountIn * poolBaseFeeBps * REBATE_BPS / 1e8`, so directional surcharges are never
-///      rebated. Credits belong to the trading wallet and do not follow an NFT transfer.
-contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable, ReentrancyGuard {
+///      `amountIn * min(feeChargedBps, poolBaseFeeBps) * REBATE_BPS / 1e8`, where `feeChargedBps`
+///      is the LP fee the hook actually applied to that swap (read from the hook's transient
+///      `lastSwapFeeBps` in the same transaction). Directional surcharges are never rebated, and a
+///      discounted corrective swap earns a proportionally smaller rebate. Credits belong to the
+///      trading wallet and do not follow an NFT transfer. The weekly cap is per wallet: the Urufu
+///      Gemu NFT is not ERC721Enumerable, so caps cannot be keyed by token id (accepted residual risk,
+///      bounded by funding; see docs/audit/KNOWN-ISSUES.md).
+contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable2Step, ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     uint16 public constant REBATE_BPS = 1_500; // 15% of the base-fee portion
 
@@ -43,6 +49,7 @@ contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable, Reentrancy
         address indexed trader, PoolId indexed poolId, address indexed token, uint256 amount, uint64 week
     );
     event RebateClaimed(address indexed trader, address indexed token, address indexed recipient, uint256 amount);
+    event UnreservedWithdrawn(address indexed token, address indexed recipient, uint256 amount);
 
     error NotRouter();
     error RouterAlreadySet();
@@ -50,6 +57,7 @@ contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable, Reentrancy
     error InvalidRouter();
     error InvalidCap();
     error ZeroAmount();
+    error ExceedsUnreserved(uint256 requested, uint256 available);
 
     modifier onlyRouter() {
         if (msg.sender != router) revert NotRouter();
@@ -99,8 +107,10 @@ contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable, Reentrancy
         WoolFiHook.WoolFiConfig memory config = hook.poolConfig(poolId);
         if (!config.configured) return 0;
 
-        uint256 baseFee = amountIn * config.baseFeeBps / BPS;
-        rebate = baseFee * REBATE_BPS / BPS;
+        uint256 feeBps = hook.lastSwapFeeBps(poolId);
+        if (feeBps > config.baseFeeBps) feeBps = config.baseFeeBps;
+        uint256 rebatedFee = amountIn * feeBps / BPS;
+        rebate = rebatedFee * REBATE_BPS / BPS;
         if (rebate == 0) return 0;
 
         uint64 currentWeek;
@@ -130,6 +140,24 @@ contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable, Reentrancy
         usage.amount = uint192(updated);
         claimable[trader][token] += rebate;
         totalLiability[token] = liability + rebate;
+    }
+
+    /// @notice Tokens held beyond outstanding claim liabilities (free to withdraw).
+    function unreserved(address token) public view returns (uint256) {
+        uint256 balance = SafeTransferLib.balanceOf(token, address(this));
+        uint256 liability = totalLiability[token];
+        return balance > liability ? balance - liability : 0;
+    }
+
+    /// @notice Owner recovery of rebate funding that is not reserved for accrued claims.
+    /// @dev Never touches `totalLiability`, so accrued rebates stay fully claimable.
+    function withdrawUnreserved(address token, address recipient, uint256 amount) external onlyOwner nonReentrant {
+        if (token == address(0) || recipient == address(0)) revert InvalidAddress();
+        if (amount == 0) revert ZeroAmount();
+        uint256 available = unreserved(token);
+        if (amount > available) revert ExceedsUnreserved(amount, available);
+        SafeTransferLib.safeTransfer(token, recipient, amount);
+        emit UnreservedWithdrawn(token, recipient, amount);
     }
 
     /// @notice Claim all accrued rebates for one input token.

@@ -142,4 +142,15 @@ contract ChainlinkOracleAdapterTest is Test {
         assertEq(adapter.heartbeat(), HEARTBEAT);
         assertEq(adapter.feedDecimals(), 8);
     }
+
+    function test_getLastValidPrice_ignoresStaleness() public {
+        feed.setAnswer(100_000e8, block.timestamp - MAX_STALENESS - 1);
+        assertEq(adapter.getLastValidPrice(), 100_000e18);
+    }
+
+    function testRevert_getLastValidPrice_invalidAnswer() public {
+        feed.setAnswer(0, block.timestamp);
+        vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.InvalidPrice.selector, int256(0)));
+        adapter.getLastValidPrice();
+    }
 }
