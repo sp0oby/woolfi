@@ -42,7 +42,7 @@ export default function GovernancePage() {
             <Item>Authorize a new pool (from the fixed 18-pool catalog) and set its oracle bindings.</Item>
             <Item>Re-tune parameters of a live pool (fee schedule, tolerance, hard threshold) within audited bounds.</Item>
             <Item>Pause the whole hook in an emergency, stopping swaps and liquidity adds.</Item>
-            <Item>Resolve a structural break once the underlying market has reconverged.</Item>
+            <Item>Resolve a structural break directly, or change how long a break waits before it can be confirmed (up to one day).</Item>
             <Item>Configure per-pool vault drawdown percentage and fee routing.</Item>
           </List>
         </Group>
@@ -53,9 +53,33 @@ export default function GovernancePage() {
             <Item>Move your LP shares or your vault stake into another account. Balances are held by the position manager and vault contracts, not by governance.</Item>
             <Item>Change the hook&apos;s code. The hook contract is immutable after deployment. Only its documented parameters and pool authorizations are configurable.</Item>
             <Item>Issue or redeem Robinhood Stock Tokens. The token issuer (RHJ) controls that, entirely off-chain of WoolFi.</Item>
-            <Item>Waive the sequencer/oracle safety checks. Those are hard-coded in the adapters.</Item>
+            <Item>Waive the oracle staleness and sanity checks. Those are hard-coded in the adapters.</Item>
+            <Item>Receive URU taken in a drawdown. Drawn-down URU goes to a separate rebalancer address, not to the multisig.</Item>
             <Item>Vote &quot;on your behalf&quot; using URU. Underwriting stake is not voting stake.</Item>
           </List>
+        </Group>
+
+        <Group>
+          <Q>Is there a delay before settings change?</Q>
+          <A>
+            That is the plan for launch: a timelock (a contract that holds changes in a public
+            queue for at least 24 hours before they can run) sits between the multisig and the
+            protocol for oracle changes, vault wiring, break resolution, and the break waiting
+            period. Anyone watching the queue sees a change a full day before it takes effect.
+            The launch record states whether the timelock is in place; until then, changes take
+            effect as soon as the multisig signs.
+          </A>
+        </Group>
+
+        <Group>
+          <Q>Who handles structural breaks?</Q>
+          <A>
+            Nobody needs permission. Detecting a break, confirming it after the waiting period,
+            and unlocking a pool once its price has recovered are all open functions anyone can
+            call; WoolFi runs a keeper bot that calls them automatically. The waiting period
+            itself is public, so stakers and monitors see a break before any URU is drawn down.
+            The multisig can also resolve a break, but it is not required.
+          </A>
         </Group>
 
         <Group>

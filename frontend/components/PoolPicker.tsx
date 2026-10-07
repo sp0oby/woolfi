@@ -20,9 +20,9 @@ export function PoolPicker() {
   const [category, setCategory] = useState<(typeof filters)[number]["value"]>("all");
 
   const visible = useMemo(() => filterPools(pools, query, category), [category, pools, query]);
+  // Seeded pools first; the rest stay in catalog order. All 18 launch together.
   const groups = [
-    {label: "Live", pools: visible.filter((candidate) => candidate.status === "live")},
-    {label: "Coming soon", pools: visible.filter((candidate) => candidate.status === "pending")},
+    {label: "Pools", pools: [...visible].sort((a, b) => Number(b.seeded) - Number(a.seeded))},
   ] as const;
 
   return (
@@ -67,8 +67,8 @@ export function PoolPicker() {
                       }`}
                     >
                       <span>{candidate.base.symbol} / {candidate.quote.symbol}</span>
-                      <span className={candidate.status === "live" ? "text-emerald-300" : "text-amber-200/80"}>
-                        {candidate.status}
+                      <span className={candidate.status === "live" && candidate.seeded ? "text-pos" : candidate.status === "live" ? "text-warn" : "text-muted"}>
+                        {candidate.status !== "live" ? "pre-launch" : candidate.seeded ? "live" : "needs LP"}
                       </span>
                     </button>
                   );

@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import {Footer} from "@/components/Footer";
+import {launchLiquidityCopy} from "@/components/poolState";
+import {poolRegistry} from "@/lib/pools/registry";
 import {Header} from "@/components/Header";
 import {TerminalTicker} from "@/components/terminal/TerminalTicker";
 
@@ -29,7 +31,7 @@ export default function SplashPage() {
         </p>
 
         <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-muted">
-          Eighteen pools, coordinated launch, URU underwriting per pool. No rocket emojis.
+          {launchLiquidityCopy(poolRegistry.some((pool) => pool.status === "live"))}
         </p>
 
         <div className="mt-12 flex flex-wrap items-center justify-center gap-3">

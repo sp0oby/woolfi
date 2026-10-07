@@ -80,6 +80,42 @@ export const hookAbi = [
   },
 ] as const;
 
+/** WoolFiPoolAligner: moves an empty pool to its oracle fair price at zero cost. */
+export const alignerAbi = [
+  {
+    type: "function",
+    name: "align",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "key",
+        type: "tuple",
+        components: [
+          {name: "currency0", type: "address"},
+          {name: "currency1", type: "address"},
+          {name: "fee", type: "uint24"},
+          {name: "tickSpacing", type: "int24"},
+          {name: "hooks", type: "address"},
+        ],
+      },
+    ],
+    outputs: [{name: "moved", type: "bool"}],
+  },
+  {type: "error", name: "PoolHasLiquidity", inputs: [{name: "liquidity", type: "uint128"}]},
+  {type: "error", name: "PoolNotConfigured", inputs: []},
+  {type: "error", name: "NonZeroDelta", inputs: []},
+  {
+    type: "error",
+    name: "WrappedError",
+    inputs: [
+      {name: "target", type: "address"},
+      {name: "selector", type: "bytes4"},
+      {name: "reason", type: "bytes"},
+      {name: "details", type: "bytes"},
+    ],
+  },
+] as const;
+
 export const keeperAbi = [
   {
     type: "function",

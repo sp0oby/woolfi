@@ -24,7 +24,7 @@ export function PreviewSwap({pool}: {pool: CuratedPool}) {
       <SwapDirection />
       <TokenInput label="To (estimated)" symbol={to} readOnly />
       <QuickAmounts />
-      <ActionButton>Swap unavailable · pool pending</ActionButton>
+      <ActionButton>Swap unavailable · pre-launch</ActionButton>
       <FeeStrip pool={pool} />
     </Frame>
   );
@@ -38,7 +38,7 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
   return (
     <Frame
       title="Provide liquidity"
-      hint="Deposit both tokens at the pool ratio (or zap in one). You earn 70% of swap fees. You do not bear structural-break drawdown; you do bear normal price risk."
+      hint="Deposit both tokens at the pool ratio, zap in one, or migrate a Uniswap v3 position. You earn 70% of swap fees. You do not bear structural-break drawdown; you do bear normal price risk."
     >
       <div className="grid grid-cols-3 border border-line p-0.5 font-mono text-micro uppercase tracking-[0.2em]">
         {(["balanced", "single", "migrate"] as const).map((m) => (
@@ -100,7 +100,7 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
         }% · Trs ${pool.risk.treasuryFeeBps / 100}%`}
       />
       <ActionButton>
-        {mode === "migrate" ? "Migrate unavailable · pool pending" : mode === "single" ? "Zap unavailable · pool pending" : "Provide unavailable · pool pending"}
+        {mode === "migrate" ? "Migrate unavailable · pre-launch" : mode === "single" ? "Zap unavailable · pre-launch" : "Provide unavailable · pre-launch"}
       </ActionButton>
     </Frame>
   );
@@ -116,7 +116,7 @@ export function PreviewStake({pool}: {pool: CuratedPool}) {
       <QuickAmounts />
       <MiniRow label="Drawdown on break" value={`${pool.risk.drawdownBps / 100}% of vault`} />
       <MiniRow label="Unstake cooldown" value="7 days" />
-      <ActionButton>Stake unavailable · pool pending</ActionButton>
+      <ActionButton>Stake unavailable · pre-launch</ActionButton>
     </Frame>
   );
 }
@@ -125,12 +125,12 @@ export function PreviewRebate({pool}: {pool: CuratedPool}) {
   return (
     <Frame
       title="Urufu Gemu rebate"
-      hint="Hold an Urufu Gemu NFT and 15% of the base fee on your swaps comes back to you, funded in advance, capped weekly."
+      hint="Hold an Urufu Gemu NFT and 15% of the fee you actually paid comes back to you (capped at the base fee), funded in advance, capped weekly per wallet."
     >
       <MiniRow label="Eligibility" value="Connect wallet · check NFT" />
-      <MiniRow label="Rebate rate" value="15% of base-fee portion" />
+      <MiniRow label="Rebate rate" value="15% of fee paid · max base fee" />
       <MiniRow label="Pool" value={`${pool.base.symbol} / ${pool.quote.symbol}`} />
-      <ActionButton>Claim unavailable · pool pending</ActionButton>
+      <ActionButton>Claim unavailable · pre-launch</ActionButton>
     </Frame>
   );
 }

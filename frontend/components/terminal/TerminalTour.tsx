@@ -3,6 +3,8 @@
 import {useEffect, useState} from "react";
 import {createPortal} from "react-dom";
 
+import {openActionTab} from "../poolState";
+
 // Tutorial reopens on every visit (user preference). If a "don't show again" UX becomes
 // desirable later, add a checkbox in the tour card and write this key back.
 const STORAGE_KEY = "";
@@ -21,6 +23,8 @@ type Step = {
   body: string;
   region: Region;
   cardPos: "left" | "right" | "center-top" | "center-bottom";
+  /** Right-rail tab to open while this step is showing. */
+  tab?: "trade" | "provide" | "stake" | "rebate";
 };
 
 /**
@@ -28,48 +32,84 @@ type Step = {
  * (header 56px, 3-col grid, ticker ~32px). Approximate; the point is directional attention,
  * not pixel-perfect anchoring.
  */
+const RAIL: Region = {top: "56px", right: "0", width: "480px", height: "440px"};
+const HEADER: Region = {top: "56px", left: "320px", right: "480px", height: "84px"};
+
 const STEPS: Step[] = [
   {
     title: "Connect and approve",
     body:
-      "Click Connect in the top right. The first time you trade or deposit a token, you'll sign one extra Approve transaction so the router or position manager can move it. That's once per token.",
+      "Click Connect in the top right. The first time you trade or deposit a token, you'll sign one extra Approve transaction so WoolFi can move it. That's once per token.",
     region: {top: "0", right: "0", width: "420px", height: "56px"},
     cardPos: "left",
   },
   {
     title: "Pick a pool",
     body:
-      "The left rail lists all 18 pools. Green dot means live, gray means pending. Use the search or the category chips to filter.",
+      "The left rail lists all 18 pools, seeded pools first. A \"needs LP\" tag means the pool is live but empty: nobody can trade it until someone adds liquidity, and that someone can be you. Use the search or the category chips to filter.",
     region: {top: "56px", left: "0", width: "320px", bottom: "32px"},
     cardPos: "right",
   },
   {
     title: "Read the drift",
     body:
-      "Drift is how far the pool price sits from the Chainlink price, in basis points (1 bp = 0.01%). The header shows the pair, current state, fair price, live drift in bps, and the tolerance and hard-threshold rails. Green drift is below fair, red is above.",
-    region: {top: "56px", left: "320px", right: "480px", height: "84px"},
+      "Drift is how far the pool price sits from the Chainlink price, in basis points (1 bp = 0.01%). Trades that pull drift back toward zero pay a lower fee; trades that push it further away pay more.",
+    region: HEADER,
+    cardPos: "center-bottom",
+  },
+  {
+    title: "Check the pool state",
+    body:
+      "The pill next to the pair tells you what you can do right now. Live: trade normally. Needs liquidity: add liquidity first. Break detected: the price ran past the hard threshold, so only trades that fix it are allowed while a waiting period runs. Break confirmed: still broken after the wait, so URU stakers absorb a share. Once the price is back in band the pool unlocks on its own. Hover the pill for details.",
+    region: HEADER,
     cardPos: "center-bottom",
   },
   {
     title: "Watch pool activity",
     body:
-      "Drift over time relative to the tolerance band (soft) and hard-threshold rails (amber). Below it, recent swaps classified corrective or adversarial based on whether they reduced drift.",
+      "The chart shows drift over time against the tolerance band and the hard threshold. Below it, recent swaps are tagged corrective or adversarial, depending on whether they reduced drift.",
     region: {top: "140px", left: "320px", right: "480px", bottom: "32px"},
     cardPos: "left",
   },
   {
-    title: "Trade, provide, stake, claim",
+    title: "Trade",
     body:
-      "Right rail tabs. Trade swaps through the router. Liquidity has a Balanced form or a Zap that turns one token into a 50/50 LP. Stake deposits URU into the pool vault. Rebate claims funded Urufu Gemu NFT rebates.",
-    region: {top: "56px", right: "0", width: "480px", height: "440px"},
+      "Pick the token you pay with, enter an amount, and swap. The preview shows your fee before you sign. A single trade that would push the price more than 15% from Chainlink is rejected, so try a smaller amount. Holding an Urufu Gemu NFT? A rebate is recorded on every swap automatically.",
+    region: RAIL,
     cardPos: "left",
+    tab: "trade",
+  },
+  {
+    title: "Add liquidity, three ways",
+    body:
+      "Balanced: deposit both tokens at the pool ratio. Zap: deposit just one token (or ETH) and WoolFi swaps half for you, so you get LP shares in one transaction. Migrate v3: already an LP on Uniswap v3? Pick your position and it moves here in one transaction, fees included, with leftovers refunded.",
+    region: RAIL,
+    cardPos: "left",
+    tab: "provide",
+  },
+  {
+    title: "First into an empty pool",
+    body:
+      "An empty pool cannot follow Chainlink on its own, so its price can go stale. If it has, the Liquidity tab shows Sync to Chainlink price above the deposit form. Click it once (gas only, no tokens move), then deposit any of the three ways. Your deposit sets a fair starting ratio, and you earn all the LP fees until others join.",
+    region: RAIL,
+    cardPos: "left",
+    tab: "provide",
+  },
+  {
+    title: "Stake and claim",
+    body:
+      "Stake deposits URU into this pool's vault: you earn a cut of its swap fees, and in return a confirmed break can draw down part of the vault. Unstaking has a cooldown. Rebate is where Urufu Gemu holders claim back 15% of the fee they actually paid, capped at the base fee.",
+    region: RAIL,
+    cardPos: "left",
+    tab: "stake",
   },
   {
     title: "Track your position",
     body:
-      "Wallet balances, LP shares, staked URU, and pending fees or rewards for the selected pool. Updates as your wallet does. Unfamiliar term? See the glossary in /docs.",
+      "Wallet balances, LP shares, staked URU, and pending fees or rewards for the selected pool. Updates as your wallet does. Reopen this tour anytime with How to use. Unfamiliar term? See the glossary in /docs.",
     region: {top: "496px", right: "0", width: "480px", bottom: "32px"},
     cardPos: "left",
+    tab: "trade",
   },
 ];
 
@@ -115,6 +155,12 @@ export function TerminalTour() {
     window.addEventListener("woolfi:open-tour", onOpen as EventListener);
     return () => window.removeEventListener("woolfi:open-tour", onOpen as EventListener);
   }, []);
+
+  // Show the tab each how-to step is talking about.
+  useEffect(() => {
+    const tab = open ? STEPS[index]?.tab : undefined;
+    if (tab) openActionTab(tab);
+  }, [open, index]);
 
   function finish() {
     setOpen(false);

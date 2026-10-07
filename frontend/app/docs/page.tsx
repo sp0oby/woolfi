@@ -14,12 +14,15 @@ export const metadata: Metadata = {
 const SECTIONS = [
   {id: "hook", label: "The hook"},
   {id: "pools", label: "Pools"},
+  {id: "launch-liquidity", label: "Launch liquidity"},
   {id: "using", label: "Using WoolFi"},
   {id: "lp-vs-underwriter", label: "LPs vs underwriters"},
   {id: "rebates", label: "Urufu Gemu rebates"},
   {id: "hours", label: "Market hours"},
   {id: "rht", label: "Robinhood Stock Tokens"},
   {id: "breaks", label: "Structural breaks"},
+  {id: "migrate", label: "Migrate from Uniswap v3"},
+  {id: "arb-agent", label: "Arbitrage agent"},
   {id: "glossary", label: "Glossary"},
   {id: "status", label: "Status"},
   {id: "source", label: "Source"},
@@ -56,10 +59,33 @@ export default function DocsPage() {
 
           <Section id="pools" label="Pools">
             <p>
-              The catalog spans stock/USDG, stock/WETH, stock/stock spread, and crypto pools. A
-              pool is marked <span className="text-warn">pending</span> until its verified oracles
-              and production contracts are ready, then marked <span className="text-pos">live</span>.
-              Actions stay disabled for pending pools.
+              The catalog spans stock/USDG, stock/WETH, stock/stock spread, and crypto pools. One
+              hook contract serves all 18; each pool has its own oracles, risk settings, and URU
+              vault. Before launch every pool shows as{" "}
+              <span className="text-muted">pre-launch</span> and actions stay disabled. At launch
+              all 18 go <span className="text-pos">live</span> together.
+            </p>
+          </Section>
+
+          <Section id="launch-liquidity" label="Launch liquidity">
+            <p>
+              All 18 pools go live together at launch. WETH/USDG and NVDA/USDG are seeded at
+              launch; the rest are open for the first liquidity providers, including one-click
+              migration from Uniswap v3.
+            </p>
+            <p>
+              Every pool is initialized at a launch price taken from Chainlink, so the first LP
+              deposits at a fair ratio rather than setting the price. A pool with no deposits yet
+              shows a <span className="text-warn">needs liquidity</span> tag: there is nothing to
+              trade against until someone adds liquidity, Zaps in one token, or migrates a v3
+              position. The terminal lists seeded pools first.
+            </p>
+            <p>
+              An empty pool has nothing to trade against, so its price stays put while Chainlink
+              moves. The keeper re-syncs every empty pool to the Chainlink price on each run, and
+              anyone can do the same from the Liquidity tab with Sync to Chainlink price: one
+              transaction, gas only, no tokens move. That keeps the first deposit at a fair ratio and
+              stops a stale empty pool from tripping a false structural break.
             </p>
           </Section>
 
@@ -67,8 +93,9 @@ export default function DocsPage() {
             <p>
               Connect a Robinhood Chain wallet, select a live pool, approve the token you want to
               spend, and swap. The hook chooses the fee from the trade&apos;s direction and oracle
-              drift; the router enforces your minimum output. Urufu Gemu holders then claim funded
-              base-fee rebates from the Rebate tab. Users who want fee income can instead add both
+              drift; the router enforces your minimum output. A single trade that would push the price
+              more than the hard threshold from Chainlink is rejected; try a smaller amount. Urufu
+              Gemu holders then claim funded rebates from the Rebate tab. Users who want fee income can instead add both
               pool assets as liquidity or stake URU as risk-bearing underwriting.
             </p>
           </Section>
@@ -91,9 +118,11 @@ export default function DocsPage() {
           <Section id="rebates" label="Urufu Gemu rebates">
             <p>
               A wallet holding at least one verified Urufu Gemu NFT when its router swap settles
-              earns 15% of the pool&apos;s base-fee portion back in the input token. Directional
-              surcharges are excluded, multiple NFTs do not stack the benefit, and per-token
-              weekly caps apply. Rebates are funded in advance and claimed from the terminal.
+              earns back 15% of the fee it actually paid, capped at the base fee, in the input
+              token. A corrective trade that paid a discounted fee gets 15% of that discounted
+              fee; surcharges above the base fee are not rebated. Multiple NFTs do not stack the
+              benefit, and the weekly cap is per wallet. Rebates are funded in advance and
+              claimed from the terminal.
             </p>
           </Section>
 
@@ -140,10 +169,72 @@ export default function DocsPage() {
 
           <Section id="breaks" label="Structural breaks">
             <p>
-              If the oracle disagrees with the pool by more than a hard threshold (default 15%),
-              the hook caches that fair price, admits only corrective swaps against it, and
-              blocks new deposits. A capped URU vault drawdown can fund the rebalance. Withdrawals
-              stay open.
+              If the pool price drifts more than the hard threshold (default 15%) from the
+              Chainlink price, the pool enters a structural break. It happens in two steps so a
+              brief spike cannot cost URU stakers anything:
+            </p>
+            <ol className="mt-4 space-y-2 border-l border-line pl-5">
+              <li>
+                <span className="text-ink">Detected.</span> The hook caches the fair price, admits
+                only corrective swaps, and blocks new deposits. Nothing is drawn from the vault.
+                The terminal shows <span className="text-warn">Break detected: confirming</span>{" "}
+                with a countdown, or <em>waiting for market open</em> when the market is closed.
+              </li>
+              <li>
+                <span className="text-ink">Confirmed.</span> After the waiting period (default
+                1 hour of open-market time, never during the opening stabilization window), anyone
+                can call confirm. If the price is still past the threshold, the URU vault is drawn
+                down once, capped at the pool&apos;s drawdown share, to fund the rebalance. If it
+                has recovered, the break simply clears and nothing is taken.
+              </li>
+              <li>
+                <span className="text-ink">Recovered.</span> Once a confirmed pool is back inside
+                its tolerance band, anyone can unlock it. The keeper bot does both calls
+                automatically; governance can also resolve a break directly.
+              </li>
+            </ol>
+            <p className="mt-4">
+              Withdrawals stay open in every state. Separately, every swap in every state is
+              checked: a single trade that would push an in-range pool past the hard threshold
+              is rejected outright.
+            </p>
+          </Section>
+
+          <Section id="migrate" label="Migrate from Uniswap v3">
+            <p>
+              Already providing liquidity for one of these pairs on Uniswap v3? The Liquidity tab
+              has a <span className="text-ink">Migrate v3</span> mode. Pick your position and
+              WoolFi&apos;s migrator withdraws it, collects its accrued fees, and deposits
+              everything full-range into the matching WoolFi pool in one transaction. Anything
+              the full-range ratio cannot use is refunded to you, and the empty v3 NFT stays in
+              your wallet. You approve the migrator for that one NFT first.
+            </p>
+            <p>
+              Migration follows the same rules as a normal deposit: the pool must be in band, not
+              in a break, and (for stock pools) the market must be open. Migrating into an empty
+              pool whose price has drifted? Use Sync to Chainlink price first.
+            </p>
+          </Section>
+
+          <Section id="arb-agent" label="Arbitrage agent">
+            <p>
+              The repo ships an open-source arbitrage agent that keeps WoolFi pools close to the
+              price on Uniswap v3 without needing its own capital. It borrows inside a single v4
+              transaction, trades the WoolFi pool toward fair value (paying the discounted
+              corrective fee), hedges on Uniswap v3, and repays, keeping the difference. If the
+              trade is not profitable the whole transaction reverts.
+            </p>
+            <p>
+              Anyone can run it. An optional AI layer writes plain-English summaries of each
+              opportunity; it never decides trades.{" "}
+              <a
+                href="https://github.com/sp0oby/woolfi/tree/main/arb-agent"
+                target="_blank"
+                rel="noreferrer"
+                className="text-ink underline underline-offset-4 hover:text-signal"
+              >
+                Source and setup ↗
+              </a>
             </p>
           </Section>
 
@@ -170,6 +261,28 @@ export default function DocsPage() {
               <Term name="Structural break">
                 The contained state after a hard-threshold crossing: fair price is cached, only
                 corrective swaps are admitted, new deposits are blocked, withdrawals stay open.
+                It is detected first and confirmed later; see Structural breaks above.
+              </Term>
+              <Term name="Break confirmation">
+                The second step of a break. After a waiting period of open-market time, anyone can
+                confirm; the URU vault is drawn down only if the price is still past the threshold.
+              </Term>
+              <Term name="Break guard">
+                A per-swap check: a single trade that would push the pool more than the hard
+                threshold from Chainlink is rejected.
+              </Term>
+              <Term name="Unseeded pool">
+                A live pool that nobody has deposited into yet. It opens at the Chainlink launch
+                price and waits for its first liquidity provider.
+              </Term>
+              <Term name="Price sync">
+                Moving an empty pool to the current Chainlink price with the pool aligner. With no
+                liquidity there is nothing to trade against, so it costs only gas. The keeper does it
+                automatically; the Liquidity tab offers it before a first deposit.
+              </Term>
+              <Term name="Migration">
+                Moving a Uniswap v3 position into a WoolFi pool in one transaction with the v3
+                migrator.
               </Term>
               <Term name="Stabilization">
                 A short window after the referenced market opens during which asymmetric fees stay
@@ -187,12 +300,12 @@ export default function DocsPage() {
                 accepting drawdown risk if the pool breaks.
               </Term>
               <Term name="Drawdown">
-                The portion of a pool&apos;s URU vault (default 20%) seized to fund a rebalance when
-                a structural break triggers.
+                The portion of a pool&apos;s URU vault (default 20%) used to fund a rebalance when a
+                structural break is confirmed. It happens at most once per break.
               </Term>
               <Term name="Urufu Gemu">
-                An NFT collection. Holding one entitles the wallet to a 15% rebate on the base-fee
-                portion of its swaps, funded in advance and capped weekly.
+                An NFT collection. Holding one earns the wallet 15% of the fee it actually paid on
+                each swap, capped at the base fee, funded in advance and capped weekly per wallet.
               </Term>
               <Term name="Zap">
                 Depositing a single token; the zapper swaps half of it through an approved
@@ -205,9 +318,14 @@ export default function DocsPage() {
             <div className="border border-line bg-panel">
               <StatusRow label="Network" value="Robinhood Chain · 4663" />
               <StatusRow label="Architecture" value="Uniswap v4 multi-pool hook" />
-              <StatusRow label="Catalog" value="18 pools · coordinated launch" />
+              <StatusRow label="Catalog" value="18 pools · all live at launch" />
+              <StatusRow label="Seeded at launch" value="WETH/USDG · NVDA/USDG" />
+              <StatusRow label="Breaks" value="Two-step · detect, then confirm" />
+              <StatusRow label="Migration" value="Uniswap v3 → WoolFi, one tx" />
+              <StatusRow label="Empty pools" value="Synced to Chainlink by the keeper" />
               <StatusRow label="Underwriting" value="URU · per-pool vault" />
               <StatusRow label="Oracle" value="Chainlink Data Feeds" />
+              <StatusRow label="Contracts" value="Not deployed yet" />
               <StatusRow label="Audit" value="Pending" />
             </div>
           </Section>
@@ -223,6 +341,11 @@ export default function DocsPage() {
                 href="https://github.com/sp0oby/woolfi"
                 label="Source on GitHub"
                 hint="contracts + tests"
+              />
+              <SourceLink
+                href="https://github.com/sp0oby/woolfi/tree/main/arb-agent"
+                label="arb-agent"
+                hint="zero-capital arbitrage bot"
               />
             </ul>
           </Section>

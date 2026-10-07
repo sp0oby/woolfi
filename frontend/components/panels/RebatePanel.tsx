@@ -81,8 +81,9 @@ function Live({
       />
       <TxStatus hash={tx} />
       <PanelFootnote>
-        Hold at least one Urufu Gemu NFT when a swap settles to earn 15% of its base-fee portion
-        back in the input token. Surcharges are excluded and weekly caps apply.
+        Hold at least one Urufu Gemu NFT when a swap settles to earn back 15% of the fee you
+        actually paid, capped at the base fee, in the input token. Surcharges above the base fee
+        are not rebated. Rebates are funded in advance and capped weekly per wallet.
       </PanelFootnote>
     </div>
   );

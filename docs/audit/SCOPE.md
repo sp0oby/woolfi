@@ -36,8 +36,14 @@ Prepared 2026-10-06 as an internal pre-audit package. Not a substitute for an ex
 | src/oracle/NyseHoursOracle.sol | 241 |
 | src/oracle/MultisigMarketHours.sol | 48 |
 | src/interfaces/*.sol | 83 |
+| src/periphery/WoolFiPoolAligner.sol | 133 |
 
-Total in scope: about 3,040 lines.
+Total in scope: about 3,170 lines.
+
+`WoolFiPoolAligner` is in scope because 16 of the 18 pools launch with zero liquidity and the
+aligner is the path that keeps them on the oracle price (PROJECT_SPEC.md section 9.1). It is
+ownerless and custody-free; review focus is the zero-delta invariant, the sqrtPrice conversion, and
+its interaction with every hook mode, including the break-state hop through the cached target.
 
 ## Out of scope
 

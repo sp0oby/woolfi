@@ -48,7 +48,8 @@ launched or marked live.
 - [ ] All stock token, WETH, and USDG contracts verified.
 - [ ] All price feeds, heartbeats, sequencer settings, market-hours settings, and oracle adapters
       verified for the 18 pool configurations.
-- [ ] Initial Q64.96 prices, risk settings, slippage bounds, and liquidity for all 18 approved.
+- [ ] Initial Q64.96 prices and risk settings for all 18 approved; slippage bounds and liquidity
+      approved for the seed set (`seedSet`, currently `weth-usdg` and `nvda-usdg`).
 - [ ] Fork tests, formatting, build, tests, and dry-run scripts pass.
 - [ ] Frontend and indexer configuration reviewed against the intended manifest.
 - [ ] No zero, placeholder, or fabricated production address is presented as deployed.
@@ -86,10 +87,14 @@ and approval reference. Re-check them before every broadcast.
    `core.sequencerUptimeFeed` zero (spec §5.1) stock adapters deploy with the sequencer guard
    disabled. Verify each adapter's `getPrice()` on a fork, then bind the market-hours source in
    `core.marketHours`.
-7. Create each approved pool and capped URU vault in the canonical catalog.
-8. Seed each pool through `SeedInitialLiquidity.s.sol` using approved maxima, minimum shares, and
-   deadlines; reset token approvals after each mint. On broadcast `robinhood_batch.py seed`
-   records every seeded slug in `manifest.seededPools`, so a resumed run never double-seeds.
+7. Create each approved pool and capped URU vault in the canonical catalog. All 18 pools are
+   created and initialized at their computed launch price.
+8. Seed only the `seedSet` pools through `SeedInitialLiquidity.s.sol` using approved maxima,
+   minimum shares, and deadlines; reset token approvals after each mint. Pools outside the seed
+   set stay at zero liquidity, open to community LPs and v3 migration (spec section 9.1). On
+   broadcast `robinhood_batch.py seed` records every seeded slug in `manifest.seededPools` and sets
+   `seeded: true` on that manifest pool entry, so a resumed run never double-seeds and the
+   frontend can show which live pools still need a first LP.
 9. Configure each rebate token with multisig-approved weekly caps and funding. For an EOA-owned
    simulation deployment, `ConfigureRebate.s.sol` performs the same calls; production Safe
    transactions must execute the reviewed calldata directly.
@@ -173,7 +178,8 @@ python script/robinhood_batch.py seed --config script/config/robinhood-batch.jso
 
 `deploy_oracle_adapters.py` deploys one adapter per asset whose `oracle` is still zero and, on
 broadcast, writes the address back into the config. `deploy` forwards each pool's approved
-`vaultAllocationCap` as `URU_CAP`. `seed` skips undeployed or already-seeded pools, maps
+`vaultAllocationCap` as `URU_CAP`. `seed` skips pools outside `seedSet` and undeployed or
+already-seeded pools, maps
 base/quote amounts onto token0/token1 order, records seeded slugs in `manifest.seededPools` on
 broadcast, and still requires `CONFIRM_MAINNET=true` before broadcast.
 
@@ -205,7 +211,8 @@ python script/robinhood_batch.py readiness --config script/config/robinhood-batc
 - `multisigApproved`: production signer set, threshold, recovery, and policy recorded.
 - `uruCapsApproved`: per-vault and aggregate URU caps approved.
 - `oraclesVerified`: feeds, heartbeats, adapters, sequencer, and hours sources verified.
-- `initialLiquidityApproved`: Q64.96 prices, sizes, and slippage for all 18 approved.
+- `initialLiquidityApproved`: Q64.96 prices for all 18, and seed sizes and slippage for the
+  seed set, approved.
 - `keeperReady`: permissionless keeper configured, dry-run exercised, and monitored.
 - `indexerReady`: Ponder mappings and start blocks match the intended manifest.
 - `frontendReviewed`: dashboard, pending gating, and degraded-state copy reviewed.
@@ -213,7 +220,9 @@ python script/robinhood_batch.py readiness --config script/config/robinhood-batc
 ## Funding and launch
 
 1. Seed no vault above its approved URU cap.
-2. Seed no pool above its approved liquidity amount.
+2. Seed no pool above its approved liquidity amount, and seed no pool outside `seedSet`.
+   Do not fund treasury URU into an unseeded pool's vault until that pool has liquidity
+   (phantom-break drawdown risk, spec section 9.1).
 3. Confirm all 18 pools are indexed, readable, correctly gated, and capable of expected dry-run
    user flows.
 4. Confirm pending/live UI behavior from the final manifest.

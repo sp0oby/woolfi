@@ -2,6 +2,7 @@
 
 import {useMemo, useState} from "react";
 
+import {launchLiquidityCopy} from "@/components/poolState";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 import {filterPools} from "@/lib/pools/registry";
 import type {CuratedPool, PoolCategory} from "@/lib/pools/types";
@@ -20,8 +21,11 @@ export function TerminalPoolRail() {
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]["value"]>("all");
 
   const visible = useMemo(() => filterPools(pools, query, category), [category, pools, query]);
-  const live = visible.filter((p) => p.status === "live");
-  const pending = visible.filter((p) => p.status === "pending");
+  // Seeded pools first (they have something to trade against), then the rest in catalog order.
+  const sorted = useMemo(
+    () => [...visible].sort((a, b) => Number(b.seeded) - Number(a.seeded)),
+    [visible],
+  );
 
   return (
     <aside className="flex h-full flex-col border-r border-line bg-panel">
@@ -58,11 +62,12 @@ export function TerminalPoolRail() {
         </div>
       </div>
 
+      <p className="border-b border-line px-4 py-2.5 text-[12px] leading-snug text-muted">
+        {launchLiquidityCopy(pools.some((p) => p.status === "live"))}
+      </p>
+
       <div className="flex-1 overflow-y-auto">
-        {live.length > 0 ? <RailGroup label="Live" pools={live} activeSlug={pool.slug} onSelect={selectPool} /> : null}
-        {pending.length > 0 ? (
-          <RailGroup label="Pending" pools={pending} activeSlug={pool.slug} onSelect={selectPool} />
-        ) : null}
+        {sorted.length > 0 ? <RailList pools={sorted} activeSlug={pool.slug} onSelect={selectPool} /> : null}
         {visible.length === 0 ? (
           <p className="px-4 py-4 font-mono text-2xs text-muted">No matching pools.</p>
         ) : null}
@@ -71,23 +76,17 @@ export function TerminalPoolRail() {
   );
 }
 
-function RailGroup({
-  label,
+function RailList({
   pools,
   activeSlug,
   onSelect,
 }: {
-  label: string;
   pools: readonly CuratedPool[];
   activeSlug: string;
   onSelect: (slug: string) => void;
 }) {
   return (
-    <div className="border-b border-line last:border-b-0">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-panel/95 px-4 py-1.5 backdrop-blur">
-        <span className="font-mono text-2xs uppercase tracking-[0.22em] text-muted">{label}</span>
-        <span className="tabular font-mono text-2xs text-subtle">{pools.length}</span>
-      </div>
+    <div>
       <ul>
         {pools.map((p) => {
           const selected = p.slug === activeSlug;
@@ -104,7 +103,7 @@ function RailGroup({
                 }`}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <StateDot status={p.status} />
+                  <StateDot status={p.status} seeded={p.seeded} />
                   <span
                     className={`tabular font-mono text-[13px] ${selected ? "text-ink" : "text-ink/85"}`}
                   >
@@ -113,8 +112,15 @@ function RailGroup({
                     {p.quote.symbol}
                   </span>
                 </div>
-                <span className="font-mono text-micro uppercase tracking-wider text-muted">
-                  {p.tradingHours === "always-open" ? "24/7" : "eq-hrs"}
+                <span className="flex items-center gap-2">
+                  {p.status === "live" && !p.seeded ? (
+                    <span className="border border-warn/40 px-1.5 font-mono text-micro uppercase tracking-wider text-warn">
+                      needs LP
+                    </span>
+                  ) : null}
+                  <span className="font-mono text-micro uppercase tracking-wider text-muted">
+                    {p.tradingHours === "always-open" ? "24/7" : "eq-hrs"}
+                  </span>
                 </span>
               </button>
             </li>
@@ -125,7 +131,10 @@ function RailGroup({
   );
 }
 
-function StateDot({status}: {status: "live" | "pending"}) {
+function StateDot({status, seeded}: {status: "live" | "pending"; seeded: boolean}) {
+  if (status === "live" && !seeded) {
+    return <span className="inline-block h-2 w-2 shrink-0 rounded-full border border-warn" />;
+  }
   if (status === "live") {
     return (
       <span className="relative inline-flex h-2 w-2 shrink-0">

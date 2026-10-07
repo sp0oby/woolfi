@@ -76,5 +76,14 @@
 - The guard and the rebate fee use EIP-1153 transient storage. Robinhood Chain must run ArbOS 20 or
   later; fork tests pass against 4663, but confirm the ArbOS version before deploy.
 - LP shares are non-transferable (ERC-6909 transfers revert).
+- Empty-pool price griefing: anyone can move an unseeded pool's price for free (inside the break
+  threshold). `WoolFiPoolAligner` resets it for free and the keeper aligns every tick; a determined
+  griefer can still make a first deposit revert `OutOfBand` by re-pushing each block, at their own gas
+  cost. The zapper and v3 migrator do not align internally because a zap's swap plan is priced at
+  quote time; the frontend sends `align` before a first deposit.
+- `SpreadMath.poolPrice` rounds the raw (smallest-unit) price to WAD before rescaling decimals, so
+  prices below about 1e-12 token1-raw per token0-raw cannot be resolved to 1 bps (the aligner fuzz
+  test bounds its range to match). Every Robinhood pair sits well above it; the lowest is about
+  1e-11 (a $10 18-decimal stock against 6-decimal USDG).
 - GLD/USD feed on 4663 is named "GLD / USD", not "Robinhood GLD / USD", and may not use Total
   Return Value semantics like the stock feeds.

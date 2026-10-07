@@ -13,6 +13,7 @@ the spec.
       WETH/USDG behavior.
 - [x] Replace production STRAND assumptions with externally supplied URU underwriting.
 - [x] Record all-18-or-no-launch policy and resumable/non-atomic broadcast semantics.
+- [x] Add `seedSet` (`weth-usdg`, `nvda-usdg`): all 18 deploy, only the seed set is seeded.
 - [x] Mark production deployment state honestly: no live WoolFi contracts or pools.
 - [x] Specify planned break containment, stabilization, timestamp-skew, and hard-revert semantics.
 
@@ -107,7 +108,15 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] Confirm approved URU is available without exceeding either cap.
 - [ ] Verify all stock-token pause behavior and all production feed metadata.
 - [ ] Verify WETH/USDG feeds and always-open designation.
-- [ ] Approve initial liquidity and slippage bounds for all 18 pools.
+- [ ] Approve initial liquidity and slippage bounds for the seed set (`weth-usdg`, `nvda-usdg`).
+- [x] Empty-pool re-peg: `src/periphery/WoolFiPoolAligner.sol` plus keeper align step;
+      `test/fork/WoolFiPoolAligner.fork.t.sol` passes live (NVDA/USDG 10% off Chainlink: first mint
+      reverts, align at zero cost, first mint succeeds).
+- [ ] Deploy `WoolFiPoolAligner` (`script/DeployPoolAligner.s.sol`), record `poolAligner`, and rerun
+      the aligner fork test against chain ID 4663 as a launch gate.
+- [ ] Frontend: call `align` before a first deposit into an empty pool (`frontend/lib/poolAligner.ts`
+      `needsAlign`, ABI in `frontend/lib/abis/poolAligner.ts`).
+- [ ] Decide URU vault funding policy for unseeded pools (phantom-break drawdown risk, spec 9.1).
 - [ ] Confirm no placeholder or unverified address is present in production configuration.
 
 ## Deploy automation and CI
@@ -133,7 +142,8 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [ ] Verify bytecode, constructor arguments, ownership, wiring, pool keys, and start blocks.
 - [ ] Populate the production manifest only with receipt-backed deployments.
 - [ ] Keep all pools pending and user actions disabled during deployment work.
-- [ ] Verify frontend, router, indexer, keeper, monitoring, feeds, vaults, and liquidity for all 18.
+- [ ] Verify frontend, router, indexer, keeper, monitoring, feeds, and vaults for all 18, and
+      seed liquidity for the seed set.
 - [ ] Obtain separate final all-18 coordinated go/no-go approval.
 - [ ] Launch none if any pool or shared requirement is incomplete.
 

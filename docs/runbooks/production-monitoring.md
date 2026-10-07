@@ -42,7 +42,9 @@ invented values.
 
 ## Shift checklist
 
-- Confirm all-18 catalog and `launchStatus`.
+- Confirm all-18 catalog and `launchStatus`, and which pools are `seeded`.
+- Watch unseeded pools for drift past tolerance (first LPs blocked by `OutOfBand`) and for
+  structural-break flags caused by a stale launch price rather than real trading.
 - Review unresolved structural breaks, paused feeds, stale rounds, and sequencer state.
 - Reconcile keeper and indexer failures with transaction receipts.
 - Review privileged events and ownership against the approved multisig record.

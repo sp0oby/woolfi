@@ -22,6 +22,8 @@ export type LivePool = {
 export type KeeperManifest = {
   chainId: number;
   hook: `0x${string}`;
+  /** WoolFiPoolAligner; undefined when not deployed (the align step is skipped). */
+  poolAligner?: `0x${string}`;
   pools: LivePool[];
 };
 
@@ -38,6 +40,7 @@ type RawPool = {
 type RawManifest = {
   chainId?: number;
   hook?: string;
+  poolAligner?: string;
   launchStatus?: string;
   pools?: RawPool[];
 };
@@ -63,9 +66,16 @@ export function loadManifest(path: string): KeeperManifest {
     });
   }
   if (raw.launchStatus !== "live") pools.length = 0;
-  return {chainId: raw.chainId ?? 0, hook, pools};
+  const aligner = raw.poolAligner?.toLowerCase();
+  const poolAligner = aligner && aligner !== ZERO ? (aligner as `0x${string}`) : undefined;
+  return {chainId: raw.chainId ?? 0, hook, poolAligner, pools};
 }
 
+/**
+ * Coordinated launch: the keeper runs only when the hook exists and all 18 distinct receipt-backed
+ * pools are live. Unseeded (zero-liquidity) pools are included; break checks on them are no-ops.
+ */
 export function isDeployed(manifest: KeeperManifest): boolean {
-  return manifest.hook !== ZERO && manifest.pools.length === 18 && new Set(manifest.pools.map((pool) => pool.slug)).size === 18;
+  const slugs = manifest.pools.map((pool) => pool.slug);
+  return manifest.hook !== ZERO && slugs.length === 18 && new Set(slugs).size === 18;
 }

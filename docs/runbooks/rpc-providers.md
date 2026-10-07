@@ -35,6 +35,8 @@ Conclusion: fine for frontend reads and as a monitoring cross-check. Unsuitable 
 
 ## Recommendation
 
+> **Current status (2026-10-07):** the project's Alchemy account is suspended. Until it is restored or replaced, everything runs on the public Robinhood RPC (`https://rpc.mainnet.chain.robinhood.com`). Known limits of the public endpoint: it rejects requests without a `User-Agent` header (HTTP 403), rate-limits bursts (HTTP 429, resets after 60s), and is not archive. Fork tests therefore run one suite at a time (`--threads 1` in CI). The indexer starts at the deploy block, so it does not need archive history, but a sustained backfill may hit 429s. Before launch, move the indexer and keeper to a paid provider below (QuickNode is the next confirmed option with archive and WebSocket) so production does not depend on the public endpoint's rate limits.
+
 | Role | Provider | Why |
 |---|---|---|
 | Indexer (Ponder) | **Alchemy** (paid PAYG) | Robinhood's recommended provider; archive confirmed; high throughput for backfill |
@@ -47,5 +49,5 @@ Frontend: set `NEXT_PUBLIC_ROBINHOOD_RPC_URL` to a domain-restricted Alchemy key
 
 - Indexer: `PONDER_RPC_URL_ROBINHOOD=<alchemy https url>`
 - Keeper: `ROBINHOOD_RPC_URL=<quicknode https url>`
-- CI fork tests: GitHub secret `ROBINHOOD_RPC_URL` (any of the above)
+- CI fork tests: GitHub secret `ROBINHOOD_RPC_URL` (any of the above; the public RPC works with `--threads 1`)
 - Never commit provider keys.

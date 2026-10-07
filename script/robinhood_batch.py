@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Validated, resumable coordinator for the 18 Robinhood production pools."""
+"""Validated, resumable coordinator for the 18 Robinhood production pools.
+
+All 18 pools are deployed and initialized at their launch price under one all-or-nothing readiness
+gate. Only the pools named in `seedSet` receive initial seed liquidity; the rest go live with zero
+liquidity, open to community LPs and v3 migration.
+"""
 
 from __future__ import annotations
 
@@ -46,7 +51,7 @@ class Rpc:
             {"jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params}
         ).encode()
         request = urllib.request.Request(
-            self.url, data=body, headers={"Content-Type": "application/json"}
+            self.url, data=body, headers={"Content-Type": "application/json", "User-Agent": "woolfi-readiness/1"}
         )
         with urllib.request.urlopen(request, timeout=20) as response:
             result = json.load(response)
@@ -104,7 +109,7 @@ def validate(
     contract_addresses: list[tuple[str, str]] = []
     for field in (
         "poolManager", "stakingToken", "hook", "positionManager", "governor",
-        "swapRouter", "rebateDistributor", "liquidityZapper", "externalSwapExecutor", "urufuNft",
+        "swapRouter", "rebateDistributor", "liquidityZapper", "poolAligner", "externalSwapExecutor", "urufuNft",
     ):
         value = _address(core.get(field), f"core.{field}", errors)
         contract_addresses.append((f"core.{field}", value))
@@ -162,6 +167,8 @@ def validate(
         if heartbeat > 30 * 24 * 60 * 60:
             errors.append(f"assets.{symbol}.heartbeat is implausibly large")
 
+    seed_set = validate_seed_set(config.get("seedSet"), errors)
+
     pools = config.get("pools", [])
     if not isinstance(pools, list) or len(pools) != len(PAIRS):
         errors.append(f"pools must contain exactly {len(PAIRS)} entries")
@@ -187,12 +194,7 @@ def validate(
         cap = _positive(pool.get("vaultAllocationCap"), f"{slug}.vaultAllocationCap", errors)
         allocated += cap
         _positive(pool.get("sqrtPriceX96"), f"{slug}.sqrtPriceX96", errors)
-        liquidity = pool.get("initialLiquidity", {})
-        _positive(liquidity.get("base"), f"{slug}.initialLiquidity.base", errors)
-        _positive(liquidity.get("quote"), f"{slug}.initialLiquidity.quote", errors)
-        slippage = _positive(liquidity.get("slippageBps"), f"{slug}.initialLiquidity.slippageBps", errors)
-        if slippage > 10_000:
-            errors.append(f"{slug}.initialLiquidity.slippageBps exceeds 10000")
+        _validate_initial_liquidity(str(slug), pool.get("initialLiquidity"), str(slug) in seed_set, errors)
         _validate_risk(slug, pool.get("risk", config.get("defaultRisk", {})), errors)
         _validate_hours_and_safety(str(slug), pool, config.get("defaultSafety", {}), errors, config.get("assets", {}))
     if set(seen_slugs) != set(SLUGS):
@@ -209,7 +211,9 @@ def validate(
         errors.append(f"deployment incomplete: {len(deployed)}/{len(SLUGS)} canonical pools complete")
     if require_deployed:
         for field in (
-            "hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper"
+            "hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper",
+            # Unseeded pools launch empty; the aligner keeps them on fair so the first LP is never blocked.
+            "poolAligner",
         ):
             if str(core.get(field, ZERO)).lower() == ZERO:
                 errors.append(f"core.{field} is not deployed")
@@ -229,6 +233,45 @@ def validate(
     else:
         errors.append("RPC URL is required for code and chain validation")
     return errors
+
+
+def validate_seed_set(value: Any, errors: list[str]) -> set[str]:
+    """`seedSet` names the pools that get initial seed liquidity: non-empty, unique, canonical slugs."""
+    if not isinstance(value, list) or not value:
+        errors.append("seedSet must be a non-empty list of pool slugs")
+        return set()
+    if any(not isinstance(slug, str) for slug in value):
+        errors.append("seedSet entries must be strings")
+        return set()
+    if len(set(value)) != len(value):
+        errors.append("seedSet contains duplicate slugs")
+    unknown = [slug for slug in value if slug not in SLUGS]
+    if unknown:
+        errors.append(f"seedSet contains unknown pools: {', '.join(unknown)}")
+    return {slug for slug in value if slug in SLUGS}
+
+
+def _validate_initial_liquidity(slug: str, liquidity: Any, seeded: bool, errors: list[str]) -> None:
+    """Seed-set pools need positive amounts and slippage. Every other pool is created and initialized
+    at its launch price with zero liquidity, so it must not carry seed amounts."""
+    if liquidity is None:
+        liquidity = {}
+    if not isinstance(liquidity, dict):
+        errors.append(f"{slug}.initialLiquidity must be an object")
+        return
+    if seeded:
+        _positive(liquidity.get("base"), f"{slug}.initialLiquidity.base", errors)
+        _positive(liquidity.get("quote"), f"{slug}.initialLiquidity.quote", errors)
+        slippage = _positive(liquidity.get("slippageBps"), f"{slug}.initialLiquidity.slippageBps", errors)
+        if slippage > 10_000:
+            errors.append(f"{slug}.initialLiquidity.slippageBps exceeds 10000")
+        return
+    for field in ("base", "quote"):
+        amount = liquidity.get(field, 0)
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0:
+            errors.append(f"{slug}.initialLiquidity.{field} must be a non-negative integer")
+        elif amount > 0:
+            errors.append(f"{slug}.initialLiquidity.{field} is set but {slug} is not in seedSet")
 
 
 def _validate_hours_and_safety(
@@ -313,7 +356,8 @@ def _validate_manifest(
         ("poolManager", "poolManager"), ("stakingToken", "stakingToken"),
         ("hook", "hook"), ("positionManager", "positionManager"), ("governor", "governor"),
         ("swapRouter", "swapRouter"), ("rebateDistributor", "rebateDistributor"),
-        ("liquidityZapper", "liquidityZapper"), ("externalSwapExecutor", "externalSwapExecutor"),
+        ("liquidityZapper", "liquidityZapper"), ("poolAligner", "poolAligner"),
+        ("externalSwapExecutor", "externalSwapExecutor"),
         ("urufuNft", "urufuNft"),
     ):
         current = str(manifest.get(manifest_field, ZERO)).lower()
@@ -378,7 +422,12 @@ def main() -> int:
         print(json.dumps({"ready": False, "errors": errors}, indent=2))
         return 1
     if args.command == "readiness":
-        print(json.dumps({"ready": True, "completePools": len(SLUGS)}))
+        print(json.dumps({
+            "ready": True,
+            "completePools": len(SLUGS),
+            "seedSet": list(config["seedSet"]),
+            "unseededPools": len(SLUGS) - len(config["seedSet"]),
+        }))
         return 0
     if args.broadcast and os.getenv("CONFIRM_MAINNET", "").lower() != "true":
         print(json.dumps({"ready": False, "errors": ["set CONFIRM_MAINNET=true before broadcast"]}))

@@ -98,9 +98,10 @@ WETH/USDG has no equity-market-hours gate. It remains subject to feed freshness 
 safety requirements.
 
 The catalog favors assets with observable Robinhood Chain liquidity so arbitrageurs can hedge
-WoolFi inventory elsewhere. Existing external liquidity does not seed a WoolFi pool: every pool
-still requires its own approved initial liquidity and executable-route checks immediately before
-launch.
+WoolFi inventory elsewhere. Existing external liquidity does not seed a WoolFi pool: seed-set pools
+require their own approved initial liquidity and executable-route checks immediately before
+launch, and the other pools start empty until community LPs or v3 migrations fill them
+(section 9.1).
 
 ## 4. Price and fee mechanics
 
@@ -268,10 +269,13 @@ it is not an automatic STRAND or URU buyback. Any per-pool override requires lau
 
 ## 9. Coordinated rollout
 
-The public launch condition is **all 18 ready or no launch**. “Ready” means each pair has verified
-assets, both required oracles, heartbeat/skew/market-hours settings, approved risk parameters,
-approved URU cap, approved initial liquidity, completed dry runs, indexed metadata, and passing
-smoke checks; shared contracts and services must also be ready.
+The public launch condition is **all 18 ready or no launch**. All 18 pools are deployed under one
+all-or-nothing readiness gate, only the seed set is seeded, and the rest open for community LPs and
+v3 migration. “Ready” means each pair has verified assets, both required oracles,
+heartbeat/skew/market-hours settings, approved risk parameters, approved URU cap, a computed launch
+price, completed dry runs, indexed metadata, and passing smoke checks; shared contracts and
+services must also be ready. Approved initial liquidity is required only for the pools in
+`seedSet` (section 9.1).
 
 Deployment broadcasts are operationally **resumable and non-atomic**. The core, adapters, and
 individual pools may require separate transactions or scripts. A failed or paused sequence must
@@ -282,6 +286,57 @@ Every broadcast requires explicit approval immediately before submission, includ
 broadcasts. Deployment completion is not public launch authorization. If fewer than all 18 pools
 are production-ready after deployment work, every pool remains pending and user actions remain
 disabled.
+
+### 9.1 Seed set and unseeded pools
+
+Only the pools named in the batch config's `seedSet` receive initial seed liquidity at launch
+(currently `weth-usdg` and `nvda-usdg`). The other 16 pools are still authorized, created, and
+initialized at their computed launch `sqrtPriceX96` in the same coordinated deployment, with zero
+liquidity. They go live with everything else, open to community LPs through the position manager,
+the zapper, and the v3 migrator. The manifest marks seeded pools with `seeded: true` and the
+frontend surfaces it as `CuratedPool.seeded`, so an unseeded live pool can invite its first LP.
+
+Behavior of an empty pool, from `src/WoolFiHook.sol`:
+
+- Drift is computed normally against the launch price in `slot0`. `checkStructuralBreak` does not
+  revert on zero liquidity; it is a no-op unless drift reaches the hard threshold (it can still
+  revert on a stale oracle, as on any pool).
+- Deposits require drift inside the tolerance band (`OutOfBand` otherwise), an open and settled
+  market, and no active break. If the oracle has moved past tolerance since the launch price, the
+  first LP cannot deposit until the pool price is re-pegged. `WoolFiPoolAligner` does this
+  (see "Empty-pool aligner" below).
+- Phantom break risk: if the oracle moves past the hard threshold away from a stale empty-pool
+  price, anyone (including the keeper) can flag a structural break, and `confirmStructuralBreak`
+  then draws down that pool's vault even though no LP lost anything. A drawdown on an empty vault
+  seizes nothing. Policy: do not fund treasury URU into an unseeded pool's vault until the pool
+  has liquidity, and warn stakers on unseeded pools.
+- Anyone can move an empty pool's price for free up to, but not across, the hard threshold (the
+  single-swap break guard blocks crossing it). The first LP's deposit is still bounded by the
+  tolerance band, so the worst case is depositing up to the tolerance away from fair. The UI should
+  tell first LPs to check drift before depositing, and realign first (below).
+
+Empty-pool aligner (`src/periphery/WoolFiPoolAligner.sol`). `align(key)` is permissionless, has no
+owner, and holds no funds. It reverts unless the pool's PoolManager liquidity is zero. It reads fair
+from the oracle adapters in the hook's pool config (`getLastValidPrice`; nothing is at stake in an
+empty pool and the hook still applies its own oracle checks inside the swap), converts it to a
+`sqrtPriceX96`, and swaps an exact input of 1 wei with that price as the limit. With zero liquidity
+the price jumps to the limit and no tokens move: every balance delta is zero (enforced), so the
+caller pays gas only (about 230k gas on a live fork). It is a no-op when the pool is already within
+1 bps of fair.
+
+- Hook modes: works live (fresh prints required, so a stale feed reverts), market closed and
+  stabilizing (last valid print, flat fee), and oracle skew (flat fee). During a structural break the
+  hook allows only swaps toward the cached target; if fresh fair lies the other way the aligner hops
+  through the cached target first (drift zero there, so either direction passes), in one unlock.
+  Reverts when the hook is paused or an oracle runtime guard fails (feed paused, invalid round).
+- Phantom breaks: aligning a flagged empty pool before the confirmation window ends makes
+  `confirmStructuralBreak` clear the break with no drawdown; after confirmation, align then
+  `clearRecoveredBreak` unlocks it. Keeping empty pools aligned means the break check never trips.
+- The keeper calls `align` for every pool before `checkStructuralBreak` (manifest `poolAligner`);
+  seeded pools revert `PoolHasLiquidity` and are idle, aligned pools return false and are not
+  broadcast. The frontend helper `needsAlign` tells the UI to send `align` before a first deposit.
+- The zapper and v3 migrator do not align internally: a zap's swap plan is priced against the pool
+  price at quote time, so moving the price inside the call would invalidate it.
 
 ## 10. Launch gates
 
@@ -296,9 +351,13 @@ disabled.
 - [ ] Corrective-only cached-fair breaks, post-open stabilization, and timestamp-skew checks
       audited (implemented and covered in-repo).
 - [ ] All stock pause guards, feeds, heartbeats, sequencer guards, and market-hours sources verified.
-- [ ] All 18 pool keys, initial prices, risk parameters, and liquidity amounts independently checked.
+- [ ] All 18 pool keys, launch prices, and risk parameters independently checked; seed amounts
+      checked for the seed set.
 - [ ] Per-pool and aggregate URU caps explicitly approved and funded only within those caps.
-- [ ] Initial liquidity for all 18 pools approved and available.
+- [ ] Initial liquidity for the seed set (`weth-usdg`, `nvda-usdg`) approved and available.
+- [ ] `WoolFiPoolAligner` deployed, recorded as `poolAligner`, wired into the keeper, and
+      `test/fork/WoolFiPoolAligner.fork.t.sol` passing against chain ID 4663.
+- [ ] No treasury URU funded into an unseeded pool's vault before that pool has liquidity.
 - [ ] Frontend and manifest show no pool live until the coordinated launch decision.
 - [ ] Monitoring, incident runbooks, security contact, and bug bounty ready.
 - [ ] Dry runs and read-only fork checks pass against chain ID 4663.

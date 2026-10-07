@@ -53,7 +53,7 @@ export function TerminalDriftChart() {
         {!deployment ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="border border-line bg-panel/95 px-3 py-2 text-center font-mono text-micro uppercase tracking-[0.22em] text-muted">
-              No live data · pool pending
+              No live data · pre-launch
             </div>
           </div>
         ) : null}

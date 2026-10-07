@@ -9,24 +9,28 @@
 
 WoolFi by Urufu Labs is a Uniswap v4 hook that turns a pool into a continuously-rebalancing pair-trade vehicle. The pool looks like an ordinary v4 pool from the outside. You swap, add liquidity, collect fees. The hook quietly enforces a peg between the pool's internal price and an oracle-derived fair price, weaving related assets into a venue for trading their *relationship* rather than just one against the other.
 
-One hook serves an exact 18-pool catalog: eight stock/USDG oracle-guided spot pools, five stock/WETH crypto-beta pools (including PLTR/WETH), four stock/stock relative-value spreads, and always-open WETH/USDG. The coordinated rollout is all 18 ready or no launch.
+One hook serves an exact 18-pool catalog: eight stock/USDG oracle-guided spot pools, five stock/WETH crypto-beta pools (including PLTR/WETH), four stock/stock relative-value spreads, and always-open WETH/USDG. All 18 pools go live together. WETH/USDG and NVDA/USDG are seeded at launch; the rest are open for the first liquidity providers, including one-click migration from Uniswap v3.
 
 ## Using WoolFi, end to end
 
-1. Connect a wallet on Robinhood Chain and choose a live pool.
+1. Connect a wallet on Robinhood Chain and choose a pool. Seeded pools are listed first; a pool
+   tagged "needs LP" is live but empty until its first liquidity provider arrives.
 2. To trade, approve the token you are paying and submit a swap. The hook compares the pool with
    oracle fair value, discounts corrective flow, and surcharges flow that increases the mismatch.
+   A single trade that would push the pool more than the hard threshold from Chainlink is
+   rejected; try a smaller amount.
 3. The router enforces the minimum output you accepted and sends the purchased token to your
-   wallet. If that wallet holds an Urufu Gemu NFT, a funded rebate equal to 15% of the base-fee
-   portion accrues in the input token; claim it from **NFT rebates**.
-4. To earn LP fees, deposit both pool assets when the market is open and the pool is near fair
-   value. Burn LP shares later to withdraw the current asset mix plus accrued fees.
+   wallet. If that wallet holds an Urufu Gemu NFT, a funded rebate equal to 15% of the fee
+   actually paid (capped at the base fee) accrues in the input token; claim it from **Rebate**.
+4. To earn LP fees, deposit both pool assets, Zap in one token, or migrate a Uniswap v3
+   position in one transaction (**Liquidity > Migrate v3**). Deposits need the market open and
+   the pool near fair value. Burn LP shares later to withdraw the current asset mix plus fees.
 5. To underwrite, stake URU in a pool vault. Underwriters may receive pool-token fee rewards but
    can lose a configured portion of staked URU during a structural break.
-6. Traders close exposure with a reverse swap; LPs withdraw through **Provide liquidity**; URU
+6. Traders close exposure with a reverse swap; LPs withdraw through **Liquidity**; URU
    stakers request withdrawal and wait through the seven-day cooldown.
 
-No action is available while a pool is pending. Returns are not guaranteed: trading can move
+No action is available before launch, while every pool is pre-launch. Returns are not guaranteed: trading can move
 against the user, LP inventory can lose value, and underwriting is explicitly exposed to drawdown.
 
 ## The trade
@@ -51,7 +55,7 @@ A few things make this work without anyone actively managing the pool:
 
 Correlations break. A balance sheet gets restated, an issuer halts redemptions, the link that looked fundamental turns out to be circumstantial.
 
-WoolFi handles this with a per-pool underwriting vault capitalized with external URU. The hook caches the fair price that triggered the break, allows only corrective swaps against that target, blocks new deposits, and can trigger a capped vault drawdown. A configurable post-open stabilization interval keeps asymmetric fees off until the session settles. URU underwriting does not imply URU-based WoolFi governance.
+WoolFi handles this with a per-pool underwriting vault capitalized with external URU. A break happens in two steps. **Detected:** the hook caches the fair price, allows only corrective swaps against that target, and blocks new deposits; nothing is drawn yet. **Confirmed:** after a waiting period of open-market time (default one hour), anyone can confirm; if the pool is still past the hard threshold, the vault is drawn down once, capped, to fund the rebalance, and if it has recovered the break clears with nothing taken. Once a confirmed pool is back in band, anyone can unlock it. The keeper bot makes these calls automatically. Separately, every swap is checked so no single trade can push an in-range pool past the hard threshold. A configurable post-open stabilization interval keeps asymmetric fees off until the session settles. URU underwriting does not imply URU-based WoolFi governance.
 
 LPs are insulated from the haircut; their tokens stay where they are, and withdrawals remain open the entire time.
 
@@ -59,10 +63,11 @@ The vault doesn't make breaks impossible. It makes them survivable.
 
 ## Urufu Gemu holder rebates
 
-Wallets holding at least one verified Urufu Gemu NFT can earn 15% of WoolFi's base-fee portion
-back in the token used for a swap. Rebates are recorded after successful router swaps, funded in
-advance, and limited by a per-token weekly cap. The benefit does not stack across multiple NFTs,
-does not rebate directional surcharges, and never draws from LP or underwriting principal.
+Wallets holding at least one verified Urufu Gemu NFT earn back 15% of the fee they actually paid
+on a swap, capped at the base fee, in the token used for the swap. Rebates are recorded after
+successful router swaps on the settled input amount, funded in advance, and limited by a weekly
+cap per wallet. The benefit does not stack across multiple NFTs, does not rebate directional
+surcharges, and never draws from LP or underwriting principal.
 
 ## Market hours
 
@@ -74,15 +79,15 @@ If you integrate tokenized real-world assets into an AMM, this is the detail tha
 
 ## Where the protocol is
 
-The frontend is configured exclusively for Robinhood Chain and presents the exact catalog with explicit pending and live states. Today every pool is pending: no WoolFi protocol contract or pool is live on Robinhood Chain. Pending pools cannot be traded or funded. The protocol is unaudited.
+The frontend is configured exclusively for Robinhood Chain and presents the exact catalog. Today every pool is pre-launch: no WoolFi protocol contract or pool is deployed on Robinhood Chain yet. At launch all 18 go live together; WETH/USDG and NVDA/USDG are seeded, and the other 16 show "needs LP" until their first deposit. The protocol is unaudited.
 
 | | |
 |---|---|
 | Spec | [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) v1.0-draft |
 | Source | Solidity 0.8.26, Foundry, BUSL-1.1 hook, MIT elsewhere |
-| Tests | 308 passing &middot; 100k invariant calls clean &middot; [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
+| Tests | 486 forge tests + 30 live-fork tests against Robinhood Chain mainnet &middot; invariant suites clean &middot; [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
 | Network | Robinhood Chain |
-| Catalog | Exact 18 pools; all currently pending |
+| Catalog | 18 pools, all live together at launch; WETH/USDG and NVDA/USDG seeded |
 | Audit | Not done; bug bounty pending audit |
 | Dashboard | Next.js 14, wagmi/viem, reads configured live contracts |
 
@@ -92,7 +97,8 @@ current zero core addresses and empty pool list are the canonical “not deploye
 ## Architecture
 
 ```
-WoolFiHook                beforeSwap / afterSwap, asymmetric fee, structural-break flag,
+WoolFiHook                beforeSwap / afterSwap, asymmetric fee, per-swap break guard,
+                         two-step structural breaks (detect, confirm, recover),
                          auto-realizes fees on every swap
 WoolFiPositionManager     ERC-6909 LP shares, fee accumulator, vault and treasury routing
 WoolFiUnderwritingVault   capped per-pool URU vault, drawdown bound to the hook
@@ -100,9 +106,13 @@ WoolFiGovernor            pool authorization, hook parameters, emergency control
 WoolFiSwapRouter          minimal IUnlockCallback wrapper for EOA swaps with slippage
 WoolFiLiquidityZapper     guarded one-token LP path through allowlisted external routes
 UrufuFeeRebateDistributor funded, capped base-fee rebates for Urufu Gemu NFT holders
+periphery/WoolFiV3Migrator   one-transaction Uniswap v3 position -> WoolFi LP migration
+periphery/WoolFiArbExecutor  zero-capital v4 flash arb with a Uniswap v3 hedge
+periphery/WoolFiPoolAligner  syncs an EMPTY pool to the Chainlink price at zero cost (permissionless)
 oracle/                  Chainlink adapter, dual-oracle adapter, NyseHoursOracle (on-chain
                          NYSE calendar; production market-hours choice pending verification)
-keeper/                  permissionless break checks from the Robinhood manifest
+keeper/                  permissionless empty-pool sync and break detect / confirm / recover
+arb-agent/               open-source arbitrage bot with an optional AI summary layer
 URU                      external underwriting asset for per-pool vaults
 ```
 
@@ -114,7 +124,7 @@ Robinhood Stock Tokens provide economic exposure to referenced securities but do
 
 ## Governance
 
-WoolFi v1 is administered by a multisig. It can authorize pools, update supported parameters, and use emergency controls within the contracts' permissions. URU underwriting does not imply URU voting rights.
+WoolFi v1 is administered by a multisig. It can authorize pools, update supported parameters, and use emergency controls within the contracts' permissions. Before launch, a 24h+ timelock is planned in front of oracle, vault, and break-resolution changes, and drawn-down URU goes to a rebalancer address separate from the multisig. Break detection, confirmation, and recovery are permissionless. URU underwriting does not imply URU voting rights.
 
 ## Docs
 
@@ -144,8 +154,8 @@ npm run dev          # http://localhost:3000
 ```
 
 The splash and docs render at `/` and `/docs`; the multi-pool dashboard is at `/app`. Once the
-coordinated launch is approved, live pools will read Robinhood Chain state and expose swap,
-liquidity, and URU underwriting actions. Until then all 18 remain read-only.
+launch is approved, all 18 pools read Robinhood Chain state and expose swap, liquidity, migration,
+and URU underwriting actions. Until then all 18 remain read-only.
 
 ## License
 

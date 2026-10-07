@@ -1,6 +1,6 @@
 "use client";
 
-import {useState} from "react";
+import {useEffect, useState} from "react";
 
 import {LiquidityPanel} from "@/components/panels/LiquidityPanel";
 import {RebatePanel} from "@/components/panels/RebatePanel";
@@ -29,6 +29,16 @@ export function TerminalActionRail() {
   const {pool} = useSelectedPool();
   const [active, setActive] = useState<TabId>("trade");
   const pending = pool.status === "pending";
+
+  // Other panels (e.g. the swap panel on an unseeded pool) can ask for a tab switch.
+  useEffect(() => {
+    function onOpen(e: Event) {
+      const tab = (e as CustomEvent<TabId>).detail;
+      if (TABS.some((t) => t.id === tab)) setActive(tab);
+    }
+    window.addEventListener("woolfi:open-tab", onOpen);
+    return () => window.removeEventListener("woolfi:open-tab", onOpen);
+  }, []);
 
   return (
     <aside className="flex h-full flex-col border-l border-line bg-panel">

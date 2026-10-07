@@ -149,7 +149,7 @@ export function DepositMode({
         {(["balanced", "single", "migrate"] as const).map((item) => (
           <button key={item} type="button" onClick={() => setFundingMode(item)}
             className={`px-3 py-2 ${fundingMode === item ? "bg-white/[0.06] text-white" : "text-muted"}`}>
-            {item === "balanced" ? "Balanced" : item === "single" ? "One token" : "Migrate v3"}
+            {item === "balanced" ? "Balanced" : item === "single" ? "Zap · one token" : "Migrate v3"}
           </button>
         ))}
       </div>

@@ -46,12 +46,24 @@ export function parseVaultPools(value: string | undefined): VaultPool[] {
   });
 }
 
+/**
+ * Coordinated launch: a live manifest lists all 18 receipt-backed pools (seeded or not). Pools
+ * outside the seed set start with zero liquidity but are deployed and indexed like any other.
+ */
 function manifestVaultPools(): VaultPool[] {
   if (deployment.launchStatus !== "live") return [];
+  const seenVaults = new Set<string>();
+  const seenPools = new Set<string>();
   const pools = (deployment.pools ?? []).map((pool) => {
     if (!pool.vault || !pool.poolId || !pool.startBlock) {
       throw new Error("live manifest contains a pool without receipt-backed vault metadata");
     }
+    const vaultKey = pool.vault.toLowerCase();
+    const poolKey = pool.poolId.toLowerCase();
+    if (seenVaults.has(vaultKey)) throw new Error(`live manifest repeats vault ${pool.vault}`);
+    if (seenPools.has(poolKey)) throw new Error(`live manifest repeats pool ${pool.poolId}`);
+    seenVaults.add(vaultKey);
+    seenPools.add(poolKey);
     return {vault: pool.vault as `0x${string}`, poolId: pool.poolId as `0x${string}`};
   });
   if (pools.length !== 18) throw new Error("live manifest must contain all 18 pools");

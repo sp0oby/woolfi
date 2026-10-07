@@ -28,6 +28,7 @@ export function usePoolReads() {
           {address: deployment.vault, abi: vaultAbi, functionName: "totalShares"},
           {address: deployment.oracle0, abi: oracleAbi, functionName: "getPrice"},
           {address: deployment.oracle1, abi: oracleAbi, functionName: "getPrice"},
+          {address: deployment.hook, abi: hookAbi, functionName: "breakStatus", args: [key as PoolKey]},
         ]
       : [],
     query: {enabled: !!deployment, refetchInterval: 12_000},
@@ -44,11 +45,12 @@ export function usePoolReads() {
 
   if (!deployment) return {deployment: null} as const;
 
-  const [drift, config, safety, totalShares, vaultStaked, vaultShares, p0, p1] = (reads.data ?? []) as Array<{
+  const [drift, config, safety, totalShares, vaultStaked, vaultShares, p0, p1, brk] = (reads.data ?? []) as Array<{
     result?: any;
     error?: Error;
   }>;
   const safetyResult = safety?.result as readonly [boolean, bigint, boolean, boolean] | undefined;
+  const breakResult = brk?.result as readonly [boolean, boolean, bigint, bigint] | undefined;
 
   const price0 = p0?.result as bigint | undefined;
   const price1 = p1?.result as bigint | undefined;
@@ -79,6 +81,7 @@ export function usePoolReads() {
           oracleSkewed: safetyResult[3],
         }
       : undefined,
+    breakStatus: breakResult ? toBreakStatus(breakResult) : undefined,
     totalShares: totalShares?.result as bigint | undefined,
     vaultStaked: vaultStaked?.result as bigint | undefined,
     vaultShares: vaultShares?.result as bigint | undefined,
@@ -149,4 +152,29 @@ export function useAllowance(
     args: owner && spender ? [owner, spender] : undefined,
     query: {enabled: !!token && !!owner && !!spender, refetchInterval: 4_000},
   });
+}
+
+/** Two-phase structural break, as reported by `WoolFiHook.breakStatus`. */
+export type BreakStatus = {
+  broken: boolean;
+  confirmed: boolean;
+  detectedAt: number;
+  /** Unix seconds when anyone may confirm. `undefined` while the market is closed (contract
+   *  reports max uint) or when there is no break. */
+  confirmReadyAt: number | undefined;
+  /** True when the contract reported max uint: confirmation waits for the market to open. */
+  waitingForMarketOpen: boolean;
+};
+
+const MAX_UINT = (1n << 256n) - 1n;
+
+function toBreakStatus([broken, confirmed, detectedAt, readyAt]: readonly [boolean, boolean, bigint, bigint]): BreakStatus {
+  const waitingForMarketOpen = broken && !confirmed && readyAt === MAX_UINT;
+  return {
+    broken,
+    confirmed,
+    detectedAt: Number(detectedAt),
+    confirmReadyAt: broken && !confirmed && !waitingForMarketOpen && readyAt > 0n ? Number(readyAt) : undefined,
+    waitingForMarketOpen,
+  };
 }

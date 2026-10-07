@@ -5,6 +5,8 @@ import type {CuratedPool, DeployedPool, PoolCategory, PoolRiskDefaults, TradingH
 const ZERO = "0x0000000000000000000000000000000000000000";
 const pendingOracleRequirement =
   "Pending verified oracle adapters, heartbeat configuration, and production pool deployment.";
+const deployedNotLiveRequirement =
+  "Deployment detected, but public activation waits for the coordinated all-18 launch.";
 
 export const conservativeLaunchRisk = {
   tickSpacing: 60,
@@ -44,52 +46,68 @@ const pairSpecs = [
   ["WETH", "USDG", "crypto", "always-open"],
 ] as const satisfies readonly PairSpec[];
 
-type RawManifest = {launchStatus?: string; pools?: readonly Partial<DeployedPool>[]};
-const rawManifest = robinhoodManifest as RawManifest;
-const manifestPools = rawManifest.launchStatus === "live"
-  ? (rawManifest.pools ?? []).filter(isDeployedPool)
-  : [];
-const resolvedPairs = pairSpecs.map(([baseSymbol, quoteSymbol, category, tradingHours]) => {
+/** The subset of the deployment manifest the registry depends on. */
+export type RegistryManifest = {
+  launchStatus?: string;
+  poolManager?: string;
+  hook?: string;
+  positionManager?: string;
+  stakingToken?: string;
+  pools?: readonly (Partial<DeployedPool> & {seeded?: boolean})[];
+};
+
+/**
+ * Build the 18-pool catalog from a deployment manifest. Coordinated launch: every pool goes live
+ * together, and only when the global `launchStatus` is "live", the core protocol addresses are
+ * non-zero, and ALL 18 pools have complete receipt-backed deployments. Nothing shows live while
+ * `launchStatus` is "pending". Only the seed set gets initial liquidity; `seeded` (from the manifest
+ * pool entry) lets the UI invite the first LP into unseeded live pools.
+ */
+export function buildPoolRegistry(manifest: RegistryManifest): readonly CuratedPool[] {
+  const deployedPools = (manifest.pools ?? []).filter(isDeployedPool);
+  const protocolReady = [manifest.poolManager, manifest.hook, manifest.positionManager, manifest.stakingToken]
+    .every((address) => !!address && address.toLowerCase() !== ZERO);
+
+  const resolved = pairSpecs.map(([baseSymbol, quoteSymbol, category, tradingHours]) => {
     const base = robinhoodAssets[baseSymbol];
     const quote = robinhoodAssets[quoteSymbol];
     const slug = `${baseSymbol.toLowerCase()}-${quoteSymbol.toLowerCase()}`;
-    const rawDeployment = manifestPools.find(
+    const rawDeployment = deployedPools.find(
       (pool) => (!pool.slug || pool.slug === slug) && matchesPair(pool, base.address, quote.address),
     );
     const deployment = rawDeployment ? withTokenMetadata(rawDeployment, base, quote) : undefined;
-    return {base, quote, category, tradingHours, slug, deployment};
+    return {base, quote, category, tradingHours, slug, deployment, seeded: rawDeployment?.seeded === true};
   });
-const protocolAddressesReady = [
-  robinhoodManifest.poolManager,
-  robinhoodManifest.hook,
-  robinhoodManifest.positionManager,
-  robinhoodManifest.stakingToken,
-].every((address) => address && address !== ZERO);
-const coordinatedLaunchReady =
-  protocolAddressesReady && resolvedPairs.every(({deployment}) => deployment !== undefined);
+  const coordinatedLaunchReady =
+    manifest.launchStatus === "live" &&
+    protocolReady &&
+    resolved.length === 18 &&
+    resolved.every(({deployment}) => deployment !== undefined);
 
-export const poolRegistry: readonly CuratedPool[] = resolvedPairs.map(
-  ({base, quote, category, tradingHours, slug, deployment}) => {
-    return {
-      slug,
-      base,
-      quote,
-      category,
-      tradingHours,
-      risk: deployment ?? conservativeLaunchRisk,
-      status: coordinatedLaunchReady ? "live" : "pending",
-      deployment: coordinatedLaunchReady ? deployment : undefined,
-      readinessRequirement: coordinatedLaunchReady
-        ? undefined
-        : deployment
-          ? "Deployment detected, but public activation waits for the coordinated all-18 launch."
-          : pendingOracleRequirement,
-    };
-  },
-);
+  return resolved.map(({base, quote, category, tradingHours, slug, deployment, seeded}) => ({
+    slug,
+    base,
+    quote,
+    category,
+    tradingHours,
+    risk: deployment ?? conservativeLaunchRisk,
+    status: coordinatedLaunchReady ? "live" : "pending",
+    seeded: coordinatedLaunchReady && seeded,
+    deployment: coordinatedLaunchReady ? deployment : undefined,
+    readinessRequirement: coordinatedLaunchReady
+      ? undefined
+      : deployment
+        ? deployedNotLiveRequirement
+        : pendingOracleRequirement,
+  }) satisfies CuratedPool);
+}
+
+export const poolRegistry: readonly CuratedPool[] = buildPoolRegistry(robinhoodManifest as RegistryManifest);
 
 export const defaultPool =
-  poolRegistry.find((pool) => pool.status === "live") ?? poolRegistry[0];
+  poolRegistry.find((pool) => pool.status === "live" && pool.seeded) ??
+  poolRegistry.find((pool) => pool.status === "live") ??
+  poolRegistry[0];
 
 export function findPoolBySlug(slug: string | null | undefined): CuratedPool | undefined {
   return slug ? poolRegistry.find((pool) => pool.slug === slug) : undefined;
@@ -130,6 +148,7 @@ export function validatePoolRegistry(pools: readonly CuratedPool[] = poolRegistr
     pairs.add(pairKey);
     if (pool.status === "live" && !pool.deployment) errors.push(`${pool.slug} is live without deployment data`);
     if (pool.status === "pending" && pool.deployment) errors.push(`${pool.slug} is pending with deployment data`);
+    if (pool.seeded && pool.status !== "live") errors.push(`${pool.slug} is seeded but not live`);
   }
   return errors;
 }
@@ -160,6 +179,7 @@ function isDeployedPool(pool: Partial<DeployedPool>): pool is DeployedPool {
 }
 
 function isWethUsdg(pool: Partial<DeployedPool>): boolean {
+  if (pool.slug === "weth-usdg") return true;
   const symbols = [pool.token0Symbol?.toUpperCase(), pool.token1Symbol?.toUpperCase()];
   return symbols.includes("WETH") && symbols.includes("USDG");
 }

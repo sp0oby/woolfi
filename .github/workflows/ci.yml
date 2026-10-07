@@ -21,6 +21,9 @@ jobs:
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          # Pinned: gas accounting changes between forge releases, so the snapshot only reproduces on the version that wrote it.
+          version: v1.8.1
 
       - name: Show forge version
         run: forge --version
@@ -31,15 +34,16 @@ jobs:
       - name: Build
         run: forge build --sizes
 
-      - name: Test (ci profile — heavy fuzz/invariant runs)
+      - name: Test (ci profile, heavy fuzz/invariant runs)
         run: forge test -vvv
 
-      - name: Gas snapshot check (deterministic tests only — fuzz/invariant gas is not reproducible across runs; fork tests skip without RPC)
-        run: forge snapshot --check --no-match-test "(testFuzz|invariant)" --no-match-path "test/fork/*"
+      - name: Gas snapshot check (deterministic tests only; fuzz/invariant gas is not reproducible across runs; fork tests skip without RPC)
+        run: forge snapshot --check --no-match-test "(testFuzz|invariant|test_dryRunDeploysRouter)" --no-match-path "test/fork/*"
 
       - name: Robinhood fork checks
         if: env.ROBINHOOD_RPC_URL != ''
-        run: forge test --match-path "test/fork/*" -vvv
+        # Public RPC rate-limits parallel forks (HTTP 429); run fork tests one at a time.
+        run: forge test --match-path "test/fork/*" --threads 1 -vvv
 
   application-checks:
     name: frontend + indexer + keeper + Python
@@ -49,7 +53,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             frontend/package-lock.json

@@ -97,6 +97,26 @@ export function useSwapQuote({
 
 function extractRevertReason(e: unknown): string {
   const err = e as {shortMessage?: string; message?: string};
-  // viem ContractFunctionExecutionError formats nicely in shortMessage
-  return err.shortMessage ?? err.message ?? "Simulation failed";
+  // viem ContractFunctionExecutionError formats nicely in shortMessage. v4 wraps hook reverts
+  // (e.g. SwapWouldBreakPool) in WrappedError, which the router ABI cannot decode, so also carry
+  // any raw revert data found in the cause chain so the panel can match the hook's selector.
+  const short = err.shortMessage ?? err.message ?? "Simulation failed";
+  const raw = rawRevertData(e);
+  return raw ? `${short} [data ${raw}]` : short;
+}
+
+function rawRevertData(e: unknown): string | undefined {
+  let cur: unknown = e;
+  for (let depth = 0; depth < 8 && cur && typeof cur === "object"; depth++) {
+    const node = cur as {data?: unknown; raw?: unknown; cause?: unknown};
+    for (const candidate of [node.raw, node.data]) {
+      if (typeof candidate === "string" && candidate.startsWith("0x")) return candidate;
+      if (candidate && typeof candidate === "object") {
+        const nested = (candidate as {data?: unknown}).data;
+        if (typeof nested === "string" && nested.startsWith("0x")) return nested;
+      }
+    }
+    cur = node.cause;
+  }
+  return undefined;
 }

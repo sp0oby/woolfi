@@ -52,7 +52,7 @@ async function main() {
           : undefined,
       },
       manifest.pools,
-      {keeper, broadcast},
+      {keeper, aligner: manifest.poolAligner, broadcast},
     );
     const summary = summarize(outcomes);
     console.log(JSON.stringify({at: summary.tick, dryRun: !broadcast, outcomes, summary}, null, 2));

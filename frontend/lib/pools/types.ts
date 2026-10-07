@@ -38,6 +38,8 @@ export type DeployedPool = PoolRiskDefaults & {
   marketHours: Address;
   vault: Address;
   startBlock?: number;
+  /** Manifest flag: true when this pool received initial seed liquidity (batch config `seedSet`). */
+  seeded?: boolean;
 };
 
 export type CuratedPool = {
@@ -48,6 +50,12 @@ export type CuratedPool = {
   tradingHours: TradingHours;
   risk: PoolRiskDefaults;
   status: PoolStatus;
+  /**
+   * True only for live pools that received initial seed liquidity at launch (the batch config's
+   * `seedSet`). A live pool with `seeded: false` was initialized at the launch price with zero
+   * liquidity and needs a first LP.
+   */
+  seeded: boolean;
   deployment?: DeployedPool;
   readinessRequirement?: string;
 };

@@ -11,6 +11,13 @@ import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {useAllowance, usePoolReads, useUserReads} from "@/hooks/usePool";
 import {useSwapQuote} from "@/hooks/useSwapQuote";
+import {
+  friendlySwapError,
+  needsLiquidity,
+  NO_LIQUIDITY_MESSAGE,
+  openActionTab,
+  SWAP_ADVERSARIAL_DURING_BREAK_MESSAGE,
+} from "@/components/poolState";
 import {Field, PanelFootnote, StatRow, TxStatus} from "./atoms";
 import {btnCls, parseAmount} from "./panelHelpers";
 
@@ -24,18 +31,31 @@ const ZERO_BYTES = "0x" as const;
 export function SwapPanel() {
   const {pool, deployment} = useSelectedPool();
   const {address} = useAccount();
-  const {drift, safety} = usePoolReads();
+  const {drift, safety, breakStatus, totalShares} = usePoolReads();
   const user = useUserReads(address);
 
   const [zeroForOne, setZeroForOne] = useState(true);
   const [amountIn, setAmountIn] = useState("");
-  // 1.0% default - low pool liquidity on testnet means a typical swap moves price meaningfully
-  // even before the asymmetric fee. The simulate-quote below makes this much less brittle, but
-  // the default still needs to absorb the buffer between simulation and signing.
+  // 1.0% default - launch pools start with modest liquidity, so a typical swap moves price
+  // meaningfully even before the asymmetric fee. The simulate-quote below makes this much less
+  // brittle, but the default still needs to absorb the buffer between simulation and signing.
   const [slippage, setSlippage] = useState("1.0");
 
   if (!deployment) {
-    return <PanelFootnote>{pool.base.symbol} / {pool.quote.symbol} is fully catalogued, but trading stays disabled until its verified oracle and protocol deployment are live.</PanelFootnote>;
+    return <PanelFootnote>{pool.base.symbol} / {pool.quote.symbol} is not deployed yet. All 18 pools open together at launch.</PanelFootnote>;
+  }
+  if (needsLiquidity(pool, totalShares)) {
+    return (
+      <div className="space-y-4">
+        <div className="border border-warn/30 bg-warn/[0.05] px-4 py-3 font-mono text-[12px] text-ink/90">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-warn">Needs liquidity</div>
+          <p className="mt-1.5 normal-case">{NO_LIQUIDITY_MESSAGE}</p>
+        </div>
+        <button type="button" onClick={() => openActionTab("provide")} className={btnCls(false)}>
+          Provide liquidity
+        </button>
+      </div>
+    );
   }
   if (!deployment.swapRouter) {
     return (
@@ -56,6 +76,7 @@ export function SwapPanel() {
       address={address}
       drift={drift}
       safety={safety}
+      broken={breakStatus?.broken ?? safety?.structurallyBroken === true}
       user={user}
       zeroForOne={zeroForOne}
       setZeroForOne={setZeroForOne}
@@ -72,6 +93,7 @@ function Live({
   address,
   drift,
   safety,
+  broken,
   user,
   zeroForOne,
   setZeroForOne,
@@ -84,6 +106,7 @@ function Live({
   address: `0x${string}` | undefined;
   drift: bigint | undefined;
   safety: ReturnType<typeof usePoolReads>["safety"];
+  broken: boolean;
   user: ReturnType<typeof useUserReads>;
   zeroForOne: boolean;
   setZeroForOne: (fn: (d: boolean) => boolean) => void;
@@ -152,7 +175,9 @@ function Live({
     else if ((drift > 0n && zeroForOne) || (drift < 0n && !zeroForOne)) direction = "corrective";
     else direction = "adversarial";
   }
-  const blockedByBreak = safety?.structurallyBroken === true && direction === "adversarial";
+  void safety;
+  const blockedByBreak = broken && direction === "adversarial";
+  const friendlyQuoteError = friendlySwapError(quoteError);
   const ready =
     !!address &&
     !!amountInWei &&
@@ -241,16 +266,23 @@ function Live({
         ]}
       />
 
-      {quoteError && !needsApproval ? (
-        <div className="border border-amber-200/30 bg-amber-200/[0.04] px-4 py-3 font-mono text-[12px] text-amber-100/95">
-          <div className="uppercase tracking-[0.18em] text-[10px] text-amber-200/85">Quote failed</div>
-          <p className="mt-1.5 normal-case break-words">{quoteError.slice(0, 320)}</p>
+      {blockedByBreak ? (
+        <div className="border border-danger/40 bg-danger/[0.06] px-4 py-3 font-mono text-[12px] text-ink/90">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-danger">Structural break</div>
+          <p className="mt-1.5 normal-case">{SWAP_ADVERSARIAL_DURING_BREAK_MESSAGE}</p>
+        </div>
+      ) : quoteError && !needsApproval ? (
+        <div className="border border-warn/30 bg-warn/[0.05] px-4 py-3 font-mono text-[12px] text-ink/90">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-warn">
+            {friendlyQuoteError ? "Trade not possible right now" : "Quote failed"}
+          </div>
+          <p className="mt-1.5 normal-case break-words">{friendlyQuoteError ?? quoteError.slice(0, 320)}</p>
         </div>
       ) : null}
 
       <button type="button" disabled={!ready} onClick={onClick} className={btnCls(!ready)}>
         {blockedByBreak
-          ? "Adversarial swap blocked"
+          ? "Only corrective trades during a break"
           : !address
           ? "Connect wallet"
           : !amountInWei || amountInWei === 0n
@@ -266,14 +298,17 @@ function Live({
                     : quoting
                       ? "Quoting…"
                       : quote === undefined
-                        ? "Cannot quote swap"
+                        ? friendlyQuoteError
+                          ? "Try a smaller amount"
+                          : "Cannot quote swap"
                         : "Swap"}
       </button>
       <TxStatus hash={swapTx ?? approveTx} />
 
       <PanelFootnote>
-        Swap routes through {`{WoolFiSwapRouter}`}. The WoolFi hook decides the asymmetric fee in
-        beforeSwap - corrective swaps are discounted, adversarial swaps are surcharged.
+        Trades that move the pool toward the Chainlink price pay less than the base fee; trades
+        that move it away pay more. A single trade cannot push the price more than the hard
+        threshold away from Chainlink. The router enforces your minimum output.
       </PanelFootnote>
     </div>
   );

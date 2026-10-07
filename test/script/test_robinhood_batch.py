@@ -39,7 +39,7 @@ class RobinhoodBatchTest(unittest.TestCase):
         for index, field in enumerate(
             ("hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper", "multisig",
              "treasury", "rebalancer", "treasuryFeeSink",
-             "marketHours", "sequencerUptimeFeed"),
+             "marketHours", "sequencerUptimeFeed", "poolAligner"),
             start=1,
         ):
             core[field] = f"0x{index:040x}"
@@ -53,10 +53,14 @@ class RobinhoodBatchTest(unittest.TestCase):
             asset["heartbeat"] = 3600
         for field in self.config["gates"]:
             self.config["gates"][field] = True
+        seed_set = set(self.config["seedSet"])
         for pool in self.config["pools"]:
             pool["sqrtPriceX96"] = 2**96
             pool["vaultAllocationCap"] = 1000
-            pool["initialLiquidity"] = {"base": 1, "quote": 1, "slippageBps": 100}
+            if pool["slug"] in seed_set:
+                pool["initialLiquidity"] = {"base": 1, "quote": 1, "slippageBps": 100}
+            else:
+                pool["initialLiquidity"] = {"base": 0, "quote": 0, "slippageBps": 0}
         self.manifest = {
             "chainId": CHAIN_ID,
             "poolManager": ZERO,
@@ -120,11 +124,15 @@ class RobinhoodBatchTest(unittest.TestCase):
                 "swapRouter": self.config["core"]["swapRouter"],
                 "rebateDistributor": self.config["core"]["rebateDistributor"],
                 "liquidityZapper": self.config["core"]["liquidityZapper"],
+                "poolAligner": self.config["core"]["poolAligner"],
                 "externalSwapExecutor": self.config["core"]["externalSwapExecutor"],
                 "urufuNft": URUFU_NFT,
                 "startBlocks": {
                     field: 123
-                    for field in ("hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper")
+                    for field in (
+                        "hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper",
+                        "poolAligner",
+                    )
                 },
                 "receipts": ["0x" + "a" * 64],
                 "pools": [self._deployed(index, pair, slug) for index, (pair, slug) in enumerate(zip(PAIRS, SLUGS), 1)],
@@ -132,6 +140,15 @@ class RobinhoodBatchTest(unittest.TestCase):
             }
         )
         self.assertEqual(validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True), [])
+
+    def test_readiness_requires_pool_aligner(self):
+        self.config["core"]["poolAligner"] = ZERO
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True)
+        self.assertIn("core.poolAligner is not deployed", errors)
+        self.assertNotIn(
+            "core.poolAligner is not deployed",
+            validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False),
+        )
 
     def test_readiness_requires_approved_gates(self):
         self.config["gates"]["auditComplete"] = False
@@ -237,8 +254,42 @@ class RobinhoodBatchTest(unittest.TestCase):
         errors = validate(self.config, self.manifest, NoCodeRpc(), require_deployed=False)
         self.assertIn("core.sequencerUptimeFeed has no contract code", errors)
 
+    def test_seed_set_is_validated(self):
+        for bad, message in (
+            ([], "seedSet must be a non-empty list"),
+            (None, "seedSet must be a non-empty list"),
+            (["weth-usdg", "weth-usdg"], "seedSet contains duplicate slugs"),
+            (["weth-usdg", "nvda-smh"], "seedSet contains unknown pools: nvda-smh"),
+        ):
+            self.config["seedSet"] = bad
+            errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+            self.assertTrue(any(message in error for error in errors), (bad, errors))
+
+    def test_only_seed_set_pools_require_seed_amounts(self):
+        nvda = next(item for item in self.config["pools"] if item["slug"] == "nvda-usdg")
+        nvda["initialLiquidity"] = {"base": 0, "quote": 0, "slippageBps": 0}
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertIn("nvda-usdg.initialLiquidity.base must be a positive integer", errors)
+
+        nvda["initialLiquidity"] = {"base": 1, "quote": 1, "slippageBps": 100}
+        mstr = next(item for item in self.config["pools"] if item["slug"] == "mstr-usdg")
+        del mstr["initialLiquidity"]
+        self.assertEqual(validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False), [])
+
+        mstr["initialLiquidity"] = {"base": 5, "quote": 0, "slippageBps": 100}
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertIn("mstr-usdg.initialLiquidity.base is set but mstr-usdg is not in seedSet", errors)
+
+    def test_seed_skips_pools_outside_seed_set(self):
+        config, manifest = self._seed_fixture()
+        config["seedSet"] = ["nvda-usdg"]
+        with mock.patch.object(robinhood_batch_deploy.subprocess, "run") as run:
+            self.assertEqual(seed(config, manifest, "http://rpc", True), 0)
+            self.assertEqual(run.call_count, 0)
+        self.assertEqual(manifest["seededPools"], [])
+
     def _seed_fixture(self):
-        pool = self.config["pools"][0]
+        pool = next(item for item in self.config["pools"] if item["slug"] == "weth-usdg")
         manifest = {
             "chainId": CHAIN_ID,
             "pools": [{"slug": pool["slug"]}],
@@ -269,6 +320,7 @@ class RobinhoodBatchTest(unittest.TestCase):
                 self.assertEqual(run.call_count, 1)
                 self.assertIn("--broadcast", run.call_args.args[0])
             self.assertEqual(manifest["seededPools"], [{"slug": slug, "txHash": "0x" + "b" * 64}])
+            self.assertIs(manifest["pools"][0]["seeded"], True)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["seededPools"], manifest["seededPools"])
 
             # Resumed broadcast must skip the recorded slug instead of double-seeding.

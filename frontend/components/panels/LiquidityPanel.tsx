@@ -8,6 +8,7 @@ import {usePoolReads, useUserReads} from "@/hooks/usePool";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 
 import {PanelFootnote} from "./atoms";
+import {AlignNotice} from "./liquidity/AlignNotice";
 import {DepositMode, WithdrawMode} from "./liquidity/modes";
 import {ModeTabs} from "./panelHelpers";
 
@@ -34,12 +35,15 @@ export function LiquidityPanel() {
   const [shares, setShares] = useState("");
 
   if (!deployment) {
-    return <PanelFootnote>Liquidity actions for {pool.base.symbol} / {pool.quote.symbol} are disabled while this curated pool is pending deployment.</PanelFootnote>;
+    return <PanelFootnote>Liquidity actions for {pool.base.symbol} / {pool.quote.symbol} open at launch, when all 18 pools go live together.</PanelFootnote>;
   }
 
   return (
     <div className="space-y-5">
       <ModeTabs mode={mode} modes={modes} setMode={setMode} />
+      {mode === "deposit" ? (
+        <AlignNotice deployment={deployment} address={address} drift={drift} totalShares={totalShares} />
+      ) : null}
       {mode === "deposit" ? (
         depositsBlocked ? (
           <ClosedDeposits

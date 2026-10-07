@@ -47,13 +47,19 @@ def seed(
     broadcast: bool,
     manifest_path: Path | None = None,
 ) -> int:
-    """Seed each deployed, not-yet-seeded pool. On broadcast, record the slug in
-    `manifest.seededPools` (and persist when `manifest_path` is given) so a resumed run never
-    seeds the same pool twice. Dry runs record nothing."""
+    """Seed each deployed, not-yet-seeded pool in `config.seedSet`. Pools outside the seed set stay
+    at zero liquidity (initialized at the launch price, open to community LPs). On broadcast, record
+    the slug in `manifest.seededPools`, mark the manifest pool entry `seeded: true`, and persist when
+    `manifest_path` is given, so a resumed run never seeds the same pool twice. Dry runs record
+    nothing."""
     deployed = {pool.get("slug") for pool in manifest.get("pools", [])}
     seeded = {pool.get("slug") for pool in manifest.get("seededPools", [])}
+    seed_set = set(config.get("seedSet", []))
     for pool in config["pools"]:
         slug = pool["slug"]
+        if slug not in seed_set:
+            print(f"skip unseeded {slug} (not in seedSet)")
+            continue
         if slug in seeded:
             print(f"skip seeded {slug}")
             continue
@@ -83,6 +89,9 @@ def seed(
             if match:
                 entry["txHash"] = match.group(1)
             manifest.setdefault("seededPools", []).append(entry)
+            for deployed_pool in manifest.get("pools", []):
+                if deployed_pool.get("slug") == slug:
+                    deployed_pool["seeded"] = True
             seeded.add(slug)
             if manifest_path is not None:
                 write_manifest(manifest_path, manifest)

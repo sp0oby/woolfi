@@ -158,3 +158,16 @@ the H-1 fix removes the unguarded window, and the owner is now two-step.
   `MIN_SQRT_PRICE` the price rounds to 0 and drift reads -10000 bps, no revert. 6/18 decimal
   pairs keep about 9 significant digits. Positive drift is clamped (`:81`).
 - `BaseHook` coverage is 33%, by design (unused callbacks revert).
+- Empty pools (16 of 18 launch unseeded). Pushing an empty pool's price is free, since no tokens
+  move at zero liquidity, but harmless: nothing can be extracted from a pool that holds nothing, the
+  single-swap guard still stops a push across the break threshold, and deposits stay bounded by the
+  tolerance band. `WoolFiPoolAligner.align` restores the oracle price for the same zero cost, and the
+  keeper runs it every tick. A griefer can push the price again right after an align to make a first
+  LP's deposit revert `OutOfBand`; this costs the griefer gas every block and costs the LP only a
+  retry. The aligner enforces a zero balance delta on every swap (`NonZeroDelta`), so it can never owe
+  or receive tokens, and it rejects pools with any liquidity (`PoolHasLiquidity`).
+- Phantom break on an empty pool: an oracle move past the threshold from a stale empty-pool price
+  lets anyone flag a break and later draw down that pool's vault. Mitigations: the keeper aligns
+  before checking breaks; aligning within the confirmation window makes confirmation clear with no
+  drawdown (`test_falseBreak_alignThenConfirm_clearsWithoutDrawdown`); and policy keeps treasury
+  URU out of unseeded pools' vaults.
