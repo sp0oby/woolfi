@@ -12,6 +12,7 @@ import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {Field, StatRow, TxStatus} from "../atoms";
 import {btnCls, parseAmount} from "../panelHelpers";
+import {MigrateMode} from "./MigrateMode";
 import {SingleDepositMode} from "./SingleDepositMode";
 
 type UserReads = ReturnType<typeof useUserReads>;
@@ -45,7 +46,7 @@ export function DepositMode({
   const key = poolKeyFor(deployment);
   const a0Wei = parseAmount(a0, deployment.token0Decimals);
   const a1Wei = parseAmount(a1, deployment.token1Decimals);
-  const [fundingMode, setFundingMode] = useState<"balanced" | "single">("balanced");
+  const [fundingMode, setFundingMode] = useState<"balanced" | "single" | "migrate">("balanced");
   const wethLeg = deployment.token0Symbol === "WETH" ? 0 : deployment.token1Symbol === "WETH" ? 1 : undefined;
   const [useEth, setUseEth] = useState(false);
   const [wrappedAmount, setWrappedAmount] = useState(0n);
@@ -144,15 +145,17 @@ export function DepositMode({
     (needsWrap || needs0 || needs1 || preview.shares !== undefined);
   return (
     <>
-      <div className="grid grid-cols-2 border border-line p-1 font-mono text-[10px] uppercase tracking-[0.18em]">
-        {(["balanced", "single"] as const).map((item) => (
+      <div className="grid grid-cols-3 border border-line p-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+        {(["balanced", "single", "migrate"] as const).map((item) => (
           <button key={item} type="button" onClick={() => setFundingMode(item)}
             className={`px-3 py-2 ${fundingMode === item ? "bg-white/[0.06] text-white" : "text-muted"}`}>
-            {item === "balanced" ? "Balanced" : "One token"}
+            {item === "balanced" ? "Balanced" : item === "single" ? "One token" : "Migrate v3"}
           </button>
         ))}
       </div>
-      {fundingMode === "single" ? (
+      {fundingMode === "migrate" ? (
+        <MigrateMode deployment={deployment} address={address} />
+      ) : fundingMode === "single" ? (
         <SingleDepositMode deployment={deployment} address={address} />
       ) : (
         <>

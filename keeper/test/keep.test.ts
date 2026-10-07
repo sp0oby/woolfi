@@ -93,8 +93,14 @@ describe("keepPools", () => {
       ],
       {broadcast: false},
     );
-    expect(calls).toEqual(["checkStructuralBreak", "confirmStructuralBreak"]);
-    expect(outcomes[0]).toMatchObject({slug: "mstr-usdg", simulated: true, broadcast: false, confirm: "simulated"});
+    expect(calls).toEqual(["checkStructuralBreak", "confirmStructuralBreak", "clearRecoveredBreak"]);
+    expect(outcomes[0]).toMatchObject({
+      slug: "mstr-usdg",
+      simulated: true,
+      broadcast: false,
+      confirm: "simulated",
+      recover: "simulated",
+    });
   });
 
   it("treats a not-ready confirmation as idle, not a failure, and broadcasts a ready one", async () => {
@@ -114,6 +120,9 @@ describe("keepPools", () => {
             if (functionName === "confirmStructuralBreak" && (args as [typeof key])[0] === pendingKey) {
               throw new Error('reverted with custom error "BreakConfirmationPending(1791300000)"');
             }
+            if (functionName === "clearRecoveredBreak") {
+              throw new Error('reverted with custom error "BreakNotConfirmed()"');
+            }
             return {request: {functionName}} as never;
           },
         },
@@ -131,8 +140,40 @@ describe("keepPools", () => {
       {broadcast: true},
     );
     expect(outcomes[0]).toMatchObject({slug: "pending", simulated: true, confirm: "idle"});
-    expect(outcomes[1]).toMatchObject({slug: "ready", simulated: true, confirm: "broadcast"});
+    expect(outcomes[1]).toMatchObject({slug: "ready", simulated: true, confirm: "broadcast", recover: "idle"});
     expect(writes).toEqual(["checkStructuralBreak", "checkStructuralBreak", "confirmStructuralBreak"]);
+    expect(summarize(outcomes).failures).toBe(0);
+  });
+
+  it("treats market-closed / stabilization / skew reverts on break steps as idle", async () => {
+    const key = {
+      currency0: "0x2222222222222222222222222222222222222222" as const,
+      currency1: "0x3333333333333333333333333333333333333333" as const,
+      fee: 0x800000,
+      tickSpacing: 60,
+      hooks: hook as `0x${string}`,
+    };
+    const reasons = ["MarketClosed()", "StabilizationActive(1, 2)", "OracleTimestampSkew(1, 2, 120)", "OutOfBand()"];
+    let i = 0;
+    const outcomes = await keepPools(
+      {
+        publicClient: {
+          simulateContract: async ({functionName}) => {
+            if (functionName === "checkStructuralBreak") return {request: {}} as never;
+            throw new Error(`reverted with custom error "${reasons[i++ % reasons.length]}"`);
+          },
+        },
+      },
+      [
+        {slug: "a", poolId: `0x${"1".repeat(64)}` as `0x${string}`, startBlock: 1, key},
+        {slug: "b", poolId: `0x${"2".repeat(64)}` as `0x${string}`, startBlock: 1, key},
+      ],
+      {broadcast: false},
+    );
+    expect(outcomes.map((o) => [o.confirm, o.recover])).toEqual([
+      ["idle", "idle"],
+      ["idle", "idle"],
+    ]);
     expect(summarize(outcomes).failures).toBe(0);
   });
 

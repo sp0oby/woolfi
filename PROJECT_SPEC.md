@@ -182,7 +182,14 @@ feed on 4663 in the future, governance may redeploy affected adapters with the g
 For two-leg fair-value calculations, an approved `maxOracleSkew` compares `getPriceData()`
 timestamps. Excessive skew is a degraded mode: swaps continue at the flat base fee and
 asymmetric/break detection is suppressed; new liquidity hard-reverts with `OracleTimestampSkew`.
-Zero `maxOracleSkew` disables the check. Spread pools must configure a positive limit.
+Zero `maxOracleSkew` disables the check. Spread pools must configure a positive limit, sized to the
+slower leg's heartbeat. Robinhood Chainlink feeds are deviation-triggered (0.5%) with a 24-hour
+heartbeat, so two healthy legs routinely last-updated hours apart (observed: SPY vs QQQ about 2.9
+hours). A gap between update times does not mean either price is wrong: each leg is within the
+deviation threshold of its true value, or it is within its heartbeat. A limit measured in seconds
+would therefore park a spread pool in degraded mode most of the time. Launch configuration uses
+86400 seconds for every spread pool, and the readiness gate rejects any nonzero limit below the
+slower leg's heartbeat.
 
 ## 6. Structural breaks
 
@@ -192,10 +199,24 @@ model is:
 1. Cache the fair price that triggered the break (`breakFair`).
 2. Block new liquidity and disable ordinary asymmetric trading.
 3. Permit only swaps proven to reduce drift against that cached `breakFair`.
-4. Draw only within the approved per-pool URU cap and configured drawdown.
+4. Draw only within the approved per-pool URU cap and configured drawdown, and only after the
+   break is confirmed (see below).
 5. Keep withdrawals open.
-6. Require governed resolution. If the referenced market opens within the configured
-   stabilization window, asymmetric operation stays off until that window elapses.
+6. Exit containment either permissionlessly once a confirmed break has recovered into the
+   tolerance band, or through governed resolution.
+
+Breaks are two-phase. Detection (by a swap or the permissionless `checkStructuralBreak`) only
+contains the pool and records the detection time; no URU moves. A single swap may never cause a
+break: the hook rejects any swap that would carry a pool from inside the hard threshold to beyond
+it (`SwapWouldBreakPool`), in every mode. After a per-pool confirmation window (default 1 hour,
+maximum 1 day), the permissionless `confirmStructuralBreak` re-reads a fresh oracle: if the pool is
+still past the threshold the vault is drawn down once; if it recovered, the break clears with no
+drawdown. For equity-hours pools the window counts from the later of detection and the current
+session open, and confirmation is refused during the post-open stabilization window, so a break
+flagged before a close cannot ripen over a weekend and be confirmed on the opening print before
+corrective traders can act. After confirmation, `clearRecoveredBreak` lets anyone end containment
+once a fresh oracle read shows drift back inside `toleranceBps` (market open, not stabilizing,
+legs not skewed); the governor's `resolveStructuralBreak` remains available.
 
 Using cached break fair prevents a moving or compromised oracle from redefining what “corrective”
 means during containment. The post-open stabilization period is measured from
@@ -204,8 +225,8 @@ hours) unaffected.
 
 The hook implements this model: it caches `cachedFairPriceWad` when a break is flagged, admits
 only corrective swaps against that target, draws within the configured vault cap, and applies a
-configurable `stabilizationSeconds` interval after the market opens. Governance still clears the
-break flag. Runtime sequencer/pause guards remain in force during containment; a live fair-value
+configurable `stabilizationSeconds` interval after the market opens. A confirmed break is cleared
+by recovery or by governance. Runtime sequencer/pause guards remain in force during containment; a live fair-value
 print is not required to classify corrective flow.
 
 ## 7. Contracts and off-chain services

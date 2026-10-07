@@ -152,7 +152,7 @@ contract NyseHoursOracleTest is Test {
         vm.warp(_ts(2028, 4, 4, 15, 0));
         assertTrue(oracle.isMarketOpen(), "Tue 2028-04-04 should be open by default");
 
-        // Precompute the day index BEFORE the prank — otherwise the external `utcDay` call
+        // Precompute the day index BEFORE the prank - otherwise the external `utcDay` call
         // consumes the prank and `setHoliday` runs without it.
         uint256 dayIndex = oracle.utcDay(2028, 4, 4);
         vm.prank(OWNER);
@@ -226,5 +226,214 @@ contract NyseHoursOracleTest is Test {
         vm.prank(newOwner);
         oracle.acceptOwnership();
         assertEq(oracle.owner(), newOwner);
+    }
+
+    // ====================================================================== //
+    //                    Branch coverage: edges and governance               //
+    // ====================================================================== //
+
+    function test_closed_nearUnixEpoch() public {
+        // nowTs <= ET offset: the sanity guard returns closed rather than underflowing.
+        vm.warp(1);
+        assertFalse(oracle.isMarketOpen());
+        assertEq(oracle.currentSessionStart(), 0);
+        vm.warp(5 hours);
+        assertFalse(oracle.isMarketOpen());
+    }
+
+    function test_beforeFirstDstWindow_usesEst() public {
+        // 2025-12-15 (Mon) predates the 2026 table: EST applies, 9:30 ET = 14:30 UTC.
+        vm.warp(_ts(2025, 12, 15, 14, 30) - 1);
+        assertFalse(oracle.isMarketOpen(), "14:29:59 UTC closed under EST");
+        vm.warp(_ts(2025, 12, 15, 14, 30));
+        assertTrue(oracle.isMarketOpen(), "14:30 UTC open under EST");
+    }
+
+    function test_afterDstTableEnds_fallsBackToEst() public {
+        // 2031-07-15 (Tue) is past the last window, so the contract assumes EST (open 14:30 UTC),
+        // an hour late versus the real EDT open. Documents why the table must be extended.
+        vm.warp(_ts(2031, 7, 15, 13, 30));
+        assertFalse(oracle.isMarketOpen(), "real 9:30 EDT open reads closed without a 2031 window");
+        vm.warp(_ts(2031, 7, 15, 14, 30));
+        assertTrue(oracle.isMarketOpen());
+    }
+
+    function test_dst_firstMondayAfterSpringForward() public {
+        vm.warp(_ts(2026, 3, 9, 13, 30));
+        assertTrue(oracle.isMarketOpen());
+        assertEq(oracle.currentSessionStart(), _ts(2026, 3, 9, 13, 30));
+    }
+
+    function test_currentSessionStart_estSession() public {
+        vm.warp(_ts(2026, 1, 14, 18, 0));
+        assertEq(oracle.currentSessionStart(), _ts(2026, 1, 14, 14, 30));
+    }
+
+    function test_closed_allTwentyHardcodedHolidays() public {
+        uint16[3][20] memory d = [
+            [uint16(2026), 1, 1],
+            [uint16(2026), 1, 19],
+            [uint16(2026), 2, 16],
+            [uint16(2026), 4, 3],
+            [uint16(2026), 5, 25],
+            [uint16(2026), 6, 19],
+            [uint16(2026), 7, 3],
+            [uint16(2026), 9, 7],
+            [uint16(2026), 11, 26],
+            [uint16(2026), 12, 25],
+            [uint16(2027), 1, 1],
+            [uint16(2027), 1, 18],
+            [uint16(2027), 2, 15],
+            [uint16(2027), 3, 26],
+            [uint16(2027), 5, 31],
+            [uint16(2027), 6, 18],
+            [uint16(2027), 7, 5],
+            [uint16(2027), 9, 6],
+            [uint16(2027), 11, 25],
+            [uint16(2027), 12, 24]
+        ];
+        for (uint256 i; i < 20; i++) {
+            assertTrue(oracle.holiday(oracle.utcDay(d[i][0], d[i][1], d[i][2])), "holiday flagged");
+            vm.warp(_ts(d[i][0], d[i][1], d[i][2], 17, 0)); // mid-session under either offset
+            assertFalse(oracle.isMarketOpen(), "closed on holiday");
+        }
+    }
+
+    function test_earlyCloseDay_staysOpenUntilFour() public {
+        // Documented limitation: NYSE closes at 1 PM ET the day after Thanksgiving, but the
+        // calendar keeps the mechanic on until 4 PM ET. 2026-11-27 is EST: 3 PM ET = 20:00 UTC.
+        vm.warp(_ts(2026, 11, 27, 20, 0));
+        assertTrue(oracle.isMarketOpen(), "early close not modeled");
+        vm.warp(_ts(2026, 11, 27, 21, 0));
+        assertFalse(oracle.isMarketOpen(), "closed at 4 PM ET");
+    }
+
+    function test_governance_removeHoliday() public {
+        uint256 mlk = oracle.utcDay(2026, 1, 19);
+        vm.prank(OWNER);
+        oracle.setHoliday(mlk, false);
+        vm.warp(_ts(2026, 1, 19, 16, 0));
+        assertTrue(oracle.isMarketOpen(), "un-holidayed weekday opens");
+    }
+
+    function test_governance_lastUpdateTracksChanges() public {
+        uint64 deployedAt = oracle.lastUpdate();
+        vm.warp(1_900_000_000);
+        vm.prank(OWNER);
+        oracle.setHolidays(new uint256[](0), true);
+        assertEq(oracle.lastUpdate(), deployedAt, "empty bulk does not touch lastUpdate");
+        vm.prank(OWNER);
+        oracle.setHoliday(1, true);
+        assertEq(oracle.lastUpdate(), 1_900_000_000);
+    }
+
+    function testRevert_setHolidays_notOwner() public {
+        vm.expectRevert();
+        oracle.setHolidays(new uint256[](1), true);
+    }
+
+    function testRevert_appendDstWindow_badWindow() public {
+        vm.startPrank(OWNER);
+        vm.expectRevert(bytes("NyseHours: bad window"));
+        oracle.appendDstWindow(100, 100);
+        vm.expectRevert(bytes("NyseHours: bad window"));
+        oracle.appendDstWindow(200, 100);
+        vm.stopPrank();
+    }
+
+    function testRevert_appendDstWindow_outOfOrder() public {
+        // Overlaps the 2030 window.
+        vm.prank(OWNER);
+        vm.expectRevert(bytes("NyseHours: out of order"));
+        oracle.appendDstWindow(uint64(_ts(2030, 6, 1, 0, 0)), uint64(_ts(2031, 1, 1, 0, 0)));
+    }
+
+    function test_appendDstWindow_adjacentAllowed() public {
+        (, uint64 lastEnd) = oracle.dstWindows(oracle.dstWindowCount() - 1);
+        vm.prank(OWNER);
+        oracle.appendDstWindow(lastEnd, lastEnd + 1);
+        assertEq(oracle.dstWindowCount(), 6);
+    }
+
+    function testRevert_appendDstWindow_notOwner() public {
+        vm.expectRevert();
+        oracle.appendDstWindow(1, 2);
+    }
+
+    function test_replaceDstWindows_emptyThenAppend() public {
+        vm.prank(OWNER);
+        oracle.replaceDstWindows(new NyseHoursOracle.DstWindow[](0));
+        assertEq(oracle.dstWindowCount(), 0);
+        // With no DST table, a July weekday follows EST: 9:30 EDT (13:30 UTC) reads closed.
+        vm.warp(_ts(2026, 7, 14, 13, 30));
+        assertFalse(oracle.isMarketOpen(), "no DST: EST hours");
+        // Appending into an empty table skips the ordering check.
+        vm.prank(OWNER);
+        oracle.appendDstWindow(1, 2);
+        assertEq(oracle.dstWindowCount(), 1);
+    }
+
+    function test_replaceDstWindows_valid() public {
+        NyseHoursOracle.DstWindow[] memory w = new NyseHoursOracle.DstWindow[](2);
+        w[0] = NyseHoursOracle.DstWindow(uint64(_ts(2026, 3, 8, 7, 0)), uint64(_ts(2026, 11, 1, 6, 0)));
+        w[1] = NyseHoursOracle.DstWindow(uint64(_ts(2026, 11, 1, 6, 0)), uint64(_ts(2027, 1, 1, 0, 0)));
+        vm.warp(1_900_000_000);
+        vm.prank(OWNER);
+        oracle.replaceDstWindows(w);
+        assertEq(oracle.dstWindowCount(), 2);
+        assertEq(oracle.lastUpdate(), 1_900_000_000);
+        // Permanent-DST style table: a December weekday now opens on the EDT clock.
+        vm.warp(_ts(2026, 12, 15, 13, 30));
+        assertTrue(oracle.isMarketOpen());
+    }
+
+    function testRevert_replaceDstWindows_badWindow() public {
+        NyseHoursOracle.DstWindow[] memory w = new NyseHoursOracle.DstWindow[](1);
+        w[0] = NyseHoursOracle.DstWindow(5, 5);
+        vm.prank(OWNER);
+        vm.expectRevert(bytes("NyseHours: bad window"));
+        oracle.replaceDstWindows(w);
+    }
+
+    function testRevert_replaceDstWindows_outOfOrder() public {
+        NyseHoursOracle.DstWindow[] memory w = new NyseHoursOracle.DstWindow[](2);
+        w[0] = NyseHoursOracle.DstWindow(10, 20);
+        w[1] = NyseHoursOracle.DstWindow(15, 30);
+        vm.prank(OWNER);
+        vm.expectRevert(bytes("NyseHours: out of order"));
+        oracle.replaceDstWindows(w);
+    }
+
+    function testRevert_replaceDstWindows_notOwner() public {
+        vm.expectRevert();
+        oracle.replaceDstWindows(new NyseHoursOracle.DstWindow[](0));
+    }
+
+    function test_utcDay_knownValues() public view {
+        assertEq(oracle.utcDay(1970, 1, 1), 0);
+        assertEq(oracle.utcDay(1970, 3, 1), 59);
+        assertEq(oracle.utcDay(2000, 2, 29), 11_016);
+        assertEq(oracle.utcDay(2026, 10, 7), 20_733);
+    }
+
+    function testFuzz_utcDay_matchesTestHelper(uint256 y, uint256 m, uint256 d) public view {
+        y = bound(y, 1970, 2200);
+        m = bound(m, 1, 12);
+        d = bound(d, 1, 28);
+        assertEq(oracle.utcDay(y, m, d) * 86400, _ts(y, m, d, 0, 0));
+    }
+
+    function testFuzz_openOnlyInsideWeekdaySessions(uint256 ts) public {
+        ts = bound(ts, _ts(2026, 1, 1, 0, 0), _ts(2030, 12, 31, 0, 0));
+        vm.warp(ts);
+        uint256 start = oracle.currentSessionStart();
+        if (start == 0) {
+            assertFalse(oracle.isMarketOpen());
+        } else {
+            assertTrue(oracle.isMarketOpen());
+            assertLe(start, ts, "session started in the past");
+            assertLt(ts - start, 6.5 hours, "inside a 6.5h session");
+            assertFalse(oracle.holiday(ts / 86400), "not a holiday");
+        }
     }
 }

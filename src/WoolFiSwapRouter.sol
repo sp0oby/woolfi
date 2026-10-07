@@ -17,7 +17,7 @@ import {IFeeRebateDistributor} from "./interfaces/IFeeRebateDistributor.sol";
 /// @notice Minimal v4 swap router for WoolFi pools. Wraps `PoolManager.unlock` so end users can
 ///         swap with a single `approve` + `swap` from an EOA without writing their own callback.
 /// @dev Exact-input ERC20 swaps only. The WoolFi hook prices the asymmetric fee from the supplied
-///      `hookData` — see {WoolFiHook.beforeSwap}. We do not skim or modify deltas, so the only
+///      `hookData` - see {WoolFiHook.beforeSwap}. We do not skim or modify deltas, so the only
 ///      WoolFi-specific state involved is whatever the hook returns inside the swap callback. Native
 ///      ETH is intentionally unsupported in v1; WoolFi pools are ERC20/ERC20.
 contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
@@ -79,11 +79,14 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
                 CallbackData({payer: msg.sender, recipient: recipient, key: key, params: params, hookData: hookData})
             )
         );
-        amountOut = abi.decode(raw, (uint256));
+        uint256 settledIn;
+        (settledIn, amountOut) = abi.decode(raw, (uint256, uint256));
 
         if (amountOut < amountOutMinimum) revert InsufficientOutput(amountOut, amountOutMinimum);
-        _recordRebate(key, zeroForOne, amountIn);
-        emit Swap(msg.sender, recipient, zeroForOne, amountIn, amountOut);
+        // Rebate on what actually settled: a price-limited partial fill in a thin pool pays in less
+        // than `amountIn`, and the rebate must not be computed on the unfilled remainder.
+        _recordRebate(key, zeroForOne, settledIn);
+        emit Swap(msg.sender, recipient, zeroForOne, settledIn, amountOut);
     }
 
     /// @inheritdoc IUnlockCallback
@@ -102,9 +105,8 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
 
         uint256 amountIn = _settle(cIn, d.payer, dIn);
         uint256 amountOut = _take(cOut, d.recipient, dOut);
-        amountIn; // silence solc unused warning; emitted in {swap}.
 
-        return abi.encode(amountOut);
+        return abi.encode(amountIn, amountOut);
     }
 
     /// @dev Pay the PoolManager the amount we owe. Pulls from `payer` via SafeTransferLib.

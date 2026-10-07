@@ -14,9 +14,10 @@ import {WoolFiPositionManager} from "./WoolFiPositionManager.sol";
 ///           containment even when no swap has occurred since the oracle moved).
 ///        2. Confirm a pending break once its confirmation window has elapsed, which either fires
 ///           the vault drawdown or clears the break if the pool has recovered.
-///        3. Poke the position manager's fee realization, routing the protocol cuts (vault rewards
+///        3. Clear a confirmed break once the pool is back inside its tolerance band.
+///        4. Poke the position manager's fee realization, routing the protocol cuts (vault rewards
 ///           and treasury policy sink) and refreshing the per-share fee accumulator.
-///      Holds no funds and has no privileges — both calls are themselves permissionless and gated by
+///      Holds no funds and has no privileges - both calls are themselves permissionless and gated by
 ///      the hook / PM as appropriate.
 contract RebalanceKeeper {
     /// @notice The hook this keeper services.
@@ -46,9 +47,18 @@ contract RebalanceKeeper {
             } catch (bytes memory reason) {
                 emit BreakConfirmAttempted(false, reason);
             }
+        } else if (broken && confirmed) {
+            // Exit containment once a confirmed break has recovered into the tolerance band. Still out of
+            // band, stabilizing, closed, or skewed: skipped, never reverts the keep call.
+            try hook.clearRecoveredBreak(key) {
+                emit RecoveryAttempted(true, "");
+            } catch (bytes memory reason) {
+                emit RecoveryAttempted(false, reason);
+            }
         }
         pm.collectFees(key, address(this));
     }
 
     event BreakConfirmAttempted(bool succeeded, bytes reason);
+    event RecoveryAttempted(bool succeeded, bytes reason);
 }

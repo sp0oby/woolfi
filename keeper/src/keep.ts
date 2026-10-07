@@ -12,11 +12,16 @@ export type PoolOutcome = {
   /** Hook-direct mode only: second step of a two-phase break. "idle" = nothing to confirm yet. */
   confirm?: "idle" | "simulated" | "broadcast";
   confirmHash?: `0x${string}`;
+  /** Hook-direct mode only: permissionless exit from a confirmed break once drift is back in band. */
+  recover?: "idle" | "simulated" | "broadcast";
+  recoverHash?: `0x${string}`;
 };
 
-// Reverts that mean "no break, or confirmation window not elapsed, or already confirmed".
+// Reverts that mean "nothing to do right now": no break, window not elapsed, already confirmed, not
+// yet confirmed, market closed, opening stabilization, skewed legs, or drift still out of band.
 // These are the normal steady state, not keeper failures.
-const CONFIRM_IDLE = /NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed/;
+const STEP_IDLE =
+  /NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed|BreakNotConfirmed|MarketClosed|StabilizationActive|OracleTimestampSkew|OutOfBand/;
 
 export type TickSummary = {
   tick: string;
@@ -64,7 +69,8 @@ export async function keepPools(
         const hash = options.broadcast && clients.walletClient
           ? await clients.walletClient.writeContract(simulated.request)
           : undefined;
-        const confirm = await confirmBreak(clients, pool, options.broadcast);
+        const confirm = await breakStep(clients, pool, "confirmStructuralBreak", options.broadcast);
+        const recover = await breakStep(clients, pool, "clearRecoveredBreak", options.broadcast);
         outcomes.push({
           slug: pool.slug,
           poolId: pool.poolId,
@@ -74,6 +80,8 @@ export async function keepPools(
           hash,
           confirm: confirm.state,
           confirmHash: confirm.hash,
+          recover: recover.state,
+          recoverHash: recover.hash,
         });
       }
     } catch (error) {
@@ -91,13 +99,15 @@ export async function keepPools(
 }
 
 /**
- * Second phase of a structural break: once the confirmation window has elapsed, confirm it so the
- * vault drawdown fires (or the break clears if the price recovered). Expected "not ready" reverts
- * resolve to "idle"; anything else throws and counts as a pool failure.
+ * Optional break-lifecycle step. `confirmStructuralBreak` fires the drawdown (or clears the break if
+ * the price recovered) once the confirmation window has elapsed; `clearRecoveredBreak` unlocks a
+ * confirmed break once drift is back in band. Expected "not ready" reverts resolve to "idle";
+ * anything else throws and counts as a pool failure.
  */
-async function confirmBreak(
+async function breakStep(
   clients: KeeperClients,
   pool: LivePool,
+  functionName: "confirmStructuralBreak" | "clearRecoveredBreak",
   broadcast: boolean,
 ): Promise<{state: "idle" | "simulated" | "broadcast"; hash?: `0x${string}`}> {
   let simulated: {request: Record<string, unknown>};
@@ -105,12 +115,12 @@ async function confirmBreak(
     simulated = await clients.publicClient.simulateContract({
       address: pool.key.hooks,
       abi: hookAbi,
-      functionName: "confirmStructuralBreak",
+      functionName,
       args: [pool.key],
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (CONFIRM_IDLE.test(message)) return {state: "idle"};
+    if (STEP_IDLE.test(message)) return {state: "idle"};
     throw error;
   }
   if (!broadcast || !clients.walletClient) return {state: "simulated"};

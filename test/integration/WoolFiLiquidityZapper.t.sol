@@ -36,6 +36,20 @@ contract MockAllowedSwapExecutor {
     }
 }
 
+/// @notice Burns 1% on every transfer, to exercise the exact-receipt input check.
+contract FeeOnTransferToken is MockERC20 {
+    constructor() MockERC20("FOT", "FOT", 18) {}
+
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0)) {
+            uint256 fee = value / 100;
+            super._update(from, address(0), fee);
+            value -= fee;
+        }
+        super._update(from, to, value);
+    }
+}
+
 contract WoolFiLiquidityZapperTest is Deployers {
     WoolFiHook hook;
     WoolFiPositionManager pm;
@@ -275,5 +289,220 @@ contract WoolFiLiquidityZapperTest is Deployers {
         assertApproxEqAbs(alice.balance, 20e18, 2);
         assertEq(weth.balanceOf(address(zapper)), 0);
         assertEq(other.balanceOf(address(zapper)), 0);
+    }
+
+    // -----------------------------------------------------------------
+    // Branch coverage: construction, admin, input validation
+    // -----------------------------------------------------------------
+
+    function testRevert_constructor_zeroOrCodelessAddresses() public {
+        IWoolFiPositionManagerMint pmMint = IWoolFiPositionManagerMint(address(pm));
+        address weth = zapper.wrappedNative();
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        new WoolFiLiquidityZapper(IWoolFiPositionManagerMint(address(0)), weth, address(this));
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        new WoolFiLiquidityZapper(pmMint, address(0), address(this));
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        new WoolFiLiquidityZapper(pmMint, weth, address(0));
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        new WoolFiLiquidityZapper(IWoolFiPositionManagerMint(makeAddr("eoaPm")), weth, address(this));
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        new WoolFiLiquidityZapper(pmMint, makeAddr("eoaWeth"), address(this));
+    }
+
+    function testRevert_receive_rejectsStrayEther() public {
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        (bool ok, bytes memory reason) = address(zapper).call{value: 1 ether}("");
+        assertFalse(ok);
+        assertEq(bytes4(reason), WoolFiLiquidityZapper.UnexpectedEther.selector);
+    }
+
+    function testRevert_transferOwnership_zeroOrNotOwner() public {
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        zapper.transferOwnership(address(0));
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.NotOwner.selector);
+        zapper.transferOwnership(alice);
+    }
+
+    function test_setExecutorAllowed_codeCheckOnlyWhenAllowing() public {
+        address eoa = makeAddr("eoaExecutor");
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        zapper.setExecutorAllowed(eoa, true);
+        zapper.setExecutorAllowed(eoa, false); // revoking an EOA is fine
+        zapper.setExecutorAllowed(address(executor), false);
+        assertFalse(zapper.allowedExecutor(address(executor)));
+    }
+
+    function testRevert_zap_zeroRecipientOrAmount() public {
+        address token0 = Currency.unwrap(currency0);
+        WoolFiLiquidityZapper.ZapParams memory p = _params(woolfiKey, token0, 100e18, _emptyPlan(), _emptyPlan());
+        p.recipient = address(0);
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.ZeroAddress.selector);
+        zapper.zap(p);
+        p.recipient = alice;
+        p.amountIn = 0;
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidAmount.selector);
+        zapper.zap(p);
+    }
+
+    function testRevert_zap_swapsExceedInput() public {
+        address token0 = Currency.unwrap(currency0);
+        address token1 = Currency.unwrap(currency1);
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidAmount.selector);
+        zapper.zap(_params(woolfiKey, token0, 100e18, _plan(token0, token1, 60e18), _plan(token0, token1, 41e18)));
+    }
+
+    function testRevert_zap_invalidPoolKeyTokens() public {
+        address token0 = Currency.unwrap(currency0);
+        PoolKey memory nativeKey = woolfiKey;
+        nativeKey.currency0 = Currency.wrap(address(0));
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidPoolToken.selector);
+        zapper.zap(_params(nativeKey, token0, 1e18, _emptyPlan(), _emptyPlan()));
+
+        PoolKey memory zeroOneKey = woolfiKey;
+        zeroOneKey.currency1 = Currency.wrap(address(0));
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidPoolToken.selector);
+        zapper.zap(_params(zeroOneKey, token0, 1e18, _emptyPlan(), _emptyPlan()));
+
+        PoolKey memory sameKey = woolfiKey;
+        sameKey.currency1 = sameKey.currency0;
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidPoolToken.selector);
+        zapper.zap(_params(sameKey, token0, 1e18, _emptyPlan(), _emptyPlan()));
+    }
+
+    function testRevert_zap_nativeValueMismatch() public {
+        vm.deal(alice, 10e18);
+        address token0 = Currency.unwrap(currency0);
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidNativeValue.selector);
+        zapper.zap{value: 1e18}(_params(woolfiKey, address(0), 2e18, _emptyPlan(), _emptyPlan()));
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidNativeValue.selector);
+        zapper.zap{value: 1}(_params(woolfiKey, token0, 1e18, _emptyPlan(), _emptyPlan()));
+    }
+
+    function testRevert_zap_feeOnTransferInput() public {
+        FeeOnTransferToken fot = new FeeOnTransferToken();
+        fot.mint(alice, 100e18);
+        vm.prank(alice);
+        fot.approve(address(zapper), 100e18);
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(WoolFiLiquidityZapper.UnsupportedTransferBehavior.selector, 100e18, 99e18)
+        );
+        zapper.zap(_params(woolfiKey, address(fot), 100e18, _emptyPlan(), _emptyPlan()));
+    }
+
+    function testRevert_zap_emptyPlanWithStrayFields() public {
+        address token0 = Currency.unwrap(currency0);
+        WoolFiLiquidityZapper.SwapPlan memory bad = _emptyPlan();
+        bad.executor = address(executor);
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidSwapPlan.selector);
+        zapper.zap(_params(woolfiKey, token0, 1e18, bad, _emptyPlan()));
+
+        bad = _emptyPlan();
+        bad.tokenOut = token0;
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidSwapPlan.selector);
+        zapper.zap(_params(woolfiKey, token0, 1e18, _emptyPlan(), bad));
+
+        bad = _emptyPlan();
+        bad.minAmountOut = 1;
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidSwapPlan.selector);
+        zapper.zap(_params(woolfiKey, token0, 1e18, bad, _emptyPlan()));
+
+        bad = _emptyPlan();
+        bad.data = hex"01";
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidSwapPlan.selector);
+        zapper.zap(_params(woolfiKey, token0, 1e18, bad, _emptyPlan()));
+    }
+
+    function testRevert_zap_planOutputNotPoolToken() public {
+        address token0 = Currency.unwrap(currency0);
+        MockERC20 stray = new MockERC20("S", "S", 18);
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidPoolToken.selector);
+        zapper.zap(_params(woolfiKey, token0, 100e18, _plan(token0, address(stray), 50e18), _emptyPlan()));
+    }
+
+    function testRevert_zap_planSwapsIntoInputToken() public {
+        address token0 = Currency.unwrap(currency0);
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidSwapPlan.selector);
+        zapper.zap(_params(woolfiKey, token0, 100e18, _plan(token0, token0, 50e18), _emptyPlan()));
+    }
+
+    function testRevert_zap_exactSwapShortfall() public {
+        address token0 = Currency.unwrap(currency0);
+        address token1 = Currency.unwrap(currency1);
+        WoolFiLiquidityZapper.SwapPlan memory plan = _plan(token0, token1, 40e18);
+        plan.minAmountOut = 40e18 + 1;
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(WoolFiLiquidityZapper.InsufficientSwapOutput.selector, token1, 40e18, 40e18 + 1)
+        );
+        zapper.zap(_params(woolfiKey, token0, 100e18, plan, _emptyPlan()));
+    }
+
+    function testRevert_zap_oneSidedNoSwap() public {
+        // Pool-token input with no swap leaves amount1 == 0: nothing to pair with.
+        vm.prank(alice);
+        vm.expectRevert(WoolFiLiquidityZapper.InvalidAmount.selector);
+        zapper.zap(_params(woolfiKey, Currency.unwrap(currency0), 100e18, _emptyPlan(), _emptyPlan()));
+    }
+
+    function test_nativeInput_thirdToken_refundsUnswappedAsEth() public {
+        WETH weth = WETH(payable(zapper.wrappedNative()));
+        address token0 = Currency.unwrap(currency0);
+        address token1 = Currency.unwrap(currency1);
+        IERC20(token0).transfer(address(executor), 100e18);
+        vm.deal(alice, 100e18);
+
+        vm.prank(alice);
+        uint128 shares = zapper.zap{value: 100e18}(
+            _params(
+                woolfiKey, address(0), 100e18, _plan(address(weth), token0, 30e18), _plan(address(weth), token1, 30e18)
+            )
+        );
+
+        assertGt(shares, 0);
+        assertEq(alice.balance, 40e18, "unswapped 40 WETH returned as ETH");
+        assertEq(weth.balanceOf(address(zapper)), 0);
+        assertEq(address(zapper).balance, 0);
+        assertEq(IERC20(token0).balanceOf(address(zapper)), 0);
+        assertEq(IERC20(token1).balanceOf(address(zapper)), 0);
+    }
+
+    function test_zap_balancedInputSpendsEverything() public {
+        // Both legs land balanced at a 1:1 pool, so essentially nothing is refunded.
+        address token0 = Currency.unwrap(currency0);
+        address token1 = Currency.unwrap(currency1);
+        uint256 before0 = IERC20(token0).balanceOf(alice);
+        vm.prank(alice);
+        zapper.zap(_params(woolfiKey, token0, 100e18, _plan(token0, token1, 50e18), _emptyPlan()));
+        assertApproxEqAbs(before0 - IERC20(token0).balanceOf(alice), 100e18, 2);
+    }
+
+    function test_zap_preexistingBalanceIsNotSwept() public {
+        // A donation sitting in the zapper must not be paid out to the next user.
+        address token0 = Currency.unwrap(currency0);
+        address token1 = Currency.unwrap(currency1);
+        IERC20(token0).transfer(address(zapper), 5e18);
+        uint256 before0 = IERC20(token0).balanceOf(alice);
+        vm.prank(alice);
+        zapper.zap(_params(woolfiKey, token0, 100e18, _plan(token0, token1, 40e18), _emptyPlan()));
+        assertApproxEqAbs(before0 - IERC20(token0).balanceOf(alice), 80e18, 2);
+        assertEq(IERC20(token0).balanceOf(address(zapper)), 5e18, "donation untouched");
     }
 }

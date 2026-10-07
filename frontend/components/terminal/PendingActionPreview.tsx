@@ -31,7 +31,7 @@ export function PreviewSwap({pool}: {pool: CuratedPool}) {
 }
 
 export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
-  const [mode, setMode] = useState<"balanced" | "single">("balanced");
+  const [mode, setMode] = useState<"balanced" | "single" | "migrate">("balanced");
   const zapCandidates = ["USDG", "WETH"].filter(
     (s) => s !== pool.base.symbol && s !== pool.quote.symbol,
   );
@@ -40,8 +40,8 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
       title="Provide liquidity"
       hint="Deposit both tokens at the pool ratio (or zap in one). You earn 70% of swap fees. You do not bear structural-break drawdown; you do bear normal price risk."
     >
-      <div className="grid grid-cols-2 border border-line p-0.5 font-mono text-micro uppercase tracking-[0.2em]">
-        {(["balanced", "single"] as const).map((m) => (
+      <div className="grid grid-cols-3 border border-line p-0.5 font-mono text-micro uppercase tracking-[0.2em]">
+        {(["balanced", "single", "migrate"] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -50,12 +50,25 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
               mode === m ? "bg-surface text-ink" : "text-muted hover:text-ink"
             }`}
           >
-            {m === "balanced" ? "Balanced" : "Zap · one token"}
+            {m === "balanced" ? "Balanced" : m === "single" ? "Zap · one token" : "Migrate v3"}
           </button>
         ))}
       </div>
 
-      {mode === "balanced" ? (
+      {mode === "migrate" ? (
+        <div className="border border-line bg-bg px-3 py-2.5 shadow-raised">
+          <div className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">
+            Uniswap v3 position
+          </div>
+          <div className="tabular mt-1 font-mono text-2xs text-ink">
+            Pick a {pool.base.symbol}/{pool.quote.symbol} v3 position from your wallet
+          </div>
+          <div className="mt-1 font-mono text-micro text-subtle">
+            One transaction: withdraw from Uniswap v3, collect its fees, deposit full-range into
+            WoolFi. Leftovers the full-range ratio can&apos;t use are refunded. The NFT stays with you.
+          </div>
+        </div>
+      ) : mode === "balanced" ? (
         <>
           <TokenInput label={pool.base.symbol} symbol={pool.base.symbol} />
           <TokenInput label={pool.quote.symbol} symbol={pool.quote.symbol} />
@@ -87,7 +100,7 @@ export function PreviewLiquidity({pool}: {pool: CuratedPool}) {
         }% · Trs ${pool.risk.treasuryFeeBps / 100}%`}
       />
       <ActionButton>
-        {mode === "single" ? "Zap unavailable · pool pending" : "Provide unavailable · pool pending"}
+        {mode === "migrate" ? "Migrate unavailable · pool pending" : mode === "single" ? "Zap unavailable · pool pending" : "Provide unavailable · pool pending"}
       </ActionButton>
     </Frame>
   );

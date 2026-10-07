@@ -27,6 +27,42 @@ export const structuralBreak = onchainTable("structural_break", (t) => ({
   cachedFairPriceWad: t.bigint(),
 }));
 
+// One row per two-phase break episode: detected -> (confirmed with drawdown | cleared without one)
+// -> (recovered permissionlessly | resolved by the governor). `outcome` is the latest state.
+export const breakEpisode = onchainTable("break_episode", (t) => ({
+  id: t.text().primaryKey(),
+  poolId: t.hex().notNull(),
+  detectedAt: t.bigint().notNull(),
+  detectedBlock: t.bigint().notNull(),
+  detectedDriftBps: t.bigint().notNull(),
+  cachedFairPriceWad: t.bigint(),
+  confirmedAt: t.bigint(),
+  confirmedDriftBps: t.bigint(),
+  drawdownFailed: t.boolean().notNull().default(false),
+  drawdownFailureReason: t.hex(),
+  clearedAt: t.bigint(),
+  clearedDriftBps: t.bigint(),
+  recoveredAt: t.bigint(),
+  recoveredDriftBps: t.bigint(),
+  resolvedAt: t.bigint(),
+  outcome: t.text().notNull(),
+}));
+
+// Pointer from a pool to its currently open (or most recent) episode.
+export const poolBreakPointer = onchainTable("pool_break_pointer", (t) => ({
+  id: t.hex().primaryKey(),
+  episodeId: t.text().notNull(),
+  open: t.boolean().notNull(),
+}));
+
+export const breakConfirmSetting = onchainTable("break_confirm_setting", (t) => ({
+  id: t.text().primaryKey(),
+  poolId: t.hex().notNull(),
+  blockNumber: t.bigint().notNull(),
+  timestamp: t.bigint().notNull(),
+  confirmSeconds: t.integer().notNull(),
+}));
+
 export const oracleSkew = onchainTable("oracle_skew", (t) => ({
   id: t.text().primaryKey(),
   poolId: t.hex().notNull(),

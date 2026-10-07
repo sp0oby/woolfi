@@ -234,3 +234,52 @@ Operational references:
 - [`runbooks/production-monitoring.md`](./runbooks/production-monitoring.md)
 - [`runbooks/incident-response.md`](./runbooks/incident-response.md)
 - [`runbooks/launch-gate-record.md`](./runbooks/launch-gate-record.md)
+
+## Arbitrage executor (optional, permissionless)
+
+`src/periphery/WoolFiArbExecutor.sol` is the zero-capital executor used by `arb-agent/`. It has
+no owner, holds no funds between transactions, and is not part of the coordinated launch gate:
+anyone may deploy their own instance. It is not wired into the hook, position manager, or
+manifest.
+
+```text
+POOL_MANAGER=0x8366a39cc670b4001a1121b8f6a443a643e40951 \
+SWAP_EXECUTOR=0xCaf681a66D020601342297493863E78C959E5cb2 \
+forge script script/DeployArbExecutor.s.sol:DeployArbExecutor --rpc-url $ROBINHOOD_RPC_URL
+```
+
+Broadcasting on 4663 additionally needs `--broadcast` and `CONFIRM_MAINNET=true`. Run the
+agent against the live manifest only after `launchStatus` is `live`; until then it reports
+`ready: false` and does nothing. At least one agent per launch should be running from day one:
+pools with no active arbitrage stay off fair longer, which is the condition the structural-break
+confirmation window is designed around.
+
+## Uniswap v3 position migrator (optional)
+
+`WoolFiV3Migrator` lets an existing Uniswap v3 LP move a position for a catalog pair into the
+matching full-range WoolFi pool in one transaction: withdraw from v3, collect principal plus
+uncollected v3 fees, mint WoolFi LP shares, refund whatever the full-range ratio cannot use. The
+v3 NFT stays with its owner, emptied.
+
+- Uniswap v3 NonfungiblePositionManager on 4663: `0x73991a25C818Bf1f1128dEAaB1492D45638DE0D3`
+  (Uniswap sdk-core address book; `factory()` = `0x1f7d...2efa`, `WETH9()` = canonical WETH, both
+  verified on-chain 2026-10-07).
+- The migrator is stateless and permissionless: no owner, no admin, holds no funds between
+  transactions. There is no ownership handoff step.
+- Out-of-range v3 positions hold one token and revert with `SingleSidedPosition`; those users
+  should withdraw on Uniswap and use the Zap.
+- Deploy after the WoolFi position manager exists. The script checks the NPM's factory and WETH9
+  on 4663 and, on broadcast, writes `v3Migrator` and `uniswapV3PositionManager` to the manifest.
+  The terminal shows the "Migrate v3" liquidity mode only when `v3Migrator` is set.
+
+Dry-run:
+
+```text
+POSITION_MANAGER=<woolfi pm> forge script script/DeployV3Migrator.s.sol:DeployV3Migrator --rpc-url $ROBINHOOD_RPC_URL
+```
+
+Broadcast (approved run only):
+
+```text
+CONFIRM_MAINNET=true POSITION_MANAGER=<woolfi pm> forge script script/DeployV3Migrator.s.sol:DeployV3Migrator --rpc-url $ROBINHOOD_RPC_URL --broadcast
+```

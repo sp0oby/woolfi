@@ -194,7 +194,7 @@ def validate(
         if slippage > 10_000:
             errors.append(f"{slug}.initialLiquidity.slippageBps exceeds 10000")
         _validate_risk(slug, pool.get("risk", config.get("defaultRisk", {})), errors)
-        _validate_hours_and_safety(str(slug), pool, config.get("defaultSafety", {}), errors)
+        _validate_hours_and_safety(str(slug), pool, config.get("defaultSafety", {}), errors, config.get("assets", {}))
     if set(seen_slugs) != set(SLUGS):
         errors.append("pool slugs do not exactly match the canonical catalog")
     for (base, quote), slug in zip(PAIRS, SLUGS):
@@ -231,7 +231,9 @@ def validate(
     return errors
 
 
-def _validate_hours_and_safety(slug: str, pool: dict[str, Any], default_safety: Any, errors: list[str]) -> None:
+def _validate_hours_and_safety(
+    slug: str, pool: dict[str, Any], default_safety: Any, errors: list[str], assets: Any = None
+) -> None:
     expected = "always-open" if slug in ALWAYS_OPEN_SLUGS else "equity-hours"
     if pool.get("hoursPolicy") != expected:
         errors.append(f"{slug}.hoursPolicy must be {expected}")
@@ -251,6 +253,21 @@ def _validate_hours_and_safety(slug: str, pool: dict[str, Any], default_safety: 
             errors.append(f"{slug}.safety.stabilizationSeconds must be positive")
     elif stabilization == 0:
         errors.append(f"{slug}.safety.stabilizationSeconds must be positive")
+    # Robinhood Chainlink feeds are deviation-triggered (0.5%) with a 24h heartbeat, so two legs
+    # routinely update hours apart without either being wrong. A skew limit tighter than the slower
+    # leg's heartbeat would park the pool in degraded mode (flat fee, deposits blocked, no break
+    # detection) most of the time.
+    if skew and isinstance(assets, dict):
+        heartbeats = [
+            assets.get(symbol, {}).get("heartbeat")
+            for symbol in (pool.get("base"), pool.get("quote"))
+            if isinstance(assets.get(symbol), dict)
+        ]
+        known = [h for h in heartbeats if isinstance(h, int) and not isinstance(h, bool) and h > 0]
+        if known and skew < max(known):
+            errors.append(
+                f"{slug}.safety.maxOracleSkew ({skew}) must be >= the slower leg's heartbeat ({max(known)})"
+            )
 
 
 def _validate_gates(gates: Any) -> list[str]:

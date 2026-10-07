@@ -165,6 +165,17 @@ class RobinhoodBatchTest(unittest.TestCase):
         errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
         self.assertTrue(any("aapl-msft.safety.maxOracleSkew must be positive" in error for error in errors))
 
+    def test_rejects_spread_skew_tighter_than_heartbeat(self):
+        for symbol in ("AAPL", "MSFT"):
+            self.config["assets"][symbol]["heartbeat"] = 86400
+        pool = next(pool for pool in self.config["pools"] if pool["slug"] == "aapl-msft")
+        pool["safety"] = {"stabilizationSeconds": 900, "maxOracleSkew": 120}
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertTrue(any("aapl-msft.safety.maxOracleSkew (120) must be >=" in error for error in errors))
+        pool["safety"]["maxOracleSkew"] = 86400
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertFalse(any("aapl-msft.safety.maxOracleSkew" in error for error in errors))
+
     def test_pool_env_forwards_uru_cap(self):
         pool = self.config["pools"][0]
         ordered = sorted((pool["base"], pool["quote"]), key=lambda symbol: int(ASSETS[symbol], 16))

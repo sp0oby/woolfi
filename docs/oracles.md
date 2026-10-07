@@ -85,6 +85,15 @@ When `maxOracleSkew` is set, excessive two-leg timestamp skew degrades swaps to 
 and hard-reverts new liquidity. Stale, paused, invalid, and sequencer-unsafe feeds never degrade
 into that mode; they revert.
 
+**Sizing the skew limit.** Every Robinhood Chain feed is deviation-triggered (0.5%) with an 86400s
+heartbeat. Two legs that are both healthy can show update times hours apart, because a quiet leg
+simply has not moved 0.5% (live check on 2026-10-07: SPY vs QQQ 10,553s apart). That gap is not a
+price error. A skew limit tighter than the slower leg's heartbeat therefore leaves a spread pool in
+degraded mode (flat fee, deposits blocked, no break detection) most of the time. The batch config
+sets `maxOracleSkew = 86400` on all four spread pools, `script/robinhood_batch.py` rejects any
+nonzero limit below the slower leg's heartbeat, and `test/fork/WoolFiGaps.fork.t.sol` checks the
+configured value against live feed timestamps.
+
 ## Sequencer safety on Robinhood Chain
 
 Robinhood Chain (4663) publishes no L2 Sequencer Uptime Feed, and [Chainlink has stated](https://docs.chain.link/data-feeds/l2-sequencer-feeds)
@@ -135,6 +144,14 @@ GLD token's `uiMultiplier()`-adjusted reference and the GLD/USDG Uniswap v3 pric
 diverge, GLD/USDG and GLD/SLV will carry a persistent drift and must not go live until resolved.
 The GLD leg still uses `RobinhoodStockOracleAdapter`, so `oraclePaused()` on the GLD token gates
 corporate actions as for every other stock leg.
+
+**Cross-check result (2026-10-07, block 82785643, `test_fork_gldFeedMatchesMarket`):** Chainlink
+`GLD / USD` read $376.278; the deepest GLD/USDG Uniswap v3 pool on 4663
+(`0x7A6A053eCCf1446A2633E05aA6D40D09381997ec`, 0.3% tier, about $390k USDG reserve) priced GLD at
+$377.032. Difference: 19 bps, inside the 3% tolerance. The GLD token's `uiMultiplier()` is exactly
+`1e18`, so today there is no Total Return Value adjustment for the feed to miss. **Verdict: the
+feed is usable for GLD/USDG and GLD/SLV.** Re-run the check if GLD's `uiMultiplier()` ever moves
+off `1e18` (a distribution or corporate action), because this feed would not follow it.
 
 ## Structural-break pricing
 

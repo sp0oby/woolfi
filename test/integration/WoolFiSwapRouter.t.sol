@@ -18,12 +18,22 @@ import {UrufuFeeRebateDistributor} from "../../src/UrufuFeeRebateDistributor.sol
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
 import {SpreadMath} from "../../src/lib/SpreadMath.sol";
+import {IFeeRebateDistributor} from "../../src/interfaces/IFeeRebateDistributor.sol";
 
 contract MockUrufuNft is ERC721 {
     constructor() ERC721("Urufu Gemu", "URUFU") {}
 
     function mint(address to, uint256 tokenId) external {
         _mint(to, tokenId);
+    }
+}
+
+/// @notice Distributor that always reverts, to prove rebate accounting is fail-open.
+contract RevertingDistributor {
+    error Boom();
+
+    function recordSwap(address, PoolId, address, uint256) external pure returns (uint256) {
+        revert Boom();
     }
 }
 
@@ -334,5 +344,67 @@ contract WoolFiSwapRouterTest is Deployers {
     function testRevert_unlockCallback_notPoolManager() public {
         vm.expectRevert(WoolFiSwapRouter.NotPoolManager.selector);
         router.unlockCallback(bytes(""));
+    }
+    // -----------------------------------------------------------------
+    // Rebate module wiring
+    // -----------------------------------------------------------------
+
+    function _routerWith(IFeeRebateDistributor d) internal returns (WoolFiSwapRouter r) {
+        r = new WoolFiSwapRouter(manager, d);
+        vm.startPrank(ALICE);
+        IERC20Minimal(Currency.unwrap(currency0)).approve(address(r), type(uint256).max);
+        IERC20Minimal(Currency.unwrap(currency1)).approve(address(r), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_swap_withoutDistributor_skipsRebate() public {
+        WoolFiSwapRouter bare = _routerWith(IFeeRebateDistributor(address(0)));
+        urufuNft.mint(ALICE, 77);
+        vm.prank(ALICE);
+        uint256 out = bare.swap(poolKey, true, 1e16, 0, ALICE, ZERO_BYTES);
+        assertGt(out, 0);
+        assertEq(rebateDistributor.claimable(ALICE, Currency.unwrap(currency0)), 0, "no rebate path");
+    }
+
+    function test_swap_revertingDistributor_failsOpen() public {
+        WoolFiSwapRouter r = _routerWith(IFeeRebateDistributor(address(new RevertingDistributor())));
+        vm.expectEmit(true, false, false, true, address(r));
+        emit WoolFiSwapRouter.RebateRecordFailed(ALICE, abi.encodeWithSelector(RevertingDistributor.Boom.selector));
+        vm.prank(ALICE);
+        uint256 out = r.swap(poolKey, false, 1e16, 0, ALICE, ZERO_BYTES);
+        assertGt(out, 0, "trade settles even though rebate accounting reverted");
+    }
+
+    function test_swap_holderEmitsRebateRecorded() public {
+        urufuNft.mint(ALICE, 78);
+        vm.expectEmit(true, true, false, false, address(router));
+        emit WoolFiSwapRouter.RebateRecorded(ALICE, Currency.unwrap(currency0), 0);
+        vm.prank(ALICE);
+        router.swap(poolKey, true, 1e18, 0, ALICE, ZERO_BYTES);
+    }
+
+    function test_swap_dustInputYieldsZeroOutput() public {
+        // One wei in rounds to zero out: the take leg has nothing to pull.
+        uint256 b1 = IERC20Minimal(Currency.unwrap(currency1)).balanceOf(ALICE);
+        vm.prank(ALICE);
+        uint256 out = router.swap(poolKey, true, 1, 0, ALICE, ZERO_BYTES);
+        assertEq(out, 0);
+        assertEq(IERC20Minimal(Currency.unwrap(currency1)).balanceOf(ALICE), b1);
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(WoolFiSwapRouter.InsufficientOutput.selector, 0, 1));
+        router.swap(poolKey, true, 1, 1, ALICE, ZERO_BYTES);
+    }
+
+    function testFuzz_swap_slippageBoundExact(uint256 amountIn, bool zeroForOne) public {
+        amountIn = bound(amountIn, 1e6, 5e18);
+        uint256 snap = vm.snapshotState();
+        vm.prank(ALICE);
+        uint256 quote = router.swap(poolKey, zeroForOne, amountIn, 0, ALICE, ZERO_BYTES);
+        vm.revertToState(snap);
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(WoolFiSwapRouter.InsufficientOutput.selector, quote, quote + 1));
+        router.swap(poolKey, zeroForOne, amountIn, quote + 1, ALICE, ZERO_BYTES);
+        vm.prank(ALICE);
+        assertEq(router.swap(poolKey, zeroForOne, amountIn, quote, ALICE, ZERO_BYTES), quote);
     }
 }

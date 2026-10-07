@@ -15,8 +15,21 @@
 | M-2 rebate on base fee for discounted swaps | Rebate uses `min(fee charged, base fee)` via the hook's transient `lastSwapFeeBps` |
 | L-1 one-step ownership on secondary contracts | Zapper, rebate distributor, `NyseHoursOracle`, `MultisigMarketHours` are two-step |
 | L-4 locked rebate funds | `withdrawUnreserved` moves only funds above outstanding liabilities |
+| R2-1 spread pools always skewed | Spread `maxOracleSkew` sized to the 24h feed heartbeat (86400); readiness gate enforces it |
+| R2-2 confirmation raced at the open | Confirm refused during stabilization; equity-hours window counts from the later of detection and session open |
+| R2-3 indexer missed break transitions | Break-episode tracking for detected / confirmed / cleared / recovered / resolved and drawdown outcome |
+| R2-4 confirmed break never self-exits | Permissionless `clearRecoveredBreak` once fresh drift is back within tolerance |
+| R2-6 rebate on requested input | Router passes the settled input amount |
 
 ## Operational requirements from fixes
+
+- **Off-chain keeper must learn the new paths.** `keeper/src/keep.ts` treats only
+  `NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed` as idle. It should also
+  treat `MarketClosed`, `StabilizationActive` and `OracleTimestampSkew` as idle, and call
+  `clearRecoveredBreak` for confirmed breaks (or route through `RebalanceKeeper.keep`, which does both).
+- **Thin-pool residual (R2-5).** Two-phase breaks assume corrective flow arrives within the window.
+  A pool with no active arbitrageur can still confirm and draw down on a genuine gap. Run an
+  arbitrage keeper per pool.
 
 - **Keeper must confirm breaks.** Detection no longer draws down. `keeper/src` must call
   `hook.confirmStructuralBreak(key)` (or route through `RebalanceKeeper.keep`, which now does it)

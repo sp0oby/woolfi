@@ -154,3 +154,17 @@ liquidity, and URU underwriting actions. Until then all 18 remain read-only.
 ## Acknowledgements
 
 Uniswap Labs for v4 and the hooks framework.
+
+## Run the arbitrage agent
+
+`arb-agent/` is an open-source bot that keeps WoolFi pools priced and earns the spread. When a
+WoolFi pool drifts off its Chainlink fair price, it buys the cheap side on WoolFi (paying the
+hook's discounted corrective fee) and sells it on the deep Uniswap v3 pool for the same pair, in
+one transaction through `src/periphery/WoolFiArbExecutor.sol`. It needs no trading capital, only
+gas: unprofitable trades revert. It runs in dry-run mode by default, and can optionally post
+plain-English summaries of its activity using the Claude API. See
+[`arb-agent/README.md`](./arb-agent/README.md).
+
+```bash
+cd arb-agent && npm install && cp .env.example .env && npm start
+```

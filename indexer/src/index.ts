@@ -2,6 +2,9 @@ import {ponder} from "ponder:registry";
 import {
   swap,
   structuralBreak,
+  breakEpisode,
+  poolBreakPointer,
+  breakConfirmSetting,
   oracleSkew,
   poolSafety,
   lpMovement,
@@ -36,7 +39,41 @@ ponder.on("WoolFiHook:SwapProcessed", async ({event, context}) => {
   });
 });
 
+type EpisodeOutcome = "open" | "confirmed" | "cleared" | "recovered" | "resolved";
+
+/** Open episode for a pool, or undefined if none is open (e.g. indexing started mid-episode). */
+async function openEpisode(context: any, poolId: `0x${string}`) {
+  const pointer = await context.db.find(poolBreakPointer, {id: poolId});
+  if (!pointer || !pointer.open) return undefined;
+  return pointer.episodeId as string;
+}
+
+async function closeEpisode(
+  context: any,
+  poolId: `0x${string}`,
+  outcome: EpisodeOutcome,
+  fields: Record<string, unknown>,
+) {
+  const episodeId = await openEpisode(context, poolId);
+  if (!episodeId) return;
+  await context.db.update(breakEpisode, {id: episodeId}).set({...fields, outcome});
+  await context.db.update(poolBreakPointer, {id: poolId}).set({open: false});
+}
+
 ponder.on("WoolFiHook:StructuralBreakTriggered", async ({event, context}) => {
+  const id = eventId(event);
+  await context.db.insert(breakEpisode).values({
+    id,
+    poolId: event.args.id,
+    detectedAt: event.block.timestamp,
+    detectedBlock: event.block.number,
+    detectedDriftBps: event.args.driftBps,
+    outcome: "open",
+  });
+  await context.db
+    .insert(poolBreakPointer)
+    .values({id: event.args.id, episodeId: id, open: true})
+    .onConflictDoUpdate({episodeId: id, open: true});
   await context.db.insert(structuralBreak).values({
     id: eventId(event),
     poolId: event.args.id,
@@ -49,6 +86,10 @@ ponder.on("WoolFiHook:StructuralBreakTriggered", async ({event, context}) => {
 });
 
 ponder.on("WoolFiHook:StructuralBreakTargetCached", async ({event, context}) => {
+  const episodeId = await openEpisode(context, event.args.id);
+  if (episodeId) {
+    await context.db.update(breakEpisode, {id: episodeId}).set({cachedFairPriceWad: event.args.fairPriceWad});
+  }
   await context.db.insert(structuralBreak).values({
     id: eventId(event),
     poolId: event.args.id,
@@ -83,7 +124,52 @@ ponder.on("WoolFiHook:PoolSafetyUpdated", async ({event, context}) => {
   });
 });
 
+ponder.on("WoolFiHook:StructuralBreakConfirmed", async ({event, context}) => {
+  // Confirmation keeps the episode open (containment continues until recovery or resolution).
+  const episodeId = await openEpisode(context, event.args.id);
+  if (!episodeId) return;
+  await context.db.update(breakEpisode, {id: episodeId}).set({
+    confirmedAt: event.block.timestamp,
+    confirmedDriftBps: event.args.driftBps,
+    outcome: "confirmed",
+  });
+});
+
+ponder.on("WoolFiHook:DrawdownFailed", async ({event, context}) => {
+  const episodeId = await openEpisode(context, event.args.id);
+  if (!episodeId) return;
+  await context.db.update(breakEpisode, {id: episodeId}).set({
+    drawdownFailed: true,
+    drawdownFailureReason: event.args.reason,
+  });
+});
+
+ponder.on("WoolFiHook:StructuralBreakCleared", async ({event, context}) => {
+  await closeEpisode(context, event.args.id, "cleared", {
+    clearedAt: event.block.timestamp,
+    clearedDriftBps: event.args.driftBps,
+  });
+});
+
+ponder.on("WoolFiHook:StructuralBreakRecovered", async ({event, context}) => {
+  await closeEpisode(context, event.args.id, "recovered", {
+    recoveredAt: event.block.timestamp,
+    recoveredDriftBps: event.args.driftBps,
+  });
+});
+
+ponder.on("WoolFiHook:BreakConfirmSecondsSet", async ({event, context}) => {
+  await context.db.insert(breakConfirmSetting).values({
+    id: eventId(event),
+    poolId: event.args.id,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+    confirmSeconds: Number(event.args.confirmSeconds),
+  });
+});
+
 ponder.on("WoolFiHook:StructuralBreakResolved", async ({event, context}) => {
+  await closeEpisode(context, event.args.id, "resolved", {resolvedAt: event.block.timestamp});
   // Mark the most recent unresolved break for this pool as resolved.
   // (Logged as a separate row keyed by tx so re-orgs are idempotent.)
   await context.db.insert(structuralBreak).values({
@@ -100,7 +186,7 @@ ponder.on("WoolFiHook:StructuralBreakResolved", async ({event, context}) => {
 ponder.on("WoolFiPositionManager:Mint", async ({event, context}) => {
   await context.db.insert(lpMovement).values({
     id: eventId(event),
-    // PM emits the share id (uint256 of the poolId bytes32) — cast back to hex for consistency
+    // PM emits the share id (uint256 of the poolId bytes32) - cast back to hex for consistency
     poolId: `0x${event.args.id.toString(16).padStart(64, "0")}` as `0x${string}`,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,

@@ -1,7 +1,7 @@
 /**
  * Minimal WoolFi event ABIs for the indexer.
  *
- * Only the events we actually consume are listed — extend per `src/index.ts` as the dashboard
+ * Only the events we actually consume are listed - extend per `src/index.ts` as the dashboard
  * grows. Sourced from the Solidity contracts in `../../src/`; keep these in sync when contract
  * events change (or wire ponder to read from `../../out/*.json` once the contracts are deployed).
  */
@@ -50,6 +50,52 @@ export const woolfiHookAbi = [
       {indexed: false, name: "updatedAt0", type: "uint256"},
       {indexed: false, name: "updatedAt1", type: "uint256"},
       {indexed: false, name: "maxSkew", type: "uint32"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "StructuralBreakConfirmed",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "driftBps", type: "int256"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "StructuralBreakCleared",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "driftBps", type: "int256"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "StructuralBreakRecovered",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "driftBps", type: "int256"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "DrawdownFailed",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "vault", type: "address"},
+      {indexed: false, name: "reason", type: "bytes"},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "BreakConfirmSecondsSet",
+    inputs: [
+      {indexed: true, name: "id", type: "bytes32"},
+      {indexed: false, name: "confirmSeconds", type: "uint32"},
     ],
     anonymous: false,
   },

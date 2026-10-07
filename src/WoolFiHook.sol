@@ -22,7 +22,7 @@ import {IUnderwritingVault} from "./interfaces/IUnderwritingVault.sol";
 
 /// @dev Minimal interface the hook needs from {WoolFiPositionManager}. Declared inline (rather
 ///      than imported from the PM module) so the hook doesn't pull in the PM's whole compilation
-///      unit — keeps the bytecode size in check.
+///      unit - keeps the bytecode size in check.
 interface IPmRealizeSink {
     function realizeFromHook(PoolKey calldata key) external;
 }
@@ -31,7 +31,7 @@ interface IPmRealizeSink {
 /// @notice Uniswap v4 hook that turns a full-range pool into a pair-trade vehicle by pegging the
 ///         pool's internal price to an oracle-derived fair price via an asymmetric, drift-scaled fee
 ///         (PROJECT_SPEC.md §3). Swaps toward fair are discounted; swaps away are surcharged.
-/// @dev v1 uses a dynamic LP fee only (dynamic-fee flag + a `beforeSwap` fee override) — it does NOT
+/// @dev v1 uses a dynamic LP fee only (dynamic-fee flag + a `beforeSwap` fee override) - it does NOT
 ///      use `beforeSwapReturnDelta`. One hook serves many pools, parametrized per pool. During equity
 ///      market closure or a structural-break state, the asymmetric logic is disabled and fees go flat.
 contract WoolFiHook is BaseHook {
@@ -115,7 +115,7 @@ contract WoolFiHook is BaseHook {
     address public pendingGovernor;
     /// @notice Position manager that owns the shared full-range LP position for every WoolFi pool
     ///         this hook serves. When set, the hook pokes its `realizeFromHook` from `afterSwap`
-    ///         so vault rewards and treasury-policy cuts route automatically on every trade — no keeper
+    ///         so vault rewards and treasury-policy cuts route automatically on every trade - no keeper
     ///         needed for the steady state. address(0) until governance wires it (`setPositionManager`).
     address public positionManager;
     /// @notice Global emergency pause. When true, swaps and adds revert.
@@ -141,6 +141,7 @@ contract WoolFiHook is BaseHook {
     event StructuralBreakConfirmed(PoolId indexed id, int256 driftBps);
     event StructuralBreakCleared(PoolId indexed id, int256 driftBps);
     event BreakConfirmSecondsSet(PoolId indexed id, uint32 confirmSeconds);
+    event StructuralBreakRecovered(PoolId indexed id, int256 driftBps);
 
     error NotGovernor();
     error NotPendingGovernor();
@@ -162,6 +163,7 @@ contract WoolFiHook is BaseHook {
     error SwapWouldBreakPool(int256 preDriftBps, int256 postDriftBps);
     error BreakConfirmationPending(uint256 readyAt);
     error BreakAlreadyConfirmed();
+    error BreakNotConfirmed();
 
     /// @dev Transient-storage namespace for the pre-swap drift snapshot (EIP-1153). Slot for a pool
     ///      is keccak256(id, PRE_DRIFT_NAMESPACE); the "armed" flag lives at slot + 1 and the fair
@@ -340,7 +342,7 @@ contract WoolFiHook is BaseHook {
 
     /// @notice Point the hook at its {WoolFiPositionManager}. Once set, every swap's `afterSwap`
     ///         pokes the PM to realize and route accrued fees automatically.
-    /// @dev Passing `address(0)` disables auto-realization without removing pools — useful for
+    /// @dev Passing `address(0)` disables auto-realization without removing pools - useful for
     ///      pausing the side effect during a PM upgrade. The PM gate-checks `msg.sender == hook`
     ///      via the pool key, so misconfigured pools can't have their fees siphoned by a wrong
     ///      hook address.
@@ -405,17 +407,21 @@ contract WoolFiHook is BaseHook {
     /// @return confirmed Whether the break has been confirmed and the vault drawdown attempted.
     /// @return detectedAt When the break was flagged (zero when not broken).
     /// @return confirmReadyAt Earliest time {confirmStructuralBreak} may run (zero when not broken).
+    ///         For equity-hours pools the window counts from the later of detection and the current
+    ///         session open, so it is `type(uint256).max` while the market is closed (unknown until
+    ///         the next session starts).
     function breakStatus(PoolKey calldata key)
         external
         view
         returns (bool broken, bool confirmed, uint256 detectedAt, uint256 confirmReadyAt)
     {
         PoolId id = key.toId();
+        WoolFiConfig memory c = _config[id];
         BreakState memory b = _breakState[id];
-        broken = _config[id].structuralBreak;
+        broken = c.structuralBreak;
         confirmed = b.confirmed;
         detectedAt = b.detectedAt;
-        if (broken) confirmReadyAt = detectedAt + _confirmWindow(b.confirmSeconds);
+        if (broken) confirmReadyAt = _confirmReadyAt(c, b);
     }
 
     /// @notice LP fee (bps) the hook applied to the most recent swap of `id` in the current
@@ -462,9 +468,15 @@ contract WoolFiHook is BaseHook {
         if (!c.structuralBreak) revert NotStructurallyBroken();
         BreakState storage b = _breakState[id];
         if (b.confirmed) revert BreakAlreadyConfirmed();
-        uint256 readyAt = uint256(b.detectedAt) + _confirmWindow(b.confirmSeconds);
-        if (block.timestamp < readyAt) revert BreakConfirmationPending(readyAt);
         if (_marketClosed(c)) revert MarketClosed();
+        // No confirmation while the session is still settling: corrective traders get first access to
+        // a post-gap price before underwriters can be charged for it.
+        uint256 stabilizationEndsAt = _stabilizationWindow(c);
+        if (stabilizationEndsAt != 0) {
+            revert StabilizationActive(c.marketHours.currentSessionStart(), stabilizationEndsAt);
+        }
+        uint256 readyAt = _confirmReadyAt(c, b);
+        if (block.timestamp < readyAt) revert BreakConfirmationPending(readyAt);
         (uint256 fair, uint256 updatedAt0, uint256 updatedAt1, bool skewed) = _oracleFair(c);
         if (skewed) revert OracleTimestampSkew(updatedAt0, updatedAt1, c.maxOracleSkew);
         int256 drift = _driftFromFair(c, id, fair);
@@ -487,13 +499,43 @@ contract WoolFiHook is BaseHook {
         }
     }
 
+    /// @notice Permissionless exit from a confirmed break once the pool has recovered. After the
+    ///         drawdown has been confirmed, anyone may clear containment when a fresh oracle read
+    ///         shows drift back inside the tolerance band, without waiting for a (possibly
+    ///         timelocked) governor {resolveStructuralBreak}.
+    /// @dev Requires the market to be open and settled (no stabilization window), fresh oracle data
+    ///      with the normal guards, and unskewed legs. The governor path still works.
+    function clearRecoveredBreak(PoolKey calldata key) external {
+        if (paused) revert Paused();
+        PoolId id = key.toId();
+        WoolFiConfig memory c = _config[id];
+        if (!c.configured) revert PoolNotConfigured();
+        if (!c.structuralBreak) revert NotStructurallyBroken();
+        if (!_breakState[id].confirmed) revert BreakNotConfirmed();
+        if (_marketClosed(c)) revert MarketClosed();
+        uint256 stabilizationEndsAt = _stabilizationWindow(c);
+        if (stabilizationEndsAt != 0) {
+            revert StabilizationActive(c.marketHours.currentSessionStart(), stabilizationEndsAt);
+        }
+        (uint256 fair, uint256 updatedAt0, uint256 updatedAt1, bool skewed) = _oracleFair(c);
+        if (skewed) revert OracleTimestampSkew(updatedAt0, updatedAt1, c.maxOracleSkew);
+        int256 drift = _driftFromFair(c, id, fair);
+        if (!SpreadMath.isInBand(drift, c.toleranceBps)) revert OutOfBand();
+
+        WoolFiConfig storage stored = _config[id];
+        stored.structuralBreak = false;
+        stored.cachedFairPriceWad = 0;
+        _resetBreakState(id);
+        emit StructuralBreakRecovered(id, drift);
+    }
+
     // --------------------------------------------------------------------
     // Hook callbacks
     // --------------------------------------------------------------------
 
     /// @dev Only authorized pools may initialize against this hook. The dynamic-fee requirement is
     ///      already guaranteed: {authorizePool} rejects non-dynamic fees, and the poolId (which keys
-    ///      the config) includes the fee — so any `configured` pool is necessarily a dynamic-fee pool.
+    ///      the config) includes the fee - so any `configured` pool is necessarily a dynamic-fee pool.
     function _beforeInitialize(address, PoolKey calldata key, uint160) internal view override returns (bytes4) {
         if (!_config[key.toId()].configured) revert PoolNotConfigured();
         return IHooks.beforeInitialize.selector;
@@ -540,7 +582,7 @@ contract WoolFiHook is BaseHook {
     }
 
     /// @dev Detect structural break from the post-swap price; skip while market closed. Then
-    ///      poke the position manager so accrued fees are realized and routed automatically —
+    ///      poke the position manager so accrued fees are realized and routed automatically -
     ///      no off-chain keeper needed for steady-state operation. Skipped when the PM isn't
     ///      wired yet, when no LPs exist in the pool, or when the pool isn't configured.
     ///
@@ -591,7 +633,7 @@ contract WoolFiHook is BaseHook {
     }
 
     /// @dev LPs may only add when the pool is in-band, the market is open, and the position covers
-    ///      the **full range** — spec §3.3: WoolFi pools are full-range only, since the hook's drift
+    ///      the **full range** - spec §3.3: WoolFi pools are full-range only, since the hook's drift
     ///      math assumes uniform liquidity across the price domain. The PM always uses full range;
     ///      this guards against direct PoolManager callers attempting a concentrated position.
     function _beforeAddLiquidity(
@@ -662,6 +704,23 @@ contract WoolFiHook is BaseHook {
 
     function _confirmWindow(uint32 configured) private pure returns (uint256) {
         return configured == 0 ? DEFAULT_BREAK_CONFIRM_SECONDS : configured;
+    }
+
+    /// @dev Always-open pools: detection time plus the window (wall clock). Equity-hours pools: the
+    ///      window counts from the later of detection and the current session open, so a break flagged
+    ///      before a close cannot ripen over the weekend and be confirmed on the opening print. While
+    ///      the market is closed the ready time is unknown and reported as `type(uint256).max`.
+    function _confirmReadyAt(WoolFiConfig memory c, BreakState memory b) private view returns (uint256) {
+        uint256 start = b.detectedAt;
+        if (address(c.marketHours) != address(0)) {
+            if (!c.marketHours.isMarketOpen()) return type(uint256).max;
+            // An open market reporting no session start falls back to detection time.
+            // A session start in the future is nonsensical (and could overflow below); ignore it the
+            // same way {_stabilizationWindow} does.
+            uint256 sessionStart = c.marketHours.currentSessionStart();
+            if (sessionStart > start && sessionStart <= block.timestamp) start = sessionStart;
+        }
+        return start + _confirmWindow(b.confirmSeconds);
     }
 
     function _preDriftSlot(PoolId id) private pure returns (bytes32) {
