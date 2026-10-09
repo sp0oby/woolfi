@@ -180,7 +180,7 @@ def reconcile_manifest(receipts: dict[str, Any], manifest_path: Path) -> None:
     manifest = load(manifest_path)
     allowed = {
         "hook", "positionManager", "governor", "swapRouter", "rebateDistributor",
-        "liquidityZapper", "poolAligner", "externalSwapExecutor", "marketHours", "keeper",
+        "liquidityZapper", "poolAligner", "timelock", "externalSwapExecutor", "marketHours", "keeper",
     }
     manifest.setdefault("startBlocks", {})
     manifest.setdefault("receipts", [])

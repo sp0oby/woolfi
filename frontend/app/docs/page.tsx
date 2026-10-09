@@ -113,6 +113,13 @@ export default function DocsPage() {
               positions pro rata. URU is the underwriting asset; it is not presented as a
               governance voting token.
             </p>
+            <p>
+              Unstaking takes 2 days, and your requested stake stays exposed until it is paid out.
+              Withdrawals also pause while a structural break is being confirmed, so nobody can
+              leave between a break being detected and the drawdown it may lead to. Governance
+              changes wait 3 days, longer than the unstake cooldown, so you can always exit before
+              a queued change takes effect.
+            </p>
           </Section>
 
           <Section id="rebates" label="Urufu Gemu rebates">
@@ -284,6 +291,11 @@ export default function DocsPage() {
                 Moving a Uniswap v3 position into a WoolFi pool in one transaction with the v3
                 migrator.
               </Term>
+              <Term name="Timelock">
+                The contract that owns WoolFi&apos;s settings. The multisig can only queue a change;
+                it waits 3 days in public before it can run. The emergency pause is the one
+                exception and takes effect instantly.
+              </Term>
               <Term name="Stabilization">
                 A short window after the referenced market opens during which asymmetric fees stay
                 off so the first prints can settle.
@@ -325,6 +337,7 @@ export default function DocsPage() {
               <StatusRow label="Empty pools" value="Synced to Chainlink by the keeper" />
               <StatusRow label="Underwriting" value="URU · per-pool vault" />
               <StatusRow label="Oracle" value="Chainlink Data Feeds" />
+              <StatusRow label="Governance" value="Safe multisig · 3-day timelock · instant pause" />
               <StatusRow label="Contracts" value="Not deployed yet" />
               <StatusRow label="Audit" value="Pending" />
             </div>

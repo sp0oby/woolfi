@@ -31,8 +31,9 @@ export default function GovernancePage() {
           <A>
             A single multisig wallet. A multisig is a smart contract that needs several separate
             signers to approve any transaction before it goes through. The specific signers,
-            threshold, and recovery process are published in the launch record. In v1 that
-            multisig is the only party that can change protocol settings.
+            threshold, and recovery process are published in the launch record. The multisig
+            does not change settings directly: it proposes changes to a timelock, which holds
+            each one in public for 3 days before it can run.
           </A>
         </Group>
 
@@ -41,7 +42,7 @@ export default function GovernancePage() {
           <List>
             <Item>Authorize a new pool (from the fixed 18-pool catalog) and set its oracle bindings.</Item>
             <Item>Re-tune parameters of a live pool (fee schedule, tolerance, hard threshold) within audited bounds.</Item>
-            <Item>Pause the whole hook in an emergency, stopping swaps and liquidity adds.</Item>
+            <Item>Pause the whole hook in an emergency, stopping swaps and liquidity adds. This is the one action that takes effect instantly; unpausing waits 3 days like everything else.</Item>
             <Item>Resolve a structural break directly, or change how long a break waits before it can be confirmed (up to one day).</Item>
             <Item>Configure per-pool vault drawdown percentage and fee routing.</Item>
           </List>
@@ -54,7 +55,8 @@ export default function GovernancePage() {
             <Item>Change the hook&apos;s code. The hook contract is immutable after deployment. Only its documented parameters and pool authorizations are configurable.</Item>
             <Item>Issue or redeem Robinhood Stock Tokens. The token issuer (RHJ) controls that, entirely off-chain of WoolFi.</Item>
             <Item>Waive the oracle staleness and sanity checks. Those are hard-coded in the adapters.</Item>
-            <Item>Receive URU taken in a drawdown. Drawn-down URU goes to a separate rebalancer address, not to the multisig.</Item>
+            <Item>Receive URU taken in a drawdown. Drawn-down URU goes to a separate rebalancer address, never the multisig or the timelock.</Item>
+            <Item>Skip the 3-day delay. The timelock has no admin, so even its own rules can only change through the same public queue.</Item>
             <Item>Vote &quot;on your behalf&quot; using URU. Underwriting stake is not voting stake.</Item>
           </List>
         </Group>
@@ -62,12 +64,24 @@ export default function GovernancePage() {
         <Group>
           <Q>Is there a delay before settings change?</Q>
           <A>
-            That is the plan for launch: a timelock (a contract that holds changes in a public
-            queue for at least 24 hours before they can run) sits between the multisig and the
-            protocol for oracle changes, vault wiring, break resolution, and the break waiting
-            period. Anyone watching the queue sees a change a full day before it takes effect.
-            The launch record states whether the timelock is in place; until then, changes take
-            effect as soon as the multisig signs.
+            Yes. Every settings change waits 3 days in public. A timelock (a contract that holds
+            changes in a public queue before they can run) owns the governor, the position
+            manager, the rebate distributor, and the zapper. The multisig can only queue a change,
+            wait at least 3 days, then run it, so anyone watching the queue sees oracle changes,
+            fee changes, vault wiring, break resolution, and unpausing days before they take effect.
+            The multisig can also cancel a queued change before it runs. Unstaking URU takes 2
+            days, less than the 3-day delay, so a staker who dislikes a queued change can always
+            leave before it runs.
+          </A>
+        </Group>
+
+        <Group>
+          <Q>What happens in an emergency?</Q>
+          <A>
+            Emergency pause is instant. The multisig holds a separate guardian role that can pause
+            the hook immediately, stopping swaps and new deposits, and can do nothing else.
+            Unpausing waits 3 days through the timelock, so a pause cannot be used to slip a
+            change through. Withdrawing liquidity stays open while the hook is paused.
           </A>
         </Group>
 
@@ -146,7 +160,7 @@ export default function GovernancePage() {
 }
 
 function Group({children}: {children: React.ReactNode}) {
-  return <section className="mt-14 border-t border-line pt-8">{children}</section>;
+  return <section className="slab mt-8 px-6 py-7 sm:px-8">{children}</section>;
 }
 
 function Q({children}: {children: React.ReactNode}) {

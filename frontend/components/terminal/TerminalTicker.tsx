@@ -21,9 +21,9 @@ export function TerminalTicker() {
   const marquee = [...cells, ...cells];
 
   return (
-    <div className="relative flex h-8 items-center overflow-hidden border-t border-line bg-panel">
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-panel to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-panel to-transparent" />
+    <div className="tick-strip relative flex h-8 shrink-0 items-center overflow-hidden">
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-bg/90 to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-bg/90 to-transparent" />
       <div className="flex min-w-max animate-ticker">
         {marquee.map((c, i) => (
           <div

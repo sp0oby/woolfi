@@ -16,7 +16,7 @@ export default function SplashPage() {
           A market for the spread · Robinhood Chain
         </p>
 
-        <h1 className="mt-8 font-display font-medium leading-[0.9] tracking-tight text-ink text-[120px] sm:text-[180px] lg:text-[220px]">
+        <h1 className="look-wordmark mt-8 font-display font-medium leading-[0.9] tracking-tight text-ink text-[120px] sm:text-[180px] lg:text-[220px]">
           woolfi.
         </h1>
 

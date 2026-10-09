@@ -53,19 +53,41 @@
   (`supportsInterface(0x780e9d63)` returns false on 4663), so caps cannot be keyed by token id. One
   NFT moved between wallets still earns a fresh cap per wallet, now bounded by realized-fee rebates
   and by funding.
-- M-3 governance drain (trust risk). Mitigations before launch:
-  - The vault `rebalancer` must not be the multisig. Use a dedicated rebalance executor contract
-    or a second Safe with a different signer set, so seized URU cannot flow straight back to the
-    governance key.
-  - Put an OpenZeppelin `TimelockController` (minimum delay 24 hours or more) in front of the
-    governor owner for oracle rebinding (`updatePoolConfig*`), vault wiring (`setVault`), break
-    resolution and confirmation-window changes. Deploy note: deploy `TimelockController(minDelay,
-    proposers=[Safe], executors=[Safe], admin=address(0))`, then have the governor owner call
-    `transferOwnership(timelock)` and schedule plus execute `acceptOwnership()` through the timelock.
-    Keep `pauseHook` reachable without delay, either by leaving pause on a separate guardian path
-    in a future governor revision or by accepting the delay. No timelock deploy script is in this repo.
-  - The confirmation window adds a public delay before every drawdown, giving stakers and monitors
-    time to see a suspicious break.
+- M-3 governance drain (trust risk). Mitigations, implemented:
+  - Timelock: `script/DeployTimelock.s.sol` deploys OpenZeppelin `TimelockController(minDelay >= 3 days,
+    proposers=[Safe], executors=[Safe], admin=address(0))`; the Safe is also canceller by OZ default.
+    `script/TimelockHandoff.s.sol` writes two Safe Transaction Builder batches that move ownership
+    of `WoolFiGovernor`, `WoolFiPositionManager`, `UrufuFeeRebateDistributor` and
+    `WoolFiLiquidityZapper` to the timelock (transfer now, `acceptOwnership` scheduled and executed
+    through the timelock after the delay). Oracle rebinding, `setVault`, break resolution,
+    confirmation-window changes, fee routing, executor allowlists, rebate withdrawals, unpausing and
+    any further ownership change therefore wait 3 days in public.
+  - Instant pause: `WoolFiGovernor.guardian` (set to the Safe in batch 1) may call `pauseHook` only.
+    `unpauseHook` and `setGuardian` stay owner (timelocked) calls.
+  - Rebalancer: each vault's immutable `rebalancer` must be neither the Safe nor the timelock. Use a
+    dedicated rebalance executor contract or a second Safe with a different signer set. The
+    readiness check (`script/robinhood_batch.py`) and the handoff generator both refuse otherwise.
+  - Market-hours oracles (`NyseHoursOracle`, `MultisigMarketHours`) stay with the Safe: no funds,
+    and holiday or session fixes may be needed the same day. Their owner can still flip fee mode
+    and suppress break checks while "closed" (L-3), but cannot move funds.
+  - Exit window: the timelock delay (3 days) is longer than the vault unstake cooldown (2 days),
+    and both deploy scripts refuse a delay that is not. A staker who sees a malicious change in the
+    public queue can request an unstake and complete it before the change executes.
+  - Cooldown safety: shortening the cooldown from 7 days to 2 would let stakers dodge a drawdown
+    when a break detected before a long market weekend takes longer than the cooldown to confirm.
+    `WoolFiUnderwritingVault.unstake` therefore refuses to pay out while
+    `WoolFiHook.isBreakPendingForVault` reports a detected but unconfirmed break for its pool;
+    requested shares stay exposed until confirmation. Once a break is confirmed the lock lifts,
+    even if the drawdown itself failed (`DrawdownFailed`), so a broken vault cannot also trap its
+    stakers.
+  - Residual (lock duration): a pending break only ends through `confirmStructuralBreak`,
+    `clearRecoveredBreak` after confirmation, or the governor's `resolveStructuralBreak`. Confirm
+    needs the hook unpaused, the market open and settled, and fresh, unskewed oracles. If the hook
+    stays paused or a feed stays stale (for example a corporate-action `oraclePaused`), unstakes
+    from that pool stay blocked until conditions recover or governance resolves the break, which
+    is itself a 3-day timelocked call. Stakers' requested shares remain theirs throughout; only the
+    timing of the exit is affected. The vault's hook check fails open (a reverting or malformed
+    reply allows the unstake), so the lock can never become permanent through a hook fault.
 - L-2 reverting sinks and unchecked `setFeeConfig` vault: owner-configured, verified in the launch
   gate record.
 - L-3 market-hours owner controls fee mode: trust assumption; the owner is now two-step and the

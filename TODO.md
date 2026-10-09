@@ -36,7 +36,12 @@ the spec.
 - [x] Configure the indexer for all 18 pools, vaults, and production start blocks.
 - [x] Configure, exercise, and monitor the permissionless keeper.
 - [ ] Create the production multisig; verify signers, threshold, recovery, and handoff.
-- [ ] Consider a timelock on governor oracle/config changes after the multisig exists.
+- [x] Build the governance timelock: `TimelockController` (24h, no admin), guardian-only instant pause
+      on `WoolFiGovernor`, `script/DeployTimelock.s.sol`, Safe handoff batches from
+      `script/TimelockHandoff.s.sol`, tests in `test/integration/WoolFiTimelock.t.sol`.
+- [ ] Deploy the timelock after the Safe exists and execute both handoff batches (24h apart).
+- [ ] Choose the vault rebalancer: a second Safe with different signers or a rebalance executor
+      contract; never the production Safe or the timelock.
 - [x] Publish monitoring, incident-response, and rollback/containment runbooks.
 - [ ] Establish the production security-reporting and bug-bounty process (paid bounty / Immunefi).
 - [ ] Name monitoring owners, alert destinations, and thresholds (runbooks are templates only).

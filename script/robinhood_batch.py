@@ -109,7 +109,8 @@ def validate(
     contract_addresses: list[tuple[str, str]] = []
     for field in (
         "poolManager", "stakingToken", "hook", "positionManager", "governor",
-        "swapRouter", "rebateDistributor", "liquidityZapper", "poolAligner", "externalSwapExecutor", "urufuNft",
+        "swapRouter", "rebateDistributor", "liquidityZapper", "poolAligner", "timelock", "externalSwapExecutor",
+        "urufuNft",
     ):
         value = _address(core.get(field), f"core.{field}", errors)
         contract_addresses.append((f"core.{field}", value))
@@ -121,9 +122,17 @@ def validate(
         errors.append("core.externalSwapExecutor is not the canonical Uniswap v3 SwapRouter02")
     if str(core.get("urufuNft", "")).lower() != URUFU_NFT:
         errors.append("core.urufuNft is not canonical Urufu Gemu")
-    for field in ("treasury", "rebalancer", "treasuryFeeSink"):
+    for field in ("treasury", "treasuryFeeSink"):
         _address(core.get(field), f"core.{field}", errors)
+    rebalancer = _address(core.get("rebalancer"), "core.rebalancer", errors)
     multisig = _address(core.get("multisig"), "core.multisig", errors)
+    # KNOWN-ISSUES M-3: seized URU must not flow straight back to the governance key, so the vault
+    # rebalancer (immutable per vault) can be neither the Safe nor the timelock the Safe controls.
+    timelock = str(core.get("timelock", ZERO)).lower()
+    if rebalancer != ZERO and rebalancer == multisig:
+        errors.append("core.rebalancer must not be the multisig (M-3)")
+    if rebalancer != ZERO and rebalancer == timelock:
+        errors.append("core.rebalancer must not be the timelock (M-3)")
     contract_addresses.append(("core.multisig", multisig))
     market_hours = _address(core.get("marketHours"), "core.marketHours", errors)
     contract_addresses.append(("core.marketHours", market_hours))
@@ -214,6 +223,8 @@ def validate(
             "hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper",
             # Unseeded pools launch empty; the aligner keeps them on fair so the first LP is never blocked.
             "poolAligner",
+            # Owner of governor, PM, rebate distributor and zapper (KNOWN-ISSUES M-3).
+            "timelock",
         ):
             if str(core.get(field, ZERO)).lower() == ZERO:
                 errors.append(f"core.{field} is not deployed")
@@ -356,7 +367,7 @@ def _validate_manifest(
         ("poolManager", "poolManager"), ("stakingToken", "stakingToken"),
         ("hook", "hook"), ("positionManager", "positionManager"), ("governor", "governor"),
         ("swapRouter", "swapRouter"), ("rebateDistributor", "rebateDistributor"),
-        ("liquidityZapper", "liquidityZapper"), ("poolAligner", "poolAligner"),
+        ("liquidityZapper", "liquidityZapper"), ("poolAligner", "poolAligner"), ("timelock", "timelock"),
         ("externalSwapExecutor", "externalSwapExecutor"),
         ("urufuNft", "urufuNft"),
     ):

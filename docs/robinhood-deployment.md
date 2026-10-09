@@ -98,9 +98,17 @@ and approval reference. Re-check them before every broadcast.
 9. Configure each rebate token with multisig-approved weekly caps and funding. For an EOA-owned
    simulation deployment, `ConfigureRebate.s.sol` performs the same calls; production Safe
    transactions must execute the reviewed calldata directly.
-10. Verify receipts, bytecode, constructor arguments, ownership, pool keys, and start blocks.
-11. Run read-only smoke checks after every step.
-12. Resume from the first incomplete verified step when interrupted.
+10. Deploy the governance timelock with `script/DeployTimelock.s.sol` (3-day minimum delay, Safe as
+    proposer/executor/canceller, no admin; recorded as `timelock`), then run
+    `script/TimelockHandoff.s.sol` read-only and execute its two Safe batches 3 days apart
+    (`docs/runbooks/multisig-setup.md`). Do this after steps 1 to 9 so the 18 authorizations and
+    vault wirings do not each wait a day, and before the go/no-go: after the handoff every owner
+    change is timelocked and only the emergency pause is instant.
+11. Verify receipts, bytecode, constructor arguments, ownership (governor, position manager,
+    rebate distributor and zapper owned by the timelock; governor guardian is the Safe), pool keys,
+    and start blocks.
+12. Run read-only smoke checks after every step.
+13. Resume from the first incomplete verified step when interrupted.
 
 Do not “repair” an interrupted rollout by inventing addresses or rewriting history. Failed
 transactions are not rollbacks of earlier successful transactions. Keep every pool pending until

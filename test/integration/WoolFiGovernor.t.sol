@@ -137,6 +137,56 @@ contract WoolFiGovernorTest is Deployers {
         assertFalse(hook.paused());
     }
 
+    // -----------------------------------------------------------------
+    // emergency-pause guardian
+    // -----------------------------------------------------------------
+
+    function test_setGuardian_ownerOnly_emitsAndStores() public {
+        address guardian = makeAddr("guardian");
+        vm.expectEmit(true, true, false, false, address(governor));
+        emit WoolFiGovernor.GuardianSet(address(0), guardian);
+        vm.prank(multisig);
+        governor.setGuardian(guardian);
+        assertEq(governor.guardian(), guardian);
+    }
+
+    function testRevert_setGuardian_notOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        governor.setGuardian(stranger);
+    }
+
+    function test_guardian_canPauseOnly() public {
+        address guardian = makeAddr("guardian");
+        vm.prank(multisig);
+        governor.setGuardian(guardian);
+
+        vm.prank(guardian);
+        governor.pauseHook();
+        assertTrue(hook.paused());
+
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        governor.unpauseHook();
+
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        governor.authorizePool(poolKey, _params());
+    }
+
+    function test_guardian_clearedCannotPause() public {
+        address guardian = makeAddr("guardian");
+        vm.startPrank(multisig);
+        governor.setGuardian(guardian);
+        governor.setGuardian(address(0));
+        vm.stopPrank();
+
+        vm.prank(guardian);
+        vm.expectRevert(WoolFiGovernor.NotOwnerOrGuardian.selector);
+        governor.pauseHook();
+        assertFalse(hook.paused());
+    }
+
     /// @notice Governance clears a structural break end-to-end (spec §3.5: only governance can).
     function test_resolveStructuralBreak_throughGovernor() public {
         vm.prank(multisig);
@@ -171,7 +221,7 @@ contract WoolFiGovernorTest is Deployers {
 
     function testRevert_pauseHook_notOwner() public {
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        vm.expectRevert(WoolFiGovernor.NotOwnerOrGuardian.selector);
         governor.pauseHook();
     }
 

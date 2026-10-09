@@ -108,20 +108,46 @@ function ChartSvg({
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-full w-full">
-      {/* Tolerance band */}
-      <rect x="0" y={yTol.top} width={w} height={yTol.bot - yTol.top} fill="rgba(255,255,255,0.025)" />
+      {/* Zones: in-band (cream tint), warning (amber tint between tolerance and hard), and
+          beyond hard (red tint). Thin rails mark the edges. */}
+      <rect x="0" y={yTol.top} width={w} height={yTol.bot - yTol.top} fill="url(#drift-band)" />
+      <rect x="0" y={yHard.top} width={w} height={yTol.top - yHard.top} fill="rgba(224,168,72,0.035)" />
+      <rect x="0" y={yTol.bot} width={w} height={yHard.bot - yTol.bot} fill="rgba(224,168,72,0.035)" />
+      <rect x="0" y="0" width={w} height={Math.max(0, yHard.top)} fill="rgba(226,96,96,0.035)" />
+      <rect x="0" y={yHard.bot} width={w} height={Math.max(0, h - yHard.bot)} fill="rgba(226,96,96,0.035)" />
       {/* Zero line */}
-      <line x1="0" y1={midY} x2={w} y2={midY} stroke="rgba(138,138,148,0.35)" strokeDasharray="2 4" />
+      <line x1="0" y1={midY} x2={w} y2={midY} stroke="rgba(239,233,220,0.18)" strokeDasharray="2 4" />
       {/* Tolerance rails */}
-      <line x1="0" y1={yTol.top} x2={w} y2={yTol.top} stroke="rgba(138,138,148,0.45)" strokeDasharray="3 4" />
-      <line x1="0" y1={yTol.bot} x2={w} y2={yTol.bot} stroke="rgba(138,138,148,0.45)" strokeDasharray="3 4" />
+      <line x1="0" y1={yTol.top} x2={w} y2={yTol.top} stroke="rgba(239,233,220,0.22)" />
+      <line x1="0" y1={yTol.bot} x2={w} y2={yTol.bot} stroke="rgba(239,233,220,0.22)" />
       {/* Hard rails */}
-      <line x1="0" y1={yHard.top} x2={w} y2={yHard.top} stroke="rgba(217,119,6,0.5)" strokeDasharray="4 3" />
-      <line x1="0" y1={yHard.bot} x2={w} y2={yHard.bot} stroke="rgba(217,119,6,0.5)" strokeDasharray="4 3" />
+      <line x1="0" y1={yHard.top} x2={w} y2={yHard.top} stroke="rgba(224,168,72,0.55)" strokeDasharray="4 3" />
+      <line x1="0" y1={yHard.bot} x2={w} y2={yHard.bot} stroke="rgba(224,168,72,0.55)" strokeDasharray="4 3" />
+
+      {/* Lit area under the drift path. */}
+      <defs>
+        <linearGradient id="drift-band" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#eadbc0" stopOpacity="0.035" />
+          <stop offset="50%" stopColor="#eadbc0" stopOpacity="0.075" />
+          <stop offset="100%" stopColor="#eadbc0" stopOpacity="0.035" />
+        </linearGradient>
+        <linearGradient id="drift-area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#eadbc0" stopOpacity="0.28" />
+          <stop offset="50%" stopColor="#eadbc0" stopOpacity="0.04" />
+          <stop offset="100%" stopColor="#eadbc0" stopOpacity="0.28" />
+        </linearGradient>
+      </defs>
+      {history.length > 1 ? (
+        <path
+          d={`${pathData(history)} L ${(history[history.length - 1].x * w).toFixed(1)} ${midY} L ${(history[0].x * w).toFixed(1)} ${midY} Z`}
+          fill="url(#drift-area)"
+          stroke="none"
+        />
+      ) : null}
 
       {/* Drift path */}
       {history.length > 0 ? (
-        <path d={pathData(history)} stroke="rgba(237,237,237,0.35)" strokeWidth="1.2" fill="none" />
+        <path className="look-line" d={pathData(history)} stroke="rgba(237,237,237,0.35)" strokeWidth="1.2" fill="none" />
       ) : null}
 
       {/* Current drift marker */}
@@ -134,10 +160,19 @@ function ChartSvg({
         strokeWidth="1"
       />
       <circle
-        cx={w}
+        className="look-marker-halo"
+        cx={w - 4}
         cy={yCur}
-        r="3"
+        r="3.5"
         fill={Math.abs(currentBps) > tolerance ? "#f5b942" : "#4ade80"}
+      />
+      <circle
+        className="look-marker"
+        cx={w - 4}
+        cy={yCur}
+        r="3.5"
+        fill={Math.abs(currentBps) > tolerance ? "#f5b942" : "#4ade80"}
+        color={Math.abs(currentBps) > tolerance ? "#f5b942" : "#4ade80"}
       />
 
       {/* Y-axis tick labels: right side */}

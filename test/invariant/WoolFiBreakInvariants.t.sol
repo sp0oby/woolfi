@@ -187,6 +187,14 @@ contract WoolFiBreakInvariantsTest is Deployers {
         assertLe(owed1, IERC20(Currency.unwrap(currency1)).balanceOf(address(pm)), "PM short token1 fees");
     }
 
+    /// (f) No staker completes an unstake while the pool has a detected but unconfirmed break, and the
+    ///     hook view the vault relies on agrees with the break state.
+    function invariant_noUnstakeDuringPendingBreak() public view {
+        assertEq(handler.unstakeDuringPendingBreak(), 0, "unstake paid out during a pending break");
+        (bool broken, bool confirmed,,) = hook.breakStatus(poolKey);
+        assertEq(hook.isBreakPendingForVault(address(vault)), broken && !confirmed, "pending view mismatch");
+    }
+
     /// A confirmed break is always a broken pool, and a broken pool always has a recovery target.
     function invariant_breakStateConsistent() public view {
         (bool broken, bool confirmed, uint256 detectedAt,) = hook.breakStatus(poolKey);
@@ -219,10 +227,27 @@ contract WoolFiBreakInvariantsTest is Deployers {
         assertEq(handler.drawdownOutsideConfirm(), 0);
     }
 
+    /// @dev The handler's unstake path really hits the pending-break lock (the invariant above is not
+    ///      vacuous): an actor whose cooldown has elapsed is refused while the break is unconfirmed.
+    function test_handlerUnstakeBlockedDuringPendingBreak() public {
+        handler.stake(0, 1e20);
+        handler.requestUnstake(0, type(uint256).max);
+        handler.moveOracle(type(uint256).max);
+        handler.checkBreak();
+        handler.toggleMarket(1); // closed: the break cannot confirm
+        handler.warp(0); // seed % 4 == 0 -> 1 day
+        handler.warp(0);
+        handler.warp(0);
+        handler.unstake(0);
+        assertEq(handler.unstakesBlockedByBreak(), 1, "unstake refused during pending break");
+        assertEq(handler.unstakeDuringPendingBreak(), 0);
+    }
+
     /// @dev Run-log signal that the suite is not vacuous: breaks, guard reverts and drawdowns
     ///      must actually occur. Visible with -vv.
     function afterInvariant() external view {
         console2.log("episodes", handler.episodes());
+        console2.log("unstakesBlockedByBreak", handler.unstakesBlockedByBreak());
         console2.log("guardReverts", handler.guardRevertsObserved());
         console2.log("drawdowns", handler.drawdownsObserved());
         console2.log("confirmsAttempted", handler.confirmsAttempted());

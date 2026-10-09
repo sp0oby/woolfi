@@ -26,7 +26,7 @@ Prepared 2026-10-06 as an internal pre-audit package. Not a substitute for an ex
 | src/WoolFiLiquidityZapper.sol | 211 |
 | src/UrufuFeeRebateDistributor.sol | 145 |
 | src/WoolFiSwapRouter.sol | 140 |
-| src/WoolFiGovernor.sol | 93 |
+| src/WoolFiGovernor.sol | 119 |
 | src/RebalanceKeeper.sol | 39 |
 | src/lib/SpreadMath.sol | 155 |
 | src/lib/LiquidityAmounts.sol | 66 |
@@ -38,7 +38,10 @@ Prepared 2026-10-06 as an internal pre-audit package. Not a substitute for an ex
 | src/interfaces/*.sol | 83 |
 | src/periphery/WoolFiPoolAligner.sol | 133 |
 
-Total in scope: about 3,170 lines.
+Total in scope: about 3,200 lines, plus the OpenZeppelin `TimelockController` (v5.6.1, used
+unmodified) that owns the governor, position manager, rebate distributor and zapper in production.
+`script/DeployTimelock.s.sol` and `script/TimelockHandoff.s.sol` set it up; review focus is the
+guardian path on `WoolFiGovernor.pauseHook` and that no owner power bypasses the timelock.
 
 `WoolFiPoolAligner` is in scope because 16 of the 18 pools launch with zero liquidity and the
 aligner is the path that keeps them on the oracle price (PROJECT_SPEC.md section 9.1). It is

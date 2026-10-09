@@ -7,21 +7,28 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 import {IUnderwritingVault} from "./interfaces/IUnderwritingVault.sol";
 
+/// @dev Unstake cooldown, file-level so deploy scripts can check the governance timelock delay
+///      against it at compile time.
+uint256 constant UNSTAKE_COOLDOWN = 2 days;
+
 /// @title WoolFiUnderwritingVault
 /// @notice Per-pool insurance vault. Stakers underwrite structural-break risk with an external
 ///         staking token: on a break the bound hook seizes a fraction of staked assets (a pro-rata haircut) to fund a
 ///         rebalance. In return, stakers earn a share of the pool's swap fees (PROJECT_SPEC.md §3.5, §7).
 /// @dev Staking uses a shares-over-assets model: `assets = shares * totalStaked / totalShares`. A
 ///      drawdown reduces `totalStaked` (not shares), so every staker's redemption value drops pro-rata
-///      — the haircut. Fee rewards (token0/token1) are tracked in a separate per-share accumulator and
+///      (the haircut). Fee rewards (token0/token1) are tracked in a separate per-share accumulator and
 ///      are unaffected by drawdowns. Unstaking requires a {COOLDOWN}; requested shares remain staked
 ///      (and exposed to drawdown) during the cooldown so stakers cannot dodge a haircut by exiting.
+///      Completing an unstake is also refused while the bound hook reports a detected but unconfirmed
+///      break for this vault's pool, because confirmation can take longer than the cooldown (a break
+///      flagged before a long market weekend).
 contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     uint256 private constant BPS = 10_000;
     uint256 private constant ACC_PRECISION = 1e18;
 
     /// @notice Cooldown between requesting and completing an unstake.
-    uint256 public constant COOLDOWN = 7 days;
+    uint256 public constant COOLDOWN = UNSTAKE_COOLDOWN;
 
     /// @notice The staked asset.
     address public immutable stakingToken;
@@ -69,6 +76,7 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     error UnstakeAlreadyPending();
     error NoPendingUnstake();
     error CooldownActive();
+    error BreakPending();
     error ZeroAddress();
     error NotContract(address target);
     error UnsupportedTransferBehavior(uint256 expected, uint256 received);
@@ -149,6 +157,7 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
         if (p.shares == 0) revert NoPendingUnstake();
         if (block.timestamp < p.releaseAt) revert CooldownActive();
         if (p.shares > sharesOf[msg.sender]) revert InsufficientShares();
+        if (_breakPending()) revert BreakPending();
 
         _harvest(msg.sender);
 
@@ -228,6 +237,15 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
         uint256 s = sharesOf[user];
         rewardDebt0[user] = s * accReward0 / ACC_PRECISION;
         rewardDebt1[user] = s * accReward1 / ACC_PRECISION;
+    }
+
+    /// @dev Asks the hook whether this vault's pool has a pending (unconfirmed) break. Fails open: if
+    ///      the call fails or returns malformed data, unstaking proceeds, so a hook that does not
+    ///      implement the view can never trap stakers. The production hook's view never reverts.
+    function _breakPending() private view returns (bool) {
+        (bool ok, bytes memory ret) =
+            hook.staticcall(abi.encodeWithSignature("isBreakPendingForVault(address)", address(this)));
+        return ok && ret.length >= 32 && abi.decode(ret, (bool));
     }
 
     function _requireContract(address target) private view {

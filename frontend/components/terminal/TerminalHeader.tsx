@@ -122,7 +122,7 @@ function StatePill({state}: {state: PoolStateView}) {
   return (
     <span
       title={state.meaning}
-      className={`inline-flex items-center gap-2 border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.2em] ${s.cls}`}
+      className={`look-pill look-pill-${state.tone} inline-flex items-center gap-2 border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.2em] ${s.cls}`}
     >
       <span className={`inline-block h-1.5 w-1.5 rounded-full ${s.dot} animate-signal-pulse`} />
       {state.label}

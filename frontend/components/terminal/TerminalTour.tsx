@@ -98,7 +98,7 @@ const STEPS: Step[] = [
   {
     title: "Stake and claim",
     body:
-      "Stake deposits URU into this pool's vault: you earn a cut of its swap fees, and in return a confirmed break can draw down part of the vault. Unstaking has a cooldown. Rebate is where Urufu Gemu holders claim back 15% of the fee they actually paid, capped at the base fee.",
+      "Stake deposits URU into this pool's vault: you earn a cut of its swap fees, and in return a confirmed break can draw down part of the vault. Unstaking takes 2 days, and pauses while a break is being confirmed so nobody can dodge it. Rebate is where Urufu Gemu holders claim back 15% of the fee they actually paid, capped at the base fee.",
     region: RAIL,
     cardPos: "left",
     tab: "stake",
@@ -120,6 +120,8 @@ export function TerminalTour() {
 
   useEffect(() => {
     setMounted(true);
+    // Dev-only screenshot hook (set by the layout's look script for `?notour=1`).
+    if ((window as {__woolfiNoTour?: boolean}).__woolfiNoTour) return;
     // `?tour=1` in the URL forces the tour open (useful for demos / screenshots).
     const forced =
       typeof window !== "undefined" && new URLSearchParams(window.location.search).has("tour");
@@ -191,7 +193,7 @@ export function TerminalTour() {
 
       {/* Instruction card */}
       <div
-        className="absolute w-[360px] border border-line-strong bg-panel p-5 shadow-xl"
+        className="look-float absolute w-[360px] border border-line-strong bg-panel p-5 shadow-xl"
         style={cardPosition(step)}
       >
         <div className="flex items-baseline justify-between">

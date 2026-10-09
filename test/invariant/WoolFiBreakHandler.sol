@@ -66,6 +66,8 @@ contract WoolFiBreakHandler is Test {
     uint256 public drawdownsObserved;
     uint256 public guardRevertsObserved;
     uint256 public confirmsAttempted;
+    uint256 public unstakeDuringPendingBreak;
+    uint256 public unstakesBlockedByBreak;
     bool internal lastBroken;
     uint256 internal stakedBaseline;
 
@@ -120,6 +122,11 @@ contract WoolFiBreakHandler is Test {
 
     function _abs(int256 x) internal pure returns (uint256) {
         return x >= 0 ? uint256(x) : uint256(-x);
+    }
+
+    function _pendingBreak() internal view returns (bool) {
+        (bool broken, bool confirmed,,) = hook.breakStatus(key);
+        return broken && !confirmed;
     }
 
     function _broken() internal view returns (bool) {
@@ -304,8 +311,13 @@ contract WoolFiBreakHandler is Test {
     function unstake(uint256 seed) external {
         _settle(false);
         address a = _actor(seed);
+        bool pendingBefore = _pendingBreak();
         vm.prank(a);
-        try vault.unstake() {} catch {}
+        try vault.unstake() {
+            if (pendingBefore) unstakeDuringPendingBreak++;
+        } catch (bytes memory reason) {
+            if (bytes4(reason) == WoolFiUnderwritingVault.BreakPending.selector) unstakesBlockedByBreak++;
+        }
         stakedBaseline = vault.totalStaked();
         _settle(false);
     }

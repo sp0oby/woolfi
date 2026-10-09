@@ -41,7 +41,7 @@ export function TerminalActionRail() {
   }, []);
 
   return (
-    <aside className="flex h-full flex-col border-l border-line bg-panel">
+    <aside className="slab flex h-full min-h-0 flex-col">
       <div role="tablist" className="grid grid-cols-4 border-b border-line">
         {TABS.map((t) => {
           const isActive = active === t.id;
@@ -64,32 +64,37 @@ export function TerminalActionRail() {
         })}
       </div>
 
-      {/* Top half - the action panel (real when live, preview when pending) */}
-      <div className="min-h-0 flex-[1_1_60%] overflow-y-auto border-b border-line p-5">
-        {pending ? (
-          active === "trade" ? (
-            <PreviewSwap pool={pool} />
-          ) : active === "provide" ? (
-            <PreviewLiquidity pool={pool} />
-          ) : active === "stake" ? (
-            <PreviewStake pool={pool} />
-          ) : (
-            <PreviewRebate pool={pool} />
-          )
-        ) : active === "trade" ? (
-          <SwapPanel />
-        ) : active === "provide" ? (
-          <LiquidityPanel />
-        ) : active === "stake" ? (
-          <VaultPanel />
-        ) : (
-          <RebatePanel />
-        )}
-      </div>
+      {/* One scroll column so the glass action card is never cut by a split scroll boundary. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Action panel (real when live, preview when pending) */}
+        <div className="p-3">
+          <div className="glass-card p-5">
+            {pending ? (
+              active === "trade" ? (
+                <PreviewSwap pool={pool} />
+              ) : active === "provide" ? (
+                <PreviewLiquidity pool={pool} />
+              ) : active === "stake" ? (
+                <PreviewStake pool={pool} />
+              ) : (
+                <PreviewRebate pool={pool} />
+              )
+            ) : active === "trade" ? (
+              <SwapPanel />
+            ) : active === "provide" ? (
+              <LiquidityPanel />
+            ) : active === "stake" ? (
+              <VaultPanel />
+            ) : (
+              <RebatePanel />
+            )}
+          </div>
+        </div>
 
-      {/* Bottom half - always visible: position + pool overview */}
-      <div className="min-h-0 flex-[1_1_40%] overflow-y-auto p-5">
-        <TerminalPositionCard />
+        {/* Position + pool overview */}
+        <div className="px-5 pb-5 pt-2">
+          <TerminalPositionCard />
+        </div>
       </div>
     </aside>
   );

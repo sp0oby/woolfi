@@ -1,10 +1,10 @@
 "use client";
 
 import {useEffect, useState} from "react";
-import {useWaitForTransactionReceipt, useWriteContract} from "wagmi";
+import {useReadContract, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
 import {useAllowance, useUserReads} from "@/hooks/usePool";
-import {erc20Abi, vaultAbi} from "@/lib/abis";
+import {erc20Abi, hookAbi, vaultAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
@@ -112,6 +112,17 @@ export function UnstakeMode({
   const releaseAt = pending ? Number(pending[1]) : 0;
   const now = Math.floor(Date.now() / 1000);
   const cooldownActive = hasPending && now < releaseAt;
+  // The vault refuses to pay out while this pool has a detected but unconfirmed break, so stakers
+  // cannot exit between detection and the drawdown it may lead to.
+  const breakPendingRead = useReadContract({
+    address: deployment.hook,
+    abi: hookAbi,
+    functionName: "isBreakPendingForVault",
+    args: [deployment.vault],
+    query: {enabled: hasPending, refetchInterval: 30_000},
+  });
+  const breakPending = breakPendingRead.data === true;
+  const withdrawBlocked = !address || cooldownActive || breakPending || withdrawing || withdrawWait.isLoading;
 
   return (
     <>
@@ -122,7 +133,11 @@ export function UnstakeMode({
           </div>
           <div className="mt-1 font-mono text-[15px] text-white">{fmtAmount(pending[0])} shares</div>
           <div className="mt-2 font-mono text-[12px] text-muted">
-            {cooldownActive ? `Ready in ${Math.max(0, releaseAt - now)}s` : "Cooldown elapsed - ready to withdraw"}
+            {cooldownActive
+              ? `Ready in ${Math.max(0, releaseAt - now)}s`
+              : breakPending
+                ? "Paused while a structural break is being confirmed. Withdrawals reopen once it is confirmed or clears."
+                : "Cooldown elapsed - ready to withdraw"}
           </div>
         </div>
       ) : (
@@ -131,22 +146,24 @@ export function UnstakeMode({
       <StatRow
         stats={[
           {label: "Your stake", value: fmtAmount(user.vaultStake)},
-          {label: "Cooldown", value: "7 days"},
+          {label: "Cooldown", value: "2 days"},
           {label: "Ready at", value: hasPending ? new Date(releaseAt * 1000).toLocaleString() : "-"},
         ]}
       />
       {hasPending ? (
         <button
           type="button"
-          disabled={!address || cooldownActive || withdrawing || withdrawWait.isLoading}
+          disabled={withdrawBlocked}
           onClick={() => withdraw({address: deployment.vault, abi: vaultAbi, functionName: "unstake"})}
-          className={btnCls(!address || cooldownActive || withdrawing || withdrawWait.isLoading)}
+          className={btnCls(withdrawBlocked)}
         >
           {!address
             ? "Connect wallet"
             : cooldownActive
               ? "Cooldown active"
-              : withdrawing || withdrawWait.isLoading
+              : breakPending
+                ? "Paused · break being confirmed"
+                : withdrawing || withdrawWait.isLoading
                 ? "Withdrawing…"
                 : "Withdraw stake"}
         </button>
@@ -166,7 +183,7 @@ export function UnstakeMode({
               ? "Enter an amount"
               : requesting || requestWait.isLoading
                 ? "Requesting…"
-                : "Request unstake (7-day cooldown)"}
+                : "Request unstake (2-day cooldown)"}
         </button>
       )}
       <TxStatus hash={withdrawTx ?? requestTx} />

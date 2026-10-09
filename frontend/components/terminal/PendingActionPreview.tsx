@@ -115,7 +115,7 @@ export function PreviewStake({pool}: {pool: CuratedPool}) {
       <TokenInput label="Stake" symbol="URU" />
       <QuickAmounts />
       <MiniRow label="Drawdown on break" value={`${pool.risk.drawdownBps / 100}% of vault`} />
-      <MiniRow label="Unstake cooldown" value="7 days" />
+      <MiniRow label="Unstake cooldown" value="2 days" />
       <ActionButton>Stake unavailable · pre-launch</ActionButton>
     </Frame>
   );

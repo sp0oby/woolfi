@@ -59,6 +59,13 @@ export const hookAbi = [
   },
   {
     type: "function",
+    name: "isBreakPendingForVault",
+    stateMutability: "view",
+    inputs: [{name: "vault", type: "address"}],
+    outputs: [{name: "", type: "bool"}],
+  },
+  {
+    type: "function",
     name: "breakStatus",
     stateMutability: "view",
     inputs: [{name: "key", type: "tuple", components: poolKeyComponents}],

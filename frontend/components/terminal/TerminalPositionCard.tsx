@@ -33,7 +33,7 @@ export function TerminalPositionCard() {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-px overflow-hidden bg-line shadow-raised">
+      <div className="look-card grid grid-cols-2 gap-px overflow-hidden bg-line shadow-raised">
         <Cell label={`Wallet ${pool.base.symbol}`} value={fmtAmount(bal0, pool.base.decimals)} />
         <Cell label={`Wallet ${pool.quote.symbol}`} value={fmtAmount(bal1, pool.quote.decimals)} />
         <Cell label="LP shares" value={fmtAmount(lpShares)} />

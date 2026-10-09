@@ -45,7 +45,7 @@ export function parseAmount(value: string, decimals: number): bigint | undefined
 }
 
 export function btnCls(disabled: boolean) {
-  return `block w-full py-3 border border-line font-mono text-[11px] uppercase tracking-[0.22em] transition-colors ${
+  return `look-btn block w-full py-3 border border-line font-mono text-[11px] uppercase tracking-[0.22em] transition-colors ${
     disabled ? "text-muted cursor-not-allowed" : "text-white hover:bg-white/5"
   }`;
 }

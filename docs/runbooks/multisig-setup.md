@@ -69,3 +69,97 @@ cast call <WoolFiHook> "governor()(address)" --rpc-url $ROBINHOOD_RPC_URL       
 ```
 
 Record each result in the launch gate record before any further privileged step.
+
+## Timelock handoff (before public launch)
+
+Run this after the 18-pool rollout and wiring (deployment doc steps 1 to 9) and before the go/no-go.
+Afterwards every owner change waits 3 days in public and the Safe keeps one instant power: the
+emergency pause.
+
+What ends up where:
+
+| Contract | Owner after handoff | Why |
+|---|---|---|
+| `WoolFiGovernor` | timelock (guardian: Safe) | pool config, oracles, vaults, break resolution, unpause |
+| `WoolFiPositionManager` | timelock | fee routing (`setFeeConfig`) |
+| `UrufuFeeRebateDistributor` | timelock | router binding, caps, `withdrawUnreserved` |
+| `WoolFiLiquidityZapper` | timelock | executor allowlist (an allowed executor handles zap inputs) |
+| `NyseHoursOracle` / `MultisigMarketHours` | Safe | no funds; holiday or session fixes may be needed the same day |
+| Vault `rebalancer` (immutable) | neither the Safe nor the timelock | M-3: seized URU must not return to the governance key |
+
+### 1. Deploy the timelock
+
+```bash
+DEPLOYER_PRIVATE_KEY=... MULTISIG=<safe> TIMELOCK_DELAY=259200 CONFIRM_MAINNET=true   forge script script/DeployTimelock.s.sol --rpc-url $ROBINHOOD_RPC_URL --broadcast
+```
+
+The script refuses a delay under 3 days (or not above the 2-day unstake cooldown) on 4663, a `MULTISIG` without code, or a `MULTISIG`
+equal to the deployer. It records `timelock` in `frontend/lib/deployments/robinhood.json`; copy the
+same address into `core.timelock` of the batch config.
+
+Verify (admin must be the timelock itself, never the Safe or the deployer):
+
+```bash
+TL=<timelock>
+cast call $TL "getMinDelay()(uint256)" --rpc-url $ROBINHOOD_RPC_URL                           # 259200
+cast call $TL "hasRole(bytes32,address)(bool)" $(cast keccak PROPOSER_ROLE) <safe> --rpc-url $ROBINHOOD_RPC_URL   # true
+cast call $TL "hasRole(bytes32,address)(bool)" $(cast keccak EXECUTOR_ROLE) <safe> --rpc-url $ROBINHOOD_RPC_URL   # true
+cast call $TL "hasRole(bytes32,address)(bool)" 0x00 <safe> --rpc-url $ROBINHOOD_RPC_URL                          # false
+```
+
+### 2. Generate the two Safe batches
+
+```bash
+MULTISIG=<safe> forge script script/TimelockHandoff.s.sol --rpc-url $ROBINHOOD_RPC_URL
+```
+
+Read-only (it refuses `--broadcast`). It checks the timelock roles and delay, that each contract is
+owned by (or pending to) the Safe, and that no vault rebalancer is the Safe or the timelock, then
+writes:
+
+- `script/out/timelock-handoff-1-schedule.json`
+- `script/out/timelock-handoff-2-execute.json`
+
+It also prints the timelock operation id. Set `HANDOFF_SALT=<bytes32>` to regenerate with a new id
+after a cancel.
+
+### 3. Execute batch 1 (now)
+
+Safe app > **Apps > Transaction Builder** > drag in `timelock-handoff-1-schedule.json`. Check the
+decoded calls, in order:
+
+1. `WoolFiGovernor.acceptOwnership()` (only if the deploy-time handoff is still pending)
+2. `WoolFiGovernor.setGuardian(<safe>)`
+3. `transferOwnership(<timelock>)` on the governor, position manager, rebate distributor and zapper
+4. `TimelockController.scheduleBatch(...)` with four `acceptOwnership()` payloads and delay 259200
+
+Collect the threshold signatures and execute. Until batch 2 runs, the Safe still owns everything;
+`pendingOwner()` on each contract now returns the timelock.
+
+### 4. Execute batch 2 (3 days later)
+
+Import `timelock-handoff-2-execute.json` (one `executeBatch` call with identical arguments) and
+execute it. It reverts if run early.
+
+### 5. Verify
+
+```bash
+for c in <governor> <positionManager> <rebateDistributor> <zapper>; do
+  cast call $c "owner()(address)" --rpc-url $ROBINHOOD_RPC_URL   # == timelock
+done
+cast call <governor> "guardian()(address)" --rpc-url $ROBINHOOD_RPC_URL   # == Safe
+```
+
+Record the results in the launch gate record.
+
+### Day-to-day after the handoff
+
+- **Any settings change:** in Transaction Builder, call `schedule(target, 0, data, 0x0, salt, 259200)`
+  on the timelock with the governor call as `data`; 24 hours later call `execute(target, 0, data,
+  0x0, salt)` with the same arguments. Announce the queued change publicly when you schedule it.
+- **Emergency:** call `WoolFiGovernor.pauseHook()` directly from the Safe. It takes effect
+  immediately. Unpausing is a scheduled `unpauseHook()` through the timelock.
+- **Abort a queued change:** `cancel(id)` on the timelock from the Safe, where `id` is
+  `hashOperation(target, 0, data, 0x0, salt)`.
+- **Changing the delay or roles:** only by scheduling `updateDelay` / `grantRole` / `revokeRole` on
+  the timelock itself; there is no admin shortcut.

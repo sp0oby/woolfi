@@ -9,19 +9,30 @@ import {WoolFiHook} from "./WoolFiHook.sol";
 
 /// @title WoolFiGovernor
 /// @notice v1 governance surface for WoolFi: a single owner-controlled entry point that holds the
-///         `governor` role on {WoolFiHook}. The owner is a multisig in v1 (PROJECT_SPEC.md §6, §7.4);
-///         token voting is outside the v1 production scope.
-/// @dev Deliberately minimal — a thin, audited forwarding layer rather than premature voting/timelock
-///      machinery. Its value is a durable, immutable-to-the-hook governance endpoint whose *control*
-///      can transition (multisig -> on-chain governor) two ways without redeploying the hook:
-///        1. transfer ownership of this contract to the new controller (`transferOwnership`, then
-///           the new owner calls `acceptOwnership`), or
-///        2. repoint the hook's governor role entirely (`proposeHookGovernor`, then the new governor
+///         `governor` role on {WoolFiHook}. Token voting is outside the v1 production scope.
+/// @dev Production control layout (PROJECT_SPEC.md section 7.4, KNOWN-ISSUES M-3):
+///        - owner: an OpenZeppelin TimelockController (minimum delay 24h) whose only proposer and
+///          executor is the Safe multisig and which has no admin. Every owner call below
+///          (pool authorization, oracle rebinding, vault wiring, break resolution, unpause,
+///          governor migration) is therefore public for at least the timelock delay before it can
+///          execute.
+///        - guardian: the Safe itself, which may only engage the emergency pause (`pauseHook`)
+///          with no delay. Releasing the pause is an owner call and waits for the timelock.
+///      Control can still transition without redeploying the hook, two ways, both two-step so a
+///      mistyped address cannot strand control:
+///        1. transfer ownership of this contract (`transferOwnership`, then `acceptOwnership`), or
+///        2. repoint the hook's governor role (`proposeHookGovernor`, then the new governor
 ///           accepts on the hook).
-///      Both handoffs are two-step so a mistyped address cannot strand control.
 contract WoolFiGovernor is Ownable2Step {
     /// @notice The hook this governor controls.
     WoolFiHook public immutable hook;
+
+    /// @notice Address allowed to engage the emergency pause without the owner's delay. Zero disables it.
+    address public guardian;
+
+    event GuardianSet(address indexed previousGuardian, address indexed newGuardian);
+
+    error NotOwnerOrGuardian();
 
     /// @param hook_ The WoolFiHook whose `governor` role this contract holds.
     /// @param multisig The initial owner (v1 multisig).
@@ -66,12 +77,22 @@ contract WoolFiGovernor is Ownable2Step {
         hook.setVault(key, vault, drawdownBps);
     }
 
-    /// @notice Engage the hook's global emergency pause.
-    function pauseHook() external onlyOwner {
+    /// @notice Set (or clear, with `address(0)`) the emergency-pause guardian.
+    function setGuardian(address newGuardian) external onlyOwner {
+        emit GuardianSet(guardian, newGuardian);
+        guardian = newGuardian;
+    }
+
+    /// @notice Engage the hook's global emergency pause. Callable by the owner or the guardian.
+    function pauseHook() external {
+        // msg.sender is never address(0), so a cleared guardian matches nobody.
+        if (msg.sender != owner() && msg.sender != guardian) {
+            revert NotOwnerOrGuardian();
+        }
         hook.setPaused(true);
     }
 
-    /// @notice Release the hook's global emergency pause.
+    /// @notice Release the hook's global emergency pause. Owner only, so it waits for the timelock.
     function unpauseHook() external onlyOwner {
         hook.setPaused(false);
     }

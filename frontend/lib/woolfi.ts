@@ -15,6 +15,8 @@ export type DeploymentConfig = {
   externalSwapExecutor?: `0x${string}`;
   /** WoolFiPoolAligner: realigns an empty pool to fair before its first deposit. */
   poolAligner?: `0x${string}`;
+  /** TimelockController that owns the governor, PM, rebate distributor and zapper (3-day delay). */
+  timelock?: `0x${string}`;
   urufuNft?: `0x${string}`;
   pools: readonly DeployedPool[];
 };
@@ -25,13 +27,14 @@ const ZERO = "0x0000000000000000000000000000000000000000" as const;
 
 const raw = robinhood as Omit<
   DeploymentConfig,
-  "swapRouter" | "rebateDistributor" | "liquidityZapper" | "externalSwapExecutor" | "poolAligner" | "urufuNft" | "pools"
+  "swapRouter" | "rebateDistributor" | "liquidityZapper" | "externalSwapExecutor" | "poolAligner" | "timelock" | "urufuNft" | "pools"
 > & {
   swapRouter?: `0x${string}`;
   rebateDistributor?: `0x${string}`;
   liquidityZapper?: `0x${string}`;
   externalSwapExecutor?: `0x${string}`;
   poolAligner?: `0x${string}`;
+  timelock?: `0x${string}`;
   urufuNft?: `0x${string}`;
   pools?: readonly DeployedPool[];
 };
@@ -43,6 +46,7 @@ export const robinhoodDeployment: DeploymentConfig = {
   liquidityZapper: nonZero(raw.liquidityZapper),
   externalSwapExecutor: nonZero(raw.externalSwapExecutor),
   poolAligner: nonZero(raw.poolAligner),
+  timelock: nonZero(raw.timelock),
   urufuNft: nonZero(raw.urufuNft),
   stakingSymbol: "URU",
   pools: raw.pools ?? [],

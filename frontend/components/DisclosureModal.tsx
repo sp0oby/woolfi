@@ -49,7 +49,7 @@ export function DisclosureModal() {
       aria-labelledby="woolfi-disclosure-title"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm px-4 py-6"
     >
-      <div className="w-full max-w-lg border border-line bg-bg text-ink shadow-2xl">
+      <div className="look-float w-full max-w-lg border border-line bg-bg text-ink shadow-2xl">
         <div className="px-6 pt-6 pb-2">
           <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">Disclosure</p>
           <h2 id="woolfi-disclosure-title" className="mt-2 text-[20px] font-medium tracking-tight">
@@ -89,7 +89,7 @@ export function DisclosureModal() {
           <button
             type="button"
             onClick={acknowledge}
-            className="inline-flex items-center justify-center border border-line px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.22em] text-white hover:bg-white/5 transition-colors"
+            className="look-btn inline-flex items-center justify-center border border-line px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.22em] text-white hover:bg-white/5 transition-colors"
           >
             I understand
           </button>

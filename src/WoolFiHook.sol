@@ -123,6 +123,9 @@ contract WoolFiHook is BaseHook {
 
     mapping(PoolId => WoolFiConfig) internal _config;
     mapping(PoolId => BreakState) internal _breakState;
+    /// @dev Reverse index for {isBreakPendingForVault}. An entry is only trusted when the pool's
+    ///      config still points at the same vault, so stale entries after rewiring read as "no pool".
+    mapping(address vault => PoolId) internal _poolIdByVault;
 
     event PoolAuthorized(PoolId indexed id, address oracle0, address oracle1, address marketHours);
     event PoolConfigUpdated(PoolId indexed id);
@@ -361,8 +364,13 @@ contract WoolFiHook is BaseHook {
         WoolFiConfig storage c = _config[id];
         if (!c.configured) revert PoolNotConfigured();
         if (drawdownBps >= 10_000) revert InvalidConfig();
+        address previous = c.vault;
+        if (previous != address(0) && PoolId.unwrap(_poolIdByVault[previous]) == PoolId.unwrap(id)) {
+            _poolIdByVault[previous] = PoolId.wrap(bytes32(0));
+        }
         c.vault = vault;
         c.drawdownBps = drawdownBps;
+        if (vault != address(0)) _poolIdByVault[vault] = id;
         emit VaultSet(id, vault, drawdownBps);
     }
 
@@ -422,6 +430,22 @@ contract WoolFiHook is BaseHook {
         confirmed = b.confirmed;
         detectedAt = b.detectedAt;
         if (broken) confirmReadyAt = _confirmReadyAt(c, b);
+    }
+
+    /// @notice True while the pool wired to `vault` has a structural break that is detected but not
+    ///         yet confirmed. {WoolFiUnderwritingVault.unstake} refuses to pay out during that window,
+    ///         so stakers cannot exit between detection and the drawdown it may lead to (a break flagged
+    ///         before a long weekend can take days to confirm, longer than the unstake cooldown).
+    /// @dev Never reverts: an unknown vault, or one no longer wired to its pool, reads false. Once a
+    ///      break is confirmed this returns false even if the drawdown itself failed (DrawdownFailed):
+    ///      confirmation is the point at which underwriters were charged or not, and a vault that
+    ///      cannot be drawn down must not also trap its stakers with no exit.
+    function isBreakPendingForVault(address vault) external view returns (bool) {
+        if (vault == address(0)) return false;
+        PoolId id = _poolIdByVault[vault];
+        WoolFiConfig storage c = _config[id];
+        if (c.vault != vault) return false;
+        return c.structuralBreak && !_breakState[id].confirmed;
     }
 
     /// @notice LP fee (bps) the hook applied to the most recent swap of `id` in the current

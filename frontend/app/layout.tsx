@@ -76,9 +76,25 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+// Development only: `?ack=1` pre-acknowledges the disclosure and `?notour=1` suppresses the tour,
+// so headless screenshots of /app are not covered by overlays. Empty in production builds.
+const DEV_SCRIPT =
+  process.env.NODE_ENV !== "production"
+    ? `(function(){try{var q=new URLSearchParams(location.search);if(q.has("ack"))localStorage.setItem("woolfi.disclosure.ack.v3",new Date().toISOString());if(q.has("notour"))window.__woolfiNoTour=true;}catch(e){}})();`
+    : "";
+
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html
+      lang="en"
+      className={`${display.variable} ${sans.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
+      {DEV_SCRIPT ? (
+        <head>
+          <script dangerouslySetInnerHTML={{__html: DEV_SCRIPT}} />
+        </head>
+      ) : null}
       <body className="bg-bg text-ink font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

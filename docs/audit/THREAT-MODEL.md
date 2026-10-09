@@ -20,7 +20,10 @@ inputs in flight; the governance role.
   users trust the chain operator directly.
 - The Robinhood Stock Token issuer can pause oracle use via `oraclePaused()`; this fail-closes swaps.
 - Chainlink feeds are live and honest. Heartbeat is 86400s, adapters allow 2x heartbeat.
-- The multisig is honest (see Governance below for blast radius).
+- The multisig is honest (see Governance below for blast radius). Its privileged changes go
+  through a 3-day `TimelockController` with no admin, so a compromised or coerced Safe still needs a
+  public day before any oracle, vault, fee or ownership change executes; only the emergency pause
+  is instant.
 - Market-hours oracle owner is honest.
 
 ## Findings
@@ -97,9 +100,20 @@ force a break, `resolveStructuralBreak` (`:272-280`), and repeat with `setVault`
 which is the multisig itself. Stakers cannot exit faster than the 7 day cooldown. Recommend a
 timelock on oracle, vault, and resolve actions, and an independent rebalancer address.
 
-**Status: Mitigated operationally (no contract change).** See KNOWN-ISSUES.md: separate
-rebalancer from the multisig and put a 24h+ `TimelockController` in front of the governor's
-owner. Two-phase breaks also force a confirmation wait before every drawdown.
+**Status: Mitigated.** `TimelockController` (3-day minimum delay, Safe as sole proposer, executor
+and canceller, no admin) owns `WoolFiGovernor`, `WoolFiPositionManager`,
+`UrufuFeeRebateDistributor` and `WoolFiLiquidityZapper` (`script/DeployTimelock.s.sol`,
+`script/TimelockHandoff.s.sol`). The oracle-rebind, `setVault` and `resolveStructuralBreak` steps of
+the attack each sit in the public queue for 3 days, longer than the default 1h break-confirmation
+window, so stakers and monitors see the full sequence days ahead. The new `guardian` on the
+governor can only call `pauseHook`; unpausing is an owner (timelocked) call. The handoff generator
+and the readiness check refuse a vault `rebalancer` equal to the Safe or the timelock. The unstake
+cooldown is 2 days, shorter than the 3-day delay (enforced by both deploy scripts), so a staker who
+sees a malicious queue entry can exit before it executes. To keep the shorter cooldown from becoming a
+way to dodge drawdowns, `unstake` is refused while the pool has a detected but unconfirmed break
+(`WoolFiHook.isBreakPendingForVault`). Tests: `test/integration/UnstakeBreakLock.t.sol` and the
+`invariant_noUnstakeDuringPendingBreak` invariant.
+Tests: `test/integration/WoolFiTimelock.t.sol`.
 
 ### L-1 One-step ownership remains on secondary contracts (Low)
 

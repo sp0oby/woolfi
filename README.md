@@ -102,7 +102,8 @@ WoolFiHook                beforeSwap / afterSwap, asymmetric fee, per-swap break
                          auto-realizes fees on every swap
 WoolFiPositionManager     ERC-6909 LP shares, fee accumulator, vault and treasury routing
 WoolFiUnderwritingVault   capped per-pool URU vault, drawdown bound to the hook
-WoolFiGovernor            pool authorization, hook parameters, emergency controls
+WoolFiGovernor            pool authorization, hook parameters; owned by a 3-day timelock,
+                         with an instant-pause-only guardian (the Safe)
 WoolFiSwapRouter          minimal IUnlockCallback wrapper for EOA swaps with slippage
 WoolFiLiquidityZapper     guarded one-token LP path through allowlisted external routes
 UrufuFeeRebateDistributor funded, capped base-fee rebates for Urufu Gemu NFT holders
@@ -124,7 +125,7 @@ Robinhood Stock Tokens provide economic exposure to referenced securities but do
 
 ## Governance
 
-WoolFi v1 is administered by a multisig. It can authorize pools, update supported parameters, and use emergency controls within the contracts' permissions. Before launch, a 24h+ timelock is planned in front of oracle, vault, and break-resolution changes, and drawn-down URU goes to a rebalancer address separate from the multisig. Break detection, confirmation, and recovery are permissionless. URU underwriting does not imply URU voting rights.
+WoolFi v1 is administered by a Safe multisig through an OpenZeppelin `TimelockController` with a 3-day minimum delay (longer than the 2-day unstake cooldown) and no admin. The timelock owns the governor, position manager, rebate distributor and zapper, so every settings change (pool authorization, oracles, fees, vault wiring, break resolution, unpausing) waits 24 hours in public and can be cancelled before it runs. The one instant power is the emergency pause: the Safe is the governor's guardian and can pause the hook immediately but cannot unpause or change anything else. Drawn-down URU goes to a rebalancer address that is neither the Safe nor the timelock. Break detection, confirmation, and recovery are permissionless. URU underwriting does not imply URU voting rights. Setup: [`docs/runbooks/multisig-setup.md`](./docs/runbooks/multisig-setup.md).
 
 ## Docs
 

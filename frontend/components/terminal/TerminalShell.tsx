@@ -18,10 +18,10 @@ import {TerminalTour} from "./TerminalTour";
  */
 export function TerminalShell() {
   return (
-    <div className="flex h-[calc(100vh-56px)] min-h-[760px] flex-col bg-bg">
-      <div className="grid flex-1 min-h-0 grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(440px,480px)]">
+    <div className="flex h-[calc(100vh-56px)] min-h-[760px] flex-col gap-2 p-2">
+      <div className="grid flex-1 min-h-0 grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(440px,480px)] gap-2">
         <TerminalPoolRail />
-        <div className="flex min-w-0 flex-col overflow-hidden">
+        <div className="slab slab-center flex min-w-0 flex-col overflow-hidden">
           <TerminalHeader />
           <div className="flex-1 min-h-0 overflow-y-auto">
             <TerminalDriftChart />

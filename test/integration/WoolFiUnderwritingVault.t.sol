@@ -35,6 +35,18 @@ contract WoolFiUnderwritingVaultTest is Test {
     address bob = makeAddr("bob");
     address rebalancer = makeAddr("rebalancer");
 
+    // Stand-in for WoolFiHook.isBreakPendingForVault, since this contract plays the hook.
+    bool breakPendingFlag;
+    bool breakViewReverts;
+    address lastQueriedVault;
+
+    function isBreakPendingForVault(address v) external view returns (bool) {
+        require(!breakViewReverts, "view reverts");
+        // view: cannot record, so assert the argument instead
+        require(v == address(vault), "queried for another vault");
+        return breakPendingFlag;
+    }
+
     function setUp() public {
         stakingToken = new MockERC20("External Staking Token", "EXT", 18);
         token0 = new MockERC20("Token0", "T0", 18);
@@ -241,7 +253,7 @@ contract WoolFiUnderwritingVaultTest is Test {
         assertEq(vault.unstake(), 100e18);
     }
 
-    /// @notice A staker mid-cooldown still absorbs a drawdown — they cannot dodge the haircut by exiting.
+    /// @notice A staker mid-cooldown still absorbs a drawdown: they cannot dodge the haircut by exiting.
     function test_pendingUnstaker_stillTakesHaircut() public {
         _stake(alice, 100e18);
         _stake(bob, 100e18);
@@ -277,5 +289,50 @@ contract WoolFiUnderwritingVaultTest is Test {
         vm.prank(alice);
         vm.expectRevert(WoolFiUnderwritingVault.InsufficientShares.selector);
         vault.requestUnstake(101e18);
+    }
+
+    // --------------------------------------------------------------------
+    // Pending-break unstake lock
+    // --------------------------------------------------------------------
+
+    function test_cooldown_isTwoDays() public view {
+        assertEq(vault.COOLDOWN(), 2 days);
+    }
+
+    function test_requestUnstake_allowedWhileBreakPending() public {
+        _stake(alice, 100e18);
+        breakPendingFlag = true;
+        vm.prank(alice);
+        vault.requestUnstake(100e18);
+        (uint256 shares,) = vault.pendingUnstake(alice);
+        assertEq(shares, 100e18);
+    }
+
+    function testRevert_unstake_blockedWhileBreakPending() public {
+        _stake(alice, 100e18);
+        vm.prank(alice);
+        vault.requestUnstake(100e18);
+        skip(vault.COOLDOWN());
+
+        breakPendingFlag = true;
+        vm.prank(alice);
+        vm.expectRevert(WoolFiUnderwritingVault.BreakPending.selector);
+        vault.unstake();
+
+        // Still exposed: a drawdown while blocked hits the pending shares.
+        vault.drawdown(2000);
+        breakPendingFlag = false;
+        vm.prank(alice);
+        assertEq(vault.unstake(), 80e18);
+    }
+
+    function test_unstake_failsOpenWhenHookViewReverts() public {
+        _stake(alice, 100e18);
+        vm.prank(alice);
+        vault.requestUnstake(100e18);
+        skip(vault.COOLDOWN());
+        breakViewReverts = true;
+        vm.prank(alice);
+        assertEq(vault.unstake(), 100e18);
     }
 }

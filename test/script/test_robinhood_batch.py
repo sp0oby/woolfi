@@ -39,7 +39,7 @@ class RobinhoodBatchTest(unittest.TestCase):
         for index, field in enumerate(
             ("hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper", "multisig",
              "treasury", "rebalancer", "treasuryFeeSink",
-             "marketHours", "sequencerUptimeFeed", "poolAligner"),
+             "marketHours", "sequencerUptimeFeed", "poolAligner", "timelock"),
             start=1,
         ):
             core[field] = f"0x{index:040x}"
@@ -125,13 +125,14 @@ class RobinhoodBatchTest(unittest.TestCase):
                 "rebateDistributor": self.config["core"]["rebateDistributor"],
                 "liquidityZapper": self.config["core"]["liquidityZapper"],
                 "poolAligner": self.config["core"]["poolAligner"],
+                "timelock": self.config["core"]["timelock"],
                 "externalSwapExecutor": self.config["core"]["externalSwapExecutor"],
                 "urufuNft": URUFU_NFT,
                 "startBlocks": {
                     field: 123
                     for field in (
                         "hook", "positionManager", "governor", "swapRouter", "rebateDistributor", "liquidityZapper",
-                        "poolAligner",
+                        "poolAligner", "timelock",
                     )
                 },
                 "receipts": ["0x" + "a" * 64],
@@ -149,6 +150,20 @@ class RobinhoodBatchTest(unittest.TestCase):
             "core.poolAligner is not deployed",
             validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False),
         )
+
+    def test_readiness_requires_timelock(self):
+        self.config["core"]["timelock"] = ZERO
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True)
+        self.assertIn("core.timelock is not deployed", errors)
+
+    def test_rebalancer_must_not_be_governance(self):
+        core = self.config["core"]
+        core["rebalancer"] = core["multisig"]
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertIn("core.rebalancer must not be the multisig (M-3)", errors)
+        core["rebalancer"] = core["timelock"]
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertIn("core.rebalancer must not be the timelock (M-3)", errors)
 
     def test_readiness_requires_approved_gates(self):
         self.config["gates"]["auditComplete"] = False

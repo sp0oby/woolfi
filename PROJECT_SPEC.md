@@ -235,8 +235,13 @@ print is not required to classify corrective flow.
 - `WoolFiHook`: shared v4 hook, pool authorization, fee logic, market-hours gating, break state.
 - `WoolFiPositionManager`: shared full-range position, ERC-6909 shares, fee realization/routing.
 - `WoolFiUnderwritingVault`: per-pool vault using an externally supplied standard ERC-20; URU in
-  Robinhood production.
-- `WoolFiGovernor`: multisig-owned pool configuration and emergency control surface.
+  Robinhood production. Unstaking takes a 2-day cooldown, requested shares stay exposed to
+  drawdown until paid out, and `unstake` is refused while the hook reports a detected but
+  unconfirmed break for the vault's pool (`isBreakPendingForVault`).
+- `WoolFiGovernor`: timelock-owned pool configuration surface with a guardian (the Safe) that can
+  only engage the emergency pause.
+- `TimelockController` (OpenZeppelin): 3-day minimum delay (longer than the 2-day unstake
+  cooldown), the Safe as sole proposer, executor and canceller, no admin. Owns the governor, position manager, rebate distributor and zapper.
 - `WoolFiSwapRouter`: exact-input EOA swap path with minimum-output protection.
 - `WoolFiLiquidityZapper`: optional one-token LP path. It wraps native ETH when requested, permits
   only governance-allowlisted external executors with exact approvals, verifies both route outputs,
@@ -253,10 +258,26 @@ frontend to point to the same verified deployment manifest.
 
 ## 8. Governance and underwriting
 
-Production administration is multisig-controlled. The multisig authorizes pools, configures
-oracles and risk parameters, wires vaults and fee routing, manages emergency pause, and approves
-break resolution. URU is external underwriting capital, not a WoolFi-issued or WoolFi-governance
-token.
+Production administration is multisig-controlled through a timelock. The Safe proposes every
+privileged change to a `TimelockController` (minimum delay 3 days, no admin), which owns
+`WoolFiGovernor`, `WoolFiPositionManager`, `UrufuFeeRebateDistributor` and `WoolFiLiquidityZapper`.
+Pool authorization, oracle and risk parameters, vault wiring, fee routing, break resolution,
+executor allowlists, rebate withdrawals, unpausing and ownership changes are therefore public for at
+least 3 days before they can execute, and the Safe can cancel a queued change. The only instant
+power is the emergency pause: the Safe is the governor's `guardian` and can call `pauseHook` without
+delay, but cannot unpause or change anything else. Market-hours oracles (`NyseHoursOracle`,
+`MultisigMarketHours`) stay owned by the Safe because they hold no funds and may need same-day
+holiday or session fixes. Each vault's `rebalancer` (recipient of drawn-down URU, immutable) must be
+neither the Safe nor the timelock (KNOWN-ISSUES M-3). Deploy with `script/DeployTimelock.s.sol` and
+hand off with the two Safe batches from `script/TimelockHandoff.s.sol`
+([`docs/runbooks/multisig-setup.md`](./docs/runbooks/multisig-setup.md)). URU is external
+underwriting capital, not a WoolFi-issued or WoolFi-governance token.
+
+Stakers can always leave ahead of a governance change: the unstake cooldown (2 days) is shorter
+than the timelock delay (3 days), and the deploy scripts refuse a delay that is not longer. They
+cannot leave ahead of a break: completing an unstake waits while a detected break is being
+confirmed, because a break flagged before a long market weekend can take longer than the cooldown
+to confirm.
 
 Every vault has an explicit URU cap. Per-pool caps and the aggregate treasury allocation require
 multisig approval before funding. Vault rewards may receive a configured share of pool fees.
@@ -342,6 +363,10 @@ caller pays gas only (about 230k gas on a live fork). It is a no-op when the poo
 
 - [ ] External audit complete; no unresolved critical/high findings.
 - [ ] Production multisig created, signers/recovery verified, and ownership handoff tested.
+- [ ] `TimelockController` deployed (3-day minimum delay, Safe as proposer/executor/canceller, no
+      admin), recorded as `timelock`, and owning the governor, position manager, rebate distributor
+      and zapper after both `TimelockHandoff` batches execute; Safe set as the governor's guardian.
+- [ ] Every vault `rebalancer` is neither the Safe nor the timelock (M-3).
 - [ ] Hook, position manager, governor, router, vault implementation, and deployment scripts frozen.
 - [ ] Position manager wired to the hook and fee routing configured.
 - [ ] Router configured and end-to-end slippage tests passed.

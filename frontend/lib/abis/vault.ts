@@ -40,6 +40,8 @@ export const vaultAbi = [
       {name: "releaseAt", type: "uint256"},
     ],
   },
+  {type: "error", name: "BreakPending", inputs: []},
+  {type: "error", name: "CooldownActive", inputs: []},
   {
     type: "function",
     name: "COOLDOWN",

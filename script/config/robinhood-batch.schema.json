@@ -20,7 +20,7 @@
       "type": "object",
       "required": [
         "poolManager", "stakingToken", "hook", "positionManager", "governor", "swapRouter",
-        "rebateDistributor", "liquidityZapper", "externalSwapExecutor", "urufuNft", "multisig",
+        "rebateDistributor", "liquidityZapper", "poolAligner", "timelock", "externalSwapExecutor", "urufuNft", "multisig",
         "treasury", "rebalancer", "treasuryFeeSink", "marketHours", "sequencerUptimeFeed",
         "sequencerGracePeriod", "totalTreasuryAllocationCap"
       ],
@@ -34,6 +34,8 @@
         "swapRouter": {"$ref": "#/$defs/address"},
         "rebateDistributor": {"$ref": "#/$defs/address"},
         "liquidityZapper": {"$ref": "#/$defs/address"},
+        "poolAligner": {"$ref": "#/$defs/address"},
+        "timelock": {"$ref": "#/$defs/address"},
         "externalSwapExecutor": {"$ref": "#/$defs/address"},
         "urufuNft": {"$ref": "#/$defs/address"},
         "multisig": {"$ref": "#/$defs/address"},
