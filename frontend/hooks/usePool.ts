@@ -5,6 +5,7 @@ import {useReadContract, useReadContracts} from "wagmi";
 import {erc20Abi, hookAbi, marketHoursAbi, oracleAbi, pmAbi, vaultAbi} from "@/lib/abis";
 import {WAD} from "@/lib/constants";
 import {poolKeyFor, type PoolKey} from "@/lib/poolKey";
+import {robinhoodDeployment} from "@/lib/woolfi";
 import {useSelectedPool} from "./useSelectedPool";
 
 /**
@@ -92,6 +93,23 @@ export function usePoolReads() {
     marketOpen: pool.tradingHours === "always-open" ? true : marketHours.data,
     refetch: reads.refetch,
   } as const;
+}
+
+/**
+ * The connected wallet's URU balance, read straight from the URU token. URU exists on Robinhood
+ * Chain independently of WoolFi, so unlike the per-pool reads below this works before launch.
+ * Pinned to Robinhood Chain so it reads correctly even when the wallet is on another network.
+ */
+export function useWalletUru(account: `0x${string}` | undefined) {
+  const read = useReadContract({
+    address: robinhoodDeployment.stakingToken,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: account ? [account] : undefined,
+    chainId: robinhoodDeployment.chainId,
+    query: {enabled: !!account, refetchInterval: 12_000},
+  });
+  return read.data as bigint | undefined;
 }
 
 /**

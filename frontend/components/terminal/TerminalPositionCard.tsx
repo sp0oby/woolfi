@@ -3,7 +3,7 @@
 import {useAccount} from "wagmi";
 
 import {useSelectedPool} from "@/hooks/useSelectedPool";
-import {usePoolReads, useUserReads} from "@/hooks/usePool";
+import {usePoolReads, useUserReads, useWalletUru} from "@/hooks/usePool";
 import {fmtAmount} from "@/lib/format";
 
 /**
@@ -16,6 +16,7 @@ export function TerminalPositionCard() {
   const {address} = useAccount();
   const {deployment, totalShares, vaultStaked} = usePoolReads();
   const user = useUserReads(address);
+  const walletUru = useWalletUru(address);
 
   const bal0 = user.bal0;
   const bal1 = user.bal1;
@@ -36,8 +37,9 @@ export function TerminalPositionCard() {
       <div className="look-card grid grid-cols-2 gap-px overflow-hidden bg-line shadow-raised">
         <Cell label={`Wallet ${pool.base.symbol}`} value={fmtAmount(bal0, pool.base.decimals)} />
         <Cell label={`Wallet ${pool.quote.symbol}`} value={fmtAmount(bal1, pool.quote.decimals)} />
-        <Cell label="LP shares" value={fmtAmount(lpShares)} />
+        <Cell label="Wallet URU" value={fmtAmount(walletUru)} />
         <Cell label="URU staked" value={fmtAmount(vaultStake)} />
+        <Cell label="LP shares" value={fmtAmount(lpShares)} span />
         <Cell
           label="Pending LP fees"
           value={
@@ -71,7 +73,7 @@ export function TerminalPositionCard() {
         </div>
       ) : !deployment ? (
         <div className="mt-1 border border-line bg-surface px-3 py-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted">
-          Pool pending · balances shown when live
+          Pool pending · pool balances shown when live
         </div>
       ) : null}
     </div>
