@@ -1,5 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" fill="#000000"/>
-  <path d="M8 6 C16 12, 16 20, 8 26" stroke="#f5f1ea" stroke-width="2.25" fill="none" stroke-linecap="round"/>
-  <path d="M24 6 C16 12, 16 20, 24 26" stroke="#f5f1ea" stroke-width="2.25" fill="none" stroke-linecap="round"/>
+  <rect width="32" height="32" rx="6" fill="#0d0c0b"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M8 6 C16 12, 16 20, 8 26" stroke="#f5f1ea" stroke-width="2.75"/>
+    <path d="M24 6 C16 12, 16 20, 24 26" stroke="#f5f1ea" stroke-width="2.75"/>
+    <!-- ply twist: short dark dashes read as plied yarn at larger sizes, vanish at 16px -->
+    <path d="M8 6 C16 12, 16 20, 8 26" stroke="#8a7d65" stroke-width="2.75" stroke-linecap="butt" stroke-dasharray="0.7 1.5" opacity="0.5"/>
+    <path d="M24 6 C16 12, 16 20, 24 26" stroke="#8a7d65" stroke-width="2.75" stroke-linecap="butt" stroke-dasharray="0.7 1.5" stroke-dashoffset="1" opacity="0.5"/>
+  </g>
 </svg>

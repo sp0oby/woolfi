@@ -2,7 +2,6 @@
 
 import {useMemo, useState} from "react";
 
-import {launchLiquidityCopy} from "@/components/poolState";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 import {filterPools} from "@/lib/pools/registry";
 import type {CuratedPool, PoolCategory} from "@/lib/pools/types";
@@ -61,10 +60,6 @@ export function TerminalPoolRail() {
           })}
         </div>
       </div>
-
-      <p className="border-b border-line px-4 py-2.5 text-[12px] leading-snug text-muted">
-        {launchLiquidityCopy(pools.some((p) => p.status === "live"))}
-      </p>
 
       <div className="flex-1 overflow-y-auto">
         {sorted.length > 0 ? <RailList pools={sorted} activeSlug={pool.slug} onSelect={selectPool} /> : null}

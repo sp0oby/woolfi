@@ -147,7 +147,11 @@ function ChartSvg({
 
       {/* Drift path */}
       {history.length > 0 ? (
-        <path className="look-line" d={pathData(history)} stroke="rgba(237,237,237,0.35)" strokeWidth="1.2" fill="none" />
+        <>
+          <path className="look-line" d={pathData(history)} stroke="rgba(237,237,237,0.35)" strokeWidth="1.2" fill="none" />
+          {/* Second ply riding the line so the drift reads as a strand of yarn. */}
+          <path className="look-line-ply" d={pathData(history)} vectorEffect="non-scaling-stroke" />
+        </>
       ) : null}
 
       {/* Current drift marker */}

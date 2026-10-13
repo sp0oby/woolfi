@@ -4,6 +4,8 @@ import Link from "next/link";
 import {DeploymentPanel} from "@/components/DeploymentPanel";
 import {Footer} from "@/components/Footer";
 import {Header} from "@/components/Header";
+import {Motion} from "@/components/wool/Motion";
+import {Seam} from "@/components/wool/Seam";
 
 export const metadata: Metadata = {
   title: "Docs",
@@ -32,15 +34,32 @@ export default function DocsPage() {
   return (
     <main className="flex min-h-screen flex-col bg-bg">
       <Header />
+      <Motion />
 
-      <div className="mx-auto flex w-full max-w-7xl gap-8 px-6 pt-12 pb-24 lg:pt-16">
+      <div className="relative isolate overflow-hidden">
+        <picture>
+          <source srcSet="/media/docs-spindle.webp" type="image/webp" />
+          <img
+            src="/media/docs-spindle.jpg"
+            alt=""
+            aria-hidden
+            className="docs-hero-art pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
+          />
+        </picture>
+        <div className="mx-auto w-full max-w-7xl px-6 pt-16 pb-14 lg:pt-24 lg:pb-20">
+          <div className="max-w-3xl lg:ml-[calc(14rem+2rem)]">
+            <p className="font-mono text-2xs uppercase tracking-[0.28em] text-signal">Docs</p>
+            <h1 className="mt-4 font-display text-[52px] font-medium leading-[1.02] tracking-tight text-ink sm:text-[64px]">
+              How woolfi works.
+            </h1>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto flex w-full max-w-7xl gap-8 px-6 pt-4 pb-24">
         <TocRail />
         <article className="min-w-0 flex-1 max-w-3xl">
-          <p className="font-mono text-2xs uppercase tracking-[0.28em] text-signal">Docs</p>
-          <h1 className="mt-4 font-display text-[52px] font-medium leading-[1.02] tracking-tight text-ink sm:text-[64px]">
-            How woolfi works.
-          </h1>
-          <p className="mt-8 text-[17px] leading-relaxed text-ink/85">
+          <p className="mt-6 text-[17px] leading-relaxed text-ink/85">
             WoolFi is a Uniswap v4 multi-pool market on Robinhood Chain. Each pool uses
             oracle-aware fees to trade the economic relationship between two long-only tokens.
           </p>
@@ -123,6 +142,18 @@ export default function DocsPage() {
           </Section>
 
           <Section id="rebates" label="Urufu Gemu rebates">
+            <figure className="swatch float-right mb-3 ml-6 hidden w-40 sm:block">
+              {/* Pixel art: served pre-sized as-is so the optimizer never resamples its edges. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/media/urufu-gemu-spinner.webp"
+                alt="An Urufu Gemu sheep holding a drop spindle"
+                width={512}
+                height={512}
+                loading="lazy"
+                className="pixelated block h-auto w-full"
+              />
+            </figure>
             <p>
               A wallet holding at least one verified Urufu Gemu NFT when its router swap settles
               earns back 15% of the fee it actually paid, capped at the base fee, in the input
@@ -410,7 +441,8 @@ function TocRail() {
 
 function Section({id, label, children}: {id: string; label: string; children: React.ReactNode}) {
   return (
-    <section id={id} className="mt-14 scroll-mt-20">
+    <section id={id} data-reveal className="mt-12 scroll-mt-20">
+      <Seam className="mb-10 opacity-70" />
       <p className="font-mono text-2xs uppercase tracking-[0.24em] text-signal">{label}</p>
       <div className="mt-4 space-y-4 text-[15px] leading-[1.7] text-ink/85">{children}</div>
     </section>

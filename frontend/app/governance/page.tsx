@@ -3,6 +3,8 @@ import Link from "next/link";
 
 import {Footer} from "@/components/Footer";
 import {Header} from "@/components/Header";
+import {Motion} from "@/components/wool/Motion";
+import {Seam} from "@/components/wool/Seam";
 
 export const metadata: Metadata = {
   title: "Governance",
@@ -14,17 +16,33 @@ export default function GovernancePage() {
   return (
     <main className="flex min-h-screen flex-col bg-bg">
       <Header />
+      <Motion />
 
-      <div className="mx-auto w-full max-w-3xl px-6 pt-14 pb-24">
-        <p className="font-mono text-2xs uppercase tracking-[0.28em] text-signal">Governance</p>
-        <h1 className="mt-4 font-display text-[52px] font-medium leading-[1.02] tracking-tight text-ink sm:text-[64px]">
-          Who decides what.
-        </h1>
-        <p className="mt-8 text-[18px] leading-relaxed text-ink/85">
-          WoolFi v1 is administered by one multisig on Robinhood Chain. There is no token
-          vote, no proposal system, and no browser-based admin console. This page explains what
-          that means in plain English.
-        </p>
+      <div className="relative isolate overflow-hidden">
+        <picture>
+          <source srcSet="/media/gov-strands.webp" type="image/webp" />
+          <img
+            src="/media/og-bg.jpg"
+            alt=""
+            aria-hidden
+            className="gov-hero-art pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
+          />
+        </picture>
+        <div className="mx-auto w-full max-w-3xl px-6 pt-16 pb-12 lg:pt-24">
+          <p className="font-mono text-2xs uppercase tracking-[0.28em] text-signal">Governance</p>
+          <h1 className="mt-4 font-display text-[52px] font-medium leading-[1.02] tracking-tight text-ink sm:text-[64px]">
+            Who decides what.
+          </h1>
+          <p className="mt-8 text-[18px] leading-relaxed text-ink/85">
+            WoolFi v1 is administered by one multisig on Robinhood Chain. There is no token
+            vote, no proposal system, and no browser-based admin console. This page explains what
+            that means in plain English.
+          </p>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-3xl px-6 pb-24">
+        <Seam className="mt-2 opacity-70" />
 
         <Group>
           <Q>Who runs WoolFi?</Q>
@@ -160,7 +178,11 @@ export default function GovernancePage() {
 }
 
 function Group({children}: {children: React.ReactNode}) {
-  return <section className="slab mt-8 px-6 py-7 sm:px-8">{children}</section>;
+  return (
+    <section data-reveal className="slab mt-8 px-6 py-7 sm:px-8">
+      {children}
+    </section>
+  );
 }
 
 function Q({children}: {children: React.ReactNode}) {

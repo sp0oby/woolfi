@@ -173,10 +173,3 @@ export const NO_LIQUIDITY_MESSAGE =
 export function openActionTab(tab: "trade" | "provide" | "stake" | "rebate"): void {
   window.dispatchEvent(new CustomEvent("woolfi:open-tab", {detail: tab}));
 }
-
-/** Launch-liquidity line. States the live fact only once pools are actually live. */
-export function launchLiquidityCopy(anyLive: boolean): string {
-  return anyLive
-    ? "All 18 pools are live. WETH/USDG and NVDA/USDG are seeded at launch; the rest are open for the first liquidity providers, including one-click migration from Uniswap v3."
-    : "At launch all 18 pools go live together. WETH/USDG and NVDA/USDG are seeded; the rest open for the first liquidity providers, including one-click migration from Uniswap v3.";
-}

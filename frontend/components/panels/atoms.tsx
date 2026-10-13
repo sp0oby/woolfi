@@ -102,7 +102,10 @@ export function TxStatus({hash}: {hash: `0x${string}` | undefined}) {
 
   return (
     <div className="border border-line px-5 py-3 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.22em]">
-      <span className="text-muted">tx {status}</span>
+      <span className="flex items-center gap-2 text-muted">
+        {wait.isLoading ? <ThreadLoader /> : null}
+        tx {status}
+      </span>
       {url ? (
         <a href={url} target="_blank" rel="noreferrer" className="text-white hover:underline">
           {short} ↗
@@ -114,6 +117,11 @@ export function TxStatus({hash}: {hash: `0x${string}` | undefined}) {
   );
 }
 
+/** A short strand being spun: the in-flight indicator for transactions and loads. */
+export function ThreadLoader() {
+  return <span aria-hidden className="thread-loader align-middle" />;
+}
+
 /** Single-line, no-border transaction indicator for compact panels. */
 export function TxStatusInline({hash}: {hash: `0x${string}` | undefined}) {
   const chainId = useChainId();
@@ -121,7 +129,7 @@ export function TxStatusInline({hash}: {hash: `0x${string}` | undefined}) {
   if (!hash) return null;
   const url = explorerTx(chainId, hash);
   const status = wait.isLoading ? "pending" : wait.isSuccess ? "confirmed" : wait.isError ? "failed" : "submitted";
-  const dot = wait.isLoading ? "•" : wait.isSuccess ? "✓" : wait.isError ? "×" : "·";
+  const dot = wait.isLoading ? <ThreadLoader /> : wait.isSuccess ? "✓" : wait.isError ? "×" : "·";
 
   return (
     <a

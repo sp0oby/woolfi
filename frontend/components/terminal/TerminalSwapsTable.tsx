@@ -2,6 +2,7 @@
 
 import {useChainId} from "wagmi";
 
+import {ThreadLoader} from "@/components/panels/atoms";
 import {useHookSwaps} from "@/hooks/useHookSwaps";
 import {explorerTx} from "@/lib/wagmi";
 
@@ -30,7 +31,7 @@ export function TerminalSwapsTable() {
       ) : error ? (
         <EmptyRow msg={error.message.slice(0, 120)} tone="warn" />
       ) : !rows ? (
-        <EmptyRow msg={loading ? "Loading…" : "-"} />
+        <EmptyRow msg={loading ? "Loading…" : "-"} spinning={loading} />
       ) : rows.length === 0 ? (
         <EmptyRow msg="No swaps in the scan window." />
       ) : (
@@ -126,13 +127,22 @@ function Dot({color}: {color: string}) {
   return <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />;
 }
 
-function EmptyRow({msg, tone = "muted"}: {msg: string; tone?: "muted" | "warn"}) {
+function EmptyRow({
+  msg,
+  tone = "muted",
+  spinning = false,
+}: {
+  msg: string;
+  tone?: "muted" | "warn";
+  spinning?: boolean;
+}) {
   return (
     <div
-      className={`px-5 py-6 text-center font-mono text-2xs ${
+      className={`flex items-center justify-center gap-3 px-5 py-6 text-center font-mono text-2xs ${
         tone === "warn" ? "text-warn" : "text-muted"
       }`}
     >
+      {spinning ? <ThreadLoader /> : null}
       {msg}
     </div>
   );
