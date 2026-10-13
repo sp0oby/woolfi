@@ -6,12 +6,14 @@ import {Footer} from "@/components/Footer";
 import {Header} from "@/components/Header";
 import {Motion} from "@/components/wool/Motion";
 import {Seam} from "@/components/wool/Seam";
+import {pageMetadata} from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Docs",
   description:
-    "How WoolFi's Robinhood Chain multi-pool market, market hours, and URU underwriting work.",
-};
+    "How WoolFi works: oracle-aware asymmetric fees, the 18-pool catalog, market hours, structural breaks, URU underwriting, and Urufu Gemu rebates.",
+  path: "/docs",
+});
 
 const SECTIONS = [
   {id: "hook", label: "The hook"},

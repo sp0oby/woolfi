@@ -4,8 +4,7 @@ import {Fredoka, Inter, IBM_Plex_Mono} from "next/font/google";
 import "./globals.css";
 
 import {Providers} from "@/components/Providers";
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://woolfi.market";
+import {SITE_NAME, SITE_URL, X_HANDLE} from "@/lib/seo";
 
 // Fredoka - rounded, soft, "cotton/cloud" quality - used only for the WoolFi wordmark and
 // occasional numeric hero moments. Everything else uses Inter (UI sans) or Plex Mono (numbers).
@@ -33,29 +32,51 @@ const mono = IBM_Plex_Mono({
 // One sentence, written like a human would tell you what this is. Reused across OG/Twitter so
 // link previews on Slack, X, Telegram, etc. say the same thing the splash page says.
 const DESCRIPTION =
-  "A Uniswap v4 multi-pool market for Robinhood Stock Tokens, WETH, and USDG on Robinhood Chain, with URU per-pool underwriting.";
+  "Trade Robinhood stock tokens on Robinhood Chain with fees that reward keeping prices honest. A Uniswap v4 market of 18 pools, with liquidity providers earning fees and URU underwriting each pool.";
+const TITLE = "WoolFi - A market for the spread";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
   title: {
-    default: "WoolFi - A market for the spread",
-    template: "%s - WoolFi",
+    default: TITLE,
+    template: `%s - ${SITE_NAME}`,
   },
   description: DESCRIPTION,
-  keywords: ["Uniswap v4", "Robinhood Chain", "Robinhood Stock Tokens", "WETH", "USDG"],
+  keywords: [
+    "WoolFi",
+    "Urufu Labs",
+    "Urufu Gemu",
+    "Uniswap v4 hook",
+    "Robinhood Chain",
+    "Robinhood Stock Tokens",
+    "tokenized stocks",
+    "DeFi",
+    "AMM",
+    "spread trading",
+    "URU",
+    "WETH",
+    "USDG",
+  ],
   authors: [{name: "Urufu Labs"}],
   creator: "Urufu Labs",
+  publisher: "Urufu Labs",
+  category: "finance",
+  // Home only: every other page sets its own canonical through pageMetadata().
+  alternates: {canonical: "/"},
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: SITE_URL,
-    siteName: "WoolFi",
-    title: "WoolFi - A market for the spread",
+    url: "/",
+    siteName: SITE_NAME,
+    title: TITLE,
     description: DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "WoolFi - A market for the spread",
+    site: X_HANDLE,
+    creator: X_HANDLE,
+    title: TITLE,
     description: DESCRIPTION,
   },
   robots: {
@@ -68,11 +89,10 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  alternates: {canonical: SITE_URL},
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b0b0d",
+  themeColor: "#0d0c0b",
   colorScheme: "dark",
 };
 

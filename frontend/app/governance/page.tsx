@@ -5,12 +5,14 @@ import {Footer} from "@/components/Footer";
 import {Header} from "@/components/Header";
 import {Motion} from "@/components/wool/Motion";
 import {Seam} from "@/components/wool/Seam";
+import {pageMetadata} from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Governance",
   description:
-    "How WoolFi is administered: a multisig controls a bounded admin surface, URU is underwriting not voting, and the hook code is immutable after deployment.",
-};
+    "How WoolFi is administered: a multisig behind a 3-day public timelock, an instant pause-only guardian, an immutable hook, and URU as underwriting, not voting.",
+  path: "/governance",
+});
 
 export default function GovernancePage() {
   return (

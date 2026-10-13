@@ -4,12 +4,14 @@ import {DisclosureModal} from "@/components/DisclosureModal";
 import {Header} from "@/components/Header";
 import {NetworkBanner} from "@/components/NetworkBanner";
 import {TerminalShell} from "@/components/terminal/TerminalShell";
+import {pageMetadata} from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Terminal",
   description:
-    "WoolFi trade terminal: 18-pool rail, live drift chart, recent swaps, and stacked trade / liquidity / stake actions on Robinhood Chain.",
-};
+    "Trade Robinhood stock tokens, provide liquidity, and underwrite pools with URU across WoolFi's 18-pool market on Robinhood Chain.",
+  path: "/app",
+});
 
 export default function AppPage() {
   return (

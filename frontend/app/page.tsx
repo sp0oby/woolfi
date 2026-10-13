@@ -8,6 +8,7 @@ import {Motion} from "@/components/wool/Motion";
 import {Seam} from "@/components/wool/Seam";
 import {StitchedWordmark} from "@/components/wool/StitchedWordmark";
 import {ThreadCanvas} from "@/components/wool/ThreadCanvas";
+import {GITHUB_URL, SITE_NAME, SITE_URL, X_URL} from "@/lib/seo";
 
 export default function SplashPage() {
   return (
@@ -15,6 +16,7 @@ export default function SplashPage() {
       <Header />
 
       <Motion />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{__html: JSON.stringify(JSON_LD)}} />
       <section className="relative isolate flex flex-1 flex-col items-center justify-center overflow-hidden px-6 py-24 text-center">
         <HeroFiber />
         <p className="font-mono text-2xs uppercase tracking-[0.32em] text-signal">
@@ -120,6 +122,30 @@ export default function SplashPage() {
     </main>
   );
 }
+
+// Structured data so search engines can tie the site to Urufu Labs and its profiles.
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#org`,
+      name: "Urufu Labs",
+      url: SITE_URL,
+      logo: `${SITE_URL}/apple-icon`,
+      sameAs: [X_URL, GITHUB_URL],
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      description:
+        "Trade Robinhood stock tokens on Robinhood Chain with fees that reward keeping prices honest.",
+      publisher: {"@id": `${SITE_URL}/#org`},
+    },
+  ],
+};
 
 function Role({label, children}: {label: string; children: React.ReactNode}) {
   return (

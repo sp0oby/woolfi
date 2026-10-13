@@ -3,7 +3,9 @@
 // (see .stitch-* in globals.css), so it renders on the server and respects reduced motion.
 export function StitchedWordmark({text = "woolfi."}: {text?: string}) {
   return (
-    <h1 aria-label={text} className="stitch-wordmark mt-8 w-full max-w-[980px] font-display">
+    <h1 className="stitch-wordmark mt-8 w-full max-w-[980px] font-display">
+      {/* Real text for crawlers and screen readers; the SVG below is the visual. */}
+      <span className="sr-only">WoolFi - {text}</span>
       <svg viewBox="0 0 1000 260" className="h-auto w-full overflow-visible" aria-hidden>
         <defs>
           <linearGradient id="stitch-fill" x1="0" y1="0" x2="0" y2="1">
