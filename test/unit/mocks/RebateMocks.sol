@@ -6,10 +6,15 @@ import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {WoolFiHook} from "../../../src/WoolFiHook.sol";
 
 /// @notice Stands in for {WoolFiHook} in distributor tests: the distributor only reads
-///         `poolConfig` and `lastSwapFeeBps`, so both are settable here.
+///         `poolConfig`, `lastSwapFeeBps` and `positionManager`, so all are settable here.
 contract MockRebateHook {
     mapping(PoolId => WoolFiHook.WoolFiConfig) internal _config;
     mapping(PoolId => uint256) public feeBps;
+    address public positionManager;
+
+    function setPositionManager(address pm) external {
+        positionManager = pm;
+    }
 
     function setPool(PoolId id, bool configured, uint16 baseFeeBps) external {
         _config[id].configured = configured;
@@ -35,5 +40,22 @@ contract MockNftBalance {
 
     function set(address who, uint256 bal) external {
         balanceOf[who] = bal;
+    }
+}
+
+/// @notice Stands in for {WoolFiPositionManager}'s `feeConfig` getter in distributor tests.
+contract MockFeeConfigPm {
+    struct FeeConfig {
+        address vault;
+        uint16 vaultBps;
+        address treasurySink;
+        uint16 treasuryBps;
+    }
+
+    mapping(uint256 => FeeConfig) public feeConfig;
+
+    function setTreasury(PoolId id, address sink, uint16 bps) external {
+        feeConfig[uint256(PoolId.unwrap(id))].treasurySink = sink;
+        feeConfig[uint256(PoolId.unwrap(id))].treasuryBps = bps;
     }
 }

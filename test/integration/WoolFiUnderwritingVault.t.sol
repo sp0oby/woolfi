@@ -275,13 +275,17 @@ contract WoolFiUnderwritingVaultTest is Test {
         vault.unstake();
     }
 
-    function testRevert_requestUnstake_alreadyPending() public {
+    /// @dev A second request replaces the first (new amount, cooldown restarts) instead of reverting.
+    function test_requestUnstake_replacesPendingRequest() public {
         _stake(alice, 100e18);
         vm.startPrank(alice);
         vault.requestUnstake(50e18);
-        vm.expectRevert(WoolFiUnderwritingVault.UnstakeAlreadyPending.selector);
+        skip(1 days);
         vault.requestUnstake(10e18);
         vm.stopPrank();
+        (uint256 shares, uint256 releaseAt) = vault.pendingUnstake(alice);
+        assertEq(shares, 10e18);
+        assertEq(releaseAt, block.timestamp + vault.COOLDOWN());
     }
 
     function testRevert_requestUnstake_tooMany() public {

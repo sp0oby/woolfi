@@ -162,6 +162,11 @@ contract UnstakeBreakLockTest is Deployers {
         assertFalse(hook.isBreakPendingForVault(address(vault)), "old vault no longer wired");
         assertTrue(hook.isBreakPendingForVault(newVault));
 
+        // Rewiring is refused while the break is pending, and in the block of a resolution.
+        vm.expectRevert(WoolFiHook.BreakPendingForPool.selector);
+        hook.setVault(poolKey, address(0), 0);
+        hook.resolveStructuralBreak(poolKey);
+        vm.warp(block.timestamp + 1);
         hook.setVault(poolKey, address(0), 0);
         assertFalse(hook.isBreakPendingForVault(newVault), "unwired");
     }
@@ -212,6 +217,11 @@ contract UnstakeBreakLockTest is Deployers {
         vault.unstake();
         hook.confirmStructuralBreak(poolKey);
 
+        // The lock outlasted the request's claim window, so the staker requests again.
+        vm.expectRevert(WoolFiUnderwritingVault.UnstakeRequestExpired.selector);
+        vault.unstake();
+        vault.requestUnstake(1000e18);
+        vm.warp(block.timestamp + vault.COOLDOWN());
         assertEq(vault.unstake(), 800e18, "took the 20% haircut");
     }
 

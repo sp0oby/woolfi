@@ -2,9 +2,11 @@
 
 import {useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {poolAlignerAbi} from "@/lib/abis/poolAligner";
 import {needsAlign} from "@/lib/poolAligner";
 import {poolKeyFor} from "@/lib/poolKey";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {TxStatus} from "../atoms";
@@ -26,6 +28,7 @@ export function AlignNotice({
   drift: bigint | undefined;
   totalShares: bigint | undefined;
 }) {
+  const {wrongNetwork} = useWrongNetwork();
   const {writeContract, data: hash, isPending, error} = useWriteContract();
   const wait = useWaitForTransactionReceipt({hash, query: {enabled: !!hash}});
 
@@ -54,18 +57,20 @@ export function AlignNotice({
       {!done ? (
         <button
           type="button"
-          disabled={!address || busy}
+          disabled={!address || wrongNetwork || busy}
           onClick={() =>
+            !wrongNetwork &&
             writeContract({
+              chainId: robinhood.id,
               address: deployment.poolAligner!,
               abi: poolAlignerAbi,
               functionName: "align",
               args: [poolKeyFor(deployment)],
             })
           }
-          className={btnCls(!address || busy)}
+          className={btnCls(!address || wrongNetwork || busy)}
         >
-          {!address ? "Connect wallet to sync" : busy ? "Syncing…" : "Sync to Chainlink price"}
+          {!address ? "Connect wallet to sync" : wrongNetwork ? "Wrong network" : busy ? "Syncing…" : "Sync to Chainlink price"}
         </button>
       ) : null}
       {error ? <p className="font-mono text-[11px] text-danger">{error.message.split("\n")[0]}</p> : null}

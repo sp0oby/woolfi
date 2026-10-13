@@ -3,20 +3,35 @@
 import {useEffect, useState} from "react";
 import {useReadContract, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
+import {useApprovalShadow} from "@/hooks/useApprovalShadow";
 import {useAllowance, useUserReads} from "@/hooks/usePool";
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {erc20Abi, hookAbi, vaultAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
+import {uruFromShares} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {Field, StatRow, TxStatus} from "../atoms";
 import {btnCls, parseAmount} from "../panelHelpers";
+
+/** WoolFiUnderwritingVault.UNSTAKE_CLAIM_WINDOW: a matured request must be withdrawn within this. */
+const UNSTAKE_CLAIM_WINDOW_SECONDS = 24 * 60 * 60;
 
 type UserReads = ReturnType<typeof useUserReads>;
 type ModeProps = {
   deployment: WoolFiDeployment;
   address: `0x${string}` | undefined;
   user: UserReads;
+  /** Vault `totalStaked` (URU) and `totalShares`, to value the user's shares in URU. */
+  vaultStaked: bigint | undefined;
+  vaultShares: bigint | undefined;
 };
+
+/** The user's vault shares valued in URU: shares * totalStaked / totalShares. */
+function stakeValue(user: UserReads, vaultStaked: bigint | undefined, vaultShares: bigint | undefined): string {
+  return fmtAmount(uruFromShares(user.vaultStake, vaultStaked, vaultShares));
+}
 
 export function StakeMode({
   deployment,
@@ -25,11 +40,12 @@ export function StakeMode({
   setAmount,
   user,
   vaultStaked,
+  vaultShares,
 }: ModeProps & {
   amount: string;
   setAmount: (value: string) => void;
-  vaultStaked: bigint | undefined;
 }) {
+  const {wrongNetwork} = useWrongNetwork();
   const amountWei = parseAmount(amount, 18);
   const allowance = useAllowance(deployment.stakingToken, address, deployment.vault);
   const {writeContract: approve, data: approveTx, isPending: approving} = useWriteContract();
@@ -37,25 +53,26 @@ export function StakeMode({
   const approveWait = useWaitForTransactionReceipt({hash: approveTx});
   const stakeWait = useWaitForTransactionReceipt({hash: stakeTx});
 
-  // Keep a local allowance shadow while RPC/react-query reads catch up to confirmed approvals.
-  const [optAllow, setOptAllow] = useState<bigint>(0n);
+  // Optimistic allowance shadow while reads catch up to a confirmed approval. It only covers the
+  // exact token/spender/amount approved; anything else relies on the on-chain read.
+  const shadow = useApprovalShadow(approveTx, approveWait.isSuccess, allowance.refetch);
+  const clearApproval = shadow.clear;
   useEffect(() => {
-    if (approveWait.isSuccess && amountWei !== undefined && amountWei > optAllow) {
-      setOptAllow(amountWei);
-      allowance.refetch();
-    }
-  }, [approveWait.isSuccess, amountWei, allowance, optAllow]);
-  const effAllow = (allowance.data ?? 0n) > optAllow ? (allowance.data ?? 0n) : optAllow;
-  const needsApproval = amountWei !== undefined && effAllow < amountWei;
+    if (stakeWait.isSuccess) clearApproval();
+  }, [stakeWait.isSuccess, stakeTx, clearApproval]);
+  const needsApproval =
+    amountWei !== undefined &&
+    (allowance.data ?? 0n) < amountWei &&
+    !shadow.covers({token: deployment.stakingToken, spender: deployment.vault, amount: amountWei});
   const busy = approving || staking || approveWait.isLoading || stakeWait.isLoading;
-  const disabled = !address || amountWei === undefined || amountWei === 0n || busy;
+  const disabled = !address || wrongNetwork || amountWei === undefined || amountWei === 0n || busy;
 
   return (
     <>
       <Field label="Stake" token={deployment.stakingSymbol} value={amount} onChange={setAmount} editable hint={`balance ${fmtAmount(user.stakingTokenBal)}`} />
       <StatRow
         stats={[
-          {label: "Your stake", value: fmtAmount(user.vaultStake)},
+          {label: `Your stake (${deployment.stakingSymbol})`, value: stakeValue(user, vaultStaked, vaultShares)},
           {label: "Vault TVL", value: fmtAmount(vaultStaked)},
           {label: "Pending rewards", value: fmtRewardPair(user.pendingRewards, deployment)},
         ]}
@@ -64,22 +81,26 @@ export function StakeMode({
         type="button"
         disabled={disabled}
         onClick={() => {
-          if (!amountWei || !address) return;
+          if (!amountWei || !address || wrongNetwork) return;
           if (needsApproval) {
+            shadow.request({token: deployment.stakingToken, spender: deployment.vault, amount: amountWei});
             approve({
+              chainId: robinhood.id,
               address: deployment.stakingToken,
               abi: erc20Abi,
               functionName: "approve",
               args: [deployment.vault, amountWei],
             });
           } else {
-            stake({address: deployment.vault, abi: vaultAbi, functionName: "stake", args: [amountWei]});
+            stake({chainId: robinhood.id, address: deployment.vault, abi: vaultAbi, functionName: "stake", args: [amountWei]});
           }
         }}
         className={btnCls(disabled)}
       >
         {!address
           ? "Connect wallet"
+          : wrongNetwork
+            ? "Wrong network"
           : amountWei === undefined || amountWei === 0n
             ? "Enter an amount"
             : approving || approveWait.isLoading
@@ -101,16 +122,22 @@ export function UnstakeMode({
   amount,
   setAmount,
   user,
+  vaultStaked,
+  vaultShares,
 }: ModeProps & {amount: string; setAmount: (value: string) => void}) {
+  const {wrongNetwork} = useWrongNetwork();
   const sharesWei = parseAmount(amount, 18);
   const {writeContract: request, data: requestTx, isPending: requesting} = useWriteContract();
   const {writeContract: withdraw, data: withdrawTx, isPending: withdrawing} = useWriteContract();
   const requestWait = useWaitForTransactionReceipt({hash: requestTx});
   const withdrawWait = useWaitForTransactionReceipt({hash: withdrawTx});
   const pending = user.pendingUnstake;
-  const hasPending = !!pending && pending[0] > 0n;
   const releaseAt = pending ? Number(pending[1]) : 0;
+  const expiresAt = releaseAt + UNSTAKE_CLAIM_WINDOW_SECONDS;
   const now = Math.floor(Date.now() / 1000);
+  // A matured request lapses after the vault's claim window; the staker then requests again.
+  const expired = !!pending && pending[0] > 0n && now > expiresAt;
+  const hasPending = !!pending && pending[0] > 0n && !expired;
   const cooldownActive = hasPending && now < releaseAt;
   // The vault refuses to pay out while this pool has a detected but unconfirmed break, so stakers
   // cannot exit between detection and the drawdown it may lead to.
@@ -122,7 +149,7 @@ export function UnstakeMode({
     query: {enabled: hasPending, refetchInterval: 30_000},
   });
   const breakPending = breakPendingRead.data === true;
-  const withdrawBlocked = !address || cooldownActive || breakPending || withdrawing || withdrawWait.isLoading;
+  const withdrawBlocked = !address || wrongNetwork || cooldownActive || breakPending || withdrawing || withdrawWait.isLoading;
 
   return (
     <>
@@ -136,17 +163,26 @@ export function UnstakeMode({
             {cooldownActive
               ? `Ready in ${Math.max(0, releaseAt - now)}s`
               : breakPending
-                ? "Paused while a structural break is being confirmed. Withdrawals reopen once it is confirmed or clears."
-                : "Cooldown elapsed - ready to withdraw"}
+                ? "Paused while a structural break or price gap is being confirmed. If your 1-day withdrawal window closes meanwhile, request again."
+                : `Ready to withdraw until ${new Date(expiresAt * 1000).toLocaleString()}`}
           </div>
         </div>
       ) : (
-        <Field label="Request unstake" token="SHARES" value={amount} onChange={setAmount} editable hint={`your stake ${fmtAmount(user.vaultStake)}`} />
+        <>
+          {expired ? (
+            <p className="font-mono text-[12px] text-amber-200/85">
+              Your earlier request expired: withdrawals must happen within 1 day of the cooldown
+              ending. Request again to restart the 2-day cooldown.
+            </p>
+          ) : null}
+          <Field label="Request unstake" token="SHARES" value={amount} onChange={setAmount} editable hint={`your shares ${fmtAmount(user.vaultStake)}`} />
+        </>
       )}
       <StatRow
         stats={[
-          {label: "Your stake", value: fmtAmount(user.vaultStake)},
-          {label: "Cooldown", value: "2 days"},
+          {label: `Your stake (${deployment.stakingSymbol})`, value: stakeValue(user, vaultStaked, vaultShares)},
+          {label: "Your shares", value: fmtAmount(user.vaultStake)},
+          {label: "Cooldown", value: "2 days, then 1 day to withdraw"},
           {label: "Ready at", value: hasPending ? new Date(releaseAt * 1000).toLocaleString() : "-"},
         ]}
       />
@@ -154,15 +190,20 @@ export function UnstakeMode({
         <button
           type="button"
           disabled={withdrawBlocked}
-          onClick={() => withdraw({address: deployment.vault, abi: vaultAbi, functionName: "unstake"})}
+          onClick={() => {
+            if (wrongNetwork) return;
+            withdraw({chainId: robinhood.id, address: deployment.vault, abi: vaultAbi, functionName: "unstake"});
+          }}
           className={btnCls(withdrawBlocked)}
         >
           {!address
             ? "Connect wallet"
+            : wrongNetwork
+              ? "Wrong network"
             : cooldownActive
               ? "Cooldown active"
               : breakPending
-                ? "Paused · break being confirmed"
+                ? "Paused · break or gap being confirmed"
                 : withdrawing || withdrawWait.isLoading
                 ? "Withdrawing…"
                 : "Withdraw stake"}
@@ -170,20 +211,24 @@ export function UnstakeMode({
       ) : (
         <button
           type="button"
-          disabled={!address || !sharesWei || sharesWei === 0n || requesting || requestWait.isLoading}
+          disabled={!address || wrongNetwork || !sharesWei || sharesWei === 0n || requesting || requestWait.isLoading}
           onClick={() => {
-            if (!sharesWei) return;
-            request({address: deployment.vault, abi: vaultAbi, functionName: "requestUnstake", args: [sharesWei]});
+            if (!sharesWei || wrongNetwork) return;
+            request({chainId: robinhood.id, address: deployment.vault, abi: vaultAbi, functionName: "requestUnstake", args: [sharesWei]});
           }}
-          className={btnCls(!address || !sharesWei || sharesWei === 0n || requesting || requestWait.isLoading)}
+          className={btnCls(!address || wrongNetwork || !sharesWei || sharesWei === 0n || requesting || requestWait.isLoading)}
         >
           {!address
             ? "Connect wallet"
+            : wrongNetwork
+              ? "Wrong network"
             : !sharesWei || sharesWei === 0n
               ? "Enter an amount"
               : requesting || requestWait.isLoading
                 ? "Requesting…"
-                : "Request unstake (2-day cooldown)"}
+                : expired
+                  ? "Request again (2-day cooldown)"
+                  : "Request unstake (2-day cooldown)"}
         </button>
       )}
       <TxStatus hash={withdrawTx ?? requestTx} />
@@ -191,7 +236,8 @@ export function UnstakeMode({
   );
 }
 
-export function ClaimMode({deployment, address, user}: ModeProps) {
+export function ClaimMode({deployment, address, user, vaultStaked, vaultShares}: ModeProps) {
+  const {wrongNetwork} = useWrongNetwork();
   const {writeContract, data: tx, isPending} = useWriteContract();
   const wait = useWaitForTransactionReceipt({hash: tx});
   const [p0, p1] = user.pendingRewards ?? [0n, 0n];
@@ -203,17 +249,22 @@ export function ClaimMode({deployment, address, user}: ModeProps) {
         stats={[
           {label: `Pending ${deployment.token0Symbol}`, value: fmtAmount(p0, deployment.token0Decimals)},
           {label: `Pending ${deployment.token1Symbol}`, value: fmtAmount(p1, deployment.token1Decimals)},
-          {label: "Your stake", value: fmtAmount(user.vaultStake)},
+          {label: `Your stake (${deployment.stakingSymbol})`, value: stakeValue(user, vaultStaked, vaultShares)},
         ]}
       />
       <button
         type="button"
-        disabled={!address || !anyPending || isPending || wait.isLoading}
-        onClick={() => writeContract({address: deployment.vault, abi: vaultAbi, functionName: "claim"})}
-        className={btnCls(!address || !anyPending || isPending || wait.isLoading)}
+        disabled={!address || wrongNetwork || !anyPending || isPending || wait.isLoading}
+        onClick={() => {
+          if (wrongNetwork) return;
+          writeContract({chainId: robinhood.id, address: deployment.vault, abi: vaultAbi, functionName: "claim"});
+        }}
+        className={btnCls(!address || wrongNetwork || !anyPending || isPending || wait.isLoading)}
       >
         {!address
           ? "Connect wallet"
+          : wrongNetwork
+            ? "Wrong network"
           : !anyPending
             ? "Nothing to claim"
             : isPending || wait.isLoading

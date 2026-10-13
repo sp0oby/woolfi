@@ -15,4 +15,21 @@ export const swapRouterAbi = [
     ],
     outputs: [{name: "amountOut", type: "uint256"}],
   },
+  {
+    // Deadline-bounded overload; viem picks it when the 7th (deadline) argument is passed.
+    type: "function",
+    name: "swap",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "key", type: "tuple", components: poolKeyComponents},
+      {name: "zeroForOne", type: "bool"},
+      {name: "amountIn", type: "uint256"},
+      {name: "amountOutMinimum", type: "uint256"},
+      {name: "recipient", type: "address"},
+      {name: "hookData", type: "bytes"},
+      {name: "deadline", type: "uint256"},
+    ],
+    outputs: [{name: "amountOut", type: "uint256"}],
+  },
+  {type: "error", name: "DeadlineExpired", inputs: [{name: "deadline", type: "uint256"}]},
 ] as const;

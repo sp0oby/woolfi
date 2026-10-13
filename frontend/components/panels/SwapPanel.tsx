@@ -7,8 +7,11 @@ import {erc20Abi, swapRouterAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
 import {poolKeyFor} from "@/lib/poolKey";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
+import {applySlippage, deadlineIn, DEFAULT_SLIPPAGE, parseSlippageBps} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
+import {useApprovalShadow} from "@/hooks/useApprovalShadow";
 import {useAllowance, usePoolReads, useUserReads} from "@/hooks/usePool";
 import {useSwapQuote} from "@/hooks/useSwapQuote";
 import {
@@ -18,18 +21,17 @@ import {
   openActionTab,
   SWAP_ADVERSARIAL_DURING_BREAK_MESSAGE,
 } from "@/components/poolState";
-import {Field, PanelFootnote, StatRow, TxStatus} from "./atoms";
+import {Field, PanelFootnote, SlippageInput, StatRow, TxStatus} from "./atoms";
 import {btnCls, parseAmount} from "./panelHelpers";
 
 const ZERO_BYTES = "0x" as const;
 
 /**
- * Swap UI wired to {WoolFiSwapRouter}. User-set slippage tolerance (% bps); we pass
- * `amountOutMinimum = amountIn * (10000 - slippageBps) / 10000` as a first-cut bound. A future
- * pass will quote the asymmetric fee from the hook for a tighter min-out.
+ * Swap UI wired to {WoolFiSwapRouter}. User-set slippage tolerance (capped at 5%) is applied to
+ * the simulated output of the exact current inputs; swaps carry a 20-minute deadline.
  */
 export function SwapPanel() {
-  const {pool, deployment} = useSelectedPool();
+  const {pool, deployment, wrongNetwork} = useSelectedPool();
   const {address} = useAccount();
   const {drift, safety, breakStatus, totalShares} = usePoolReads();
   const user = useUserReads(address);
@@ -39,7 +41,7 @@ export function SwapPanel() {
   // 1.0% default - launch pools start with modest liquidity, so a typical swap moves price
   // meaningfully even before the asymmetric fee. The simulate-quote below makes this much less
   // brittle, but the default still needs to absorb the buffer between simulation and signing.
-  const [slippage, setSlippage] = useState("1.0");
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
 
   if (!deployment) {
     return <PanelFootnote>{pool.base.symbol} / {pool.quote.symbol} is not deployed yet. All 18 pools open together at launch.</PanelFootnote>;
@@ -74,6 +76,7 @@ export function SwapPanel() {
     <Live
       deployment={deployment as WoolFiDeployment & {swapRouter: `0x${string}`}}
       address={address}
+      wrongNetwork={wrongNetwork}
       drift={drift}
       safety={safety}
       broken={breakStatus?.broken ?? safety?.structurallyBroken === true}
@@ -91,6 +94,7 @@ export function SwapPanel() {
 function Live({
   deployment,
   address,
+  wrongNetwork,
   drift,
   safety,
   broken,
@@ -104,6 +108,7 @@ function Live({
 }: {
   deployment: WoolFiDeployment & {swapRouter: `0x${string}`};
   address: `0x${string}` | undefined;
+  wrongNetwork: boolean;
   drift: bigint | undefined;
   safety: ReturnType<typeof usePoolReads>["safety"];
   broken: boolean;
@@ -131,29 +136,18 @@ function Live({
   const approveWait = useWaitForTransactionReceipt({hash: approveTx});
   const swapWait = useWaitForTransactionReceipt({hash: swapTx});
 
-  // Optimistic allowance shadow - same fix as LiquidityPanel/VaultPanel. Without this the
-  // on-chain allowance read lags the receipt and the button gets stuck on "Approve".
-  // Keyed by tokenIn so flipping direction resets it.
-  const [optAllow, setOptAllow] = useState<{token: `0x${string}` | undefined; amount: bigint}>({
-    token: undefined,
-    amount: 0n,
-  });
+  // Optimistic allowance shadow while the on-chain read lags the approval receipt. It only covers
+  // the exact token, spender and amount that was approved; anything else uses the on-chain read.
+  const shadow = useApprovalShadow(approveTx, approveWait.isSuccess, allowance.refetch);
+  const wantedApproval =
+    amountInWei !== undefined ? {token: tokenIn, spender: deployment.swapRouter, amount: amountInWei} : undefined;
+  const clearApproval = shadow.clear;
   useEffect(() => {
-    if (
-      approveWait.isSuccess &&
-      amountInWei !== undefined &&
-      (optAllow.token !== tokenIn || amountInWei > optAllow.amount)
-    ) {
-      setOptAllow({token: tokenIn, amount: amountInWei});
-      allowance.refetch();
-    }
-  }, [approveWait.isSuccess, amountInWei, tokenIn, allowance, optAllow]);
-  const effAllow =
-    optAllow.token === tokenIn && optAllow.amount > (allowance.data ?? 0n)
-      ? optAllow.amount
-      : (allowance.data ?? 0n);
+    if (swapWait.isSuccess) clearApproval();
+  }, [swapWait.isSuccess, swapTx, clearApproval]);
 
-  const needsApproval = amountInWei !== undefined && effAllow < amountInWei;
+  const needsApproval =
+    amountInWei !== undefined && (allowance.data ?? 0n) < amountInWei && !shadow.covers(wantedApproval);
   const slippageBps = parseSlippageBps(slippage);
   const busy = approving || swapping || approveWait.isLoading || swapWait.isLoading;
 
@@ -180,17 +174,20 @@ function Live({
   const friendlyQuoteError = friendlySwapError(quoteError);
   const ready =
     !!address &&
+    !wrongNetwork &&
     !!amountInWei &&
     amountInWei > 0n &&
     slippageBps !== undefined &&
     !busy &&
     !blockedByBreak &&
-    (needsApproval || quote !== undefined);
+    (needsApproval || (quote !== undefined && !quoting));
 
   function onClick() {
-    if (!amountInWei || !address || slippageBps === undefined) return;
+    if (!amountInWei || !address || slippageBps === undefined || wrongNetwork) return;
     if (needsApproval) {
+      shadow.request({token: tokenIn, spender: deployment.swapRouter, amount: amountInWei});
       approve({
+        chainId: robinhood.id,
         address: tokenIn,
         abi: erc20Abi,
         functionName: "approve",
@@ -198,16 +195,18 @@ function Live({
       });
       return;
     }
-    if (quote === undefined) return;
+    // `quote` is only defined when it was simulated for exactly these inputs (see useSwapQuote).
+    if (quote === undefined || quoting) return;
     // Slippage tolerance is applied to the *simulated* output, not to amountIn. That correctly
     // absorbs LP fee + asymmetric-fee surcharge + price impact, and only fails if the pool
     // state shifts between simulation and execution.
-    const minOut = (quote * (10_000n - slippageBps)) / 10_000n;
+    const minOut = applySlippage(quote, slippageBps);
     swap({
+      chainId: robinhood.id,
       address: deployment.swapRouter,
       abi: swapRouterAbi,
       functionName: "swap",
-      args: [key, zeroForOne, amountInWei, minOut, address, ZERO_BYTES],
+      args: [key, zeroForOne, amountInWei, minOut, address, ZERO_BYTES, deadlineIn(20)],
     });
   }
 
@@ -243,21 +242,12 @@ function Live({
             : quoting
               ? "quoting…"
               : quote !== undefined && slippageBps !== undefined
-                ? `min ${fmtAmount((quote * (10_000n - slippageBps)) / 10_000n, tokenOutDecimals, 6)} after slippage`
+                ? `min ${fmtAmount(applySlippage(quote, slippageBps), tokenOutDecimals, 6)} after slippage`
                 : undefined
         }
       />
 
-      <div className="flex items-baseline justify-between gap-3 border border-line px-5 py-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">Slippage (%)</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={slippage}
-          onChange={(e) => setSlippage(e.target.value.replace(/[^0-9.]/g, ""))}
-          className="bg-transparent font-mono text-sm text-white outline-none text-right w-24"
-        />
-      </div>
+      <SlippageInput value={slippage} onChange={setSlippage} />
 
       <StatRow
         stats={[
@@ -286,10 +276,12 @@ function Live({
           ? "Only corrective trades during a break"
           : !address
           ? "Connect wallet"
+          : wrongNetwork
+            ? "Wrong network"
           : !amountInWei || amountInWei === 0n
             ? "Enter an amount"
             : slippageBps === undefined
-              ? "Set slippage"
+              ? "Set slippage (max 5%)"
               : approving || approveWait.isLoading
                 ? "Approving…"
                 : swapping || swapWait.isLoading
@@ -313,14 +305,6 @@ function Live({
       </PanelFootnote>
     </div>
   );
-}
-
-function parseSlippageBps(v: string): bigint | undefined {
-  if (!v) return undefined;
-  const num = Number(v);
-  if (!Number.isFinite(num) || num < 0 || num > 50) return undefined;
-  // 0.5 -> 50 bps
-  return BigInt(Math.floor(num * 100));
 }
 
 function signedBps(bps: bigint): string {

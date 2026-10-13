@@ -3,8 +3,10 @@
 import {useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
 import {useSelectedPool} from "@/hooks/useSelectedPool";
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {rebateDistributorAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {PanelFootnote, TxStatus} from "./atoms";
@@ -34,6 +36,7 @@ function Live({
   deployment: WoolFiDeployment & {rebateDistributor: `0x${string}`};
 }) {
   const {address} = useAccount();
+  const {wrongNetwork} = useWrongNetwork();
   const {writeContract, data: tx, isPending} = useWriteContract();
   const wait = useWaitForTransactionReceipt({hash: tx});
   const rebate0 = useReadContract({
@@ -55,8 +58,9 @@ function Live({
   const amount1 = rebate1.data ?? 0n;
 
   function claim(token: `0x${string}`) {
-    if (!address) return;
+    if (!address || wrongNetwork) return;
     writeContract({
+      chainId: robinhood.id,
       address: deployment.rebateDistributor,
       abi: rebateDistributorAbi,
       functionName: "claim",
@@ -71,14 +75,14 @@ function Live({
         symbol={deployment.token0Symbol}
         amount={amount0}
         decimals={deployment.token0Decimals}
-        disabled={!address || amount0 === 0n || isPending || wait.isLoading}
+        disabled={!address || wrongNetwork || amount0 === 0n || isPending || wait.isLoading}
         onClaim={() => claim(deployment.token0)}
       />
       <RebateRow
         symbol={deployment.token1Symbol}
         amount={amount1}
         decimals={deployment.token1Decimals}
-        disabled={!address || amount1 === 0n || isPending || wait.isLoading}
+        disabled={!address || wrongNetwork || amount1 === 0n || isPending || wait.isLoading}
         onClaim={() => claim(deployment.token1)}
       />
       <TxStatus hash={tx} />

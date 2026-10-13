@@ -6,6 +6,7 @@ import {LiquidityPanel} from "@/components/panels/LiquidityPanel";
 import {RebatePanel} from "@/components/panels/RebatePanel";
 import {SwapPanel} from "@/components/panels/SwapPanel";
 import {VaultPanel} from "@/components/panels/VaultPanel";
+import {WrongNetworkNotice} from "@/components/panels/atoms";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 
 import {TerminalPositionCard} from "./TerminalPositionCard";
@@ -69,6 +70,7 @@ export function TerminalActionRail() {
         {/* Action panel (real when live, preview when pending) */}
         <div className="p-3">
           <div className="glass-card p-5">
+            {pending ? null : <WrongNetworkNotice />}
             {pending ? (
               active === "trade" ? (
                 <PreviewSwap pool={pool} />

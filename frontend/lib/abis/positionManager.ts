@@ -83,6 +83,33 @@ export const pmAbi = [
     ],
   },
   {
+    // Slippage- and deadline-bounded overload; viem picks it from the 6-argument call.
+    type: "function",
+    name: "burn",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "key", type: "tuple", components: poolKeyComponents},
+      {name: "shares", type: "uint128"},
+      {name: "amount0Min", type: "uint256"},
+      {name: "amount1Min", type: "uint256"},
+      {name: "deadline", type: "uint256"},
+      {name: "to", type: "address"},
+    ],
+    outputs: [
+      {name: "amount0", type: "uint256"},
+      {name: "amount1", type: "uint256"},
+    ],
+  },
+  {type: "error", name: "DeadlineExpired", inputs: [{name: "deadline", type: "uint256"}]},
+  {
+    type: "error",
+    name: "InsufficientOutput",
+    inputs: [
+      {name: "amount0", type: "uint256"},
+      {name: "amount1", type: "uint256"},
+    ],
+  },
+  {
     type: "function",
     name: "collectFees",
     stateMutability: "nonpayable",

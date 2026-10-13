@@ -98,7 +98,7 @@ const STEPS: Step[] = [
   {
     title: "Stake and claim",
     body:
-      "Stake deposits URU into this pool's vault: you earn a cut of its swap fees, and in return a confirmed break can draw down part of the vault. Unstaking takes 2 days, and pauses while a break is being confirmed so nobody can dodge it. Rebate is where Urufu Gemu holders claim back 15% of the fee they actually paid, capped at the base fee.",
+      "Stake deposits URU into this pool's vault: you earn a cut of its swap fees, and in return a confirmed break can draw down part of the vault. Unstaking takes 2 days (then 1 day to withdraw), and pauses while a break is being confirmed so nobody can dodge it. Rebate is where Urufu Gemu holders claim back 15% of the fee they actually paid, capped at the base fee.",
     region: RAIL,
     cardPos: "left",
     tab: "stake",

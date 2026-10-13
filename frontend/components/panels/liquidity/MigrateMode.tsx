@@ -1,14 +1,18 @@
 "use client";
 
-import {useMemo, useState} from "react";
+import {useEffect, useMemo, useState} from "react";
 import {useReadContract, useReadContracts, useSimulateContract, useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
 import robinhoodManifest from "@/lib/deployments/robinhood.json";
+import {useApprovalShadow} from "@/hooks/useApprovalShadow";
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {pmAbi} from "@/lib/abis";
 import {uniswapV3NpmAbi, v3MigratorAbi} from "@/lib/abis/v3Migrator";
 import {UNISWAP_V3_NPM} from "@/lib/constants";
 import {fmtAmount} from "@/lib/format";
 import {poolKeyFor} from "@/lib/poolKey";
+import {deadlineIn} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {StatRow, TxStatus} from "../atoms";
@@ -45,6 +49,7 @@ export function MigrateMode({
 }) {
   const migrator = v3MigratorAddress();
   const key = poolKeyFor(deployment);
+  const {wrongNetwork} = useWrongNetwork();
   const positions = useV3Positions(address, deployment);
   const [selectedId, setSelectedId] = useState<bigint | undefined>();
   const selected = positions.find((p) => p.tokenId === selectedId) ?? positions[0];
@@ -93,19 +98,37 @@ export function MigrateMode({
   const {writeContract: migrate, data: migrateHash, isPending: migrating, error: migrateError} = useWriteContract();
   const approveReceipt = useWaitForTransactionReceipt({hash: approveHash});
   const migrateReceipt = useWaitForTransactionReceipt({hash: migrateHash});
-  const approved = approvedOne || approvedAll || approveReceipt.isSuccess;
+  // A confirmed approval only vouches for the exact NFT and spender it approved; any other
+  // position waits for the on-chain getApproved/isApprovedForAll read (refetched on confirm).
+  const shadow = useApprovalShadow(approveHash, approveReceipt.isSuccess, approval.refetch);
+  const clearApproval = shadow.clear;
+  useEffect(() => {
+    if (migrateReceipt.isSuccess) clearApproval();
+  }, [migrateReceipt.isSuccess, migrateHash, clearApproval]);
+  const approved =
+    approvedOne ||
+    approvedAll ||
+    (!!selected && !!migrator &&
+      shadow.covers({token: UNISWAP_V3_NPM, spender: migrator, amount: 0n, id: selected.tokenId}));
   const busy = approving || migrating || approveReceipt.isLoading || migrateReceipt.isLoading;
   const singleSided = !!principal && (out0 === 0n || out1 === 0n);
-  const canAct = !!address && !!migrator && !!selected && !busy && !singleSided && (!approved || !!shares);
+  // The decreaseLiquidity estimate must have succeeded before migrating: without it the
+  // amount0Min/amount1Min bounds would be zero. A position with no liquidity has nothing to bound.
+  const estimateReady = !!selected && (selected.liquidity === 0n || principal !== undefined);
+  const canAct =
+    !!address && !wrongNetwork && !!migrator && !!selected && !busy && !singleSided &&
+    (!approved || (estimateReady && !!shares));
 
   function submit() {
-    if (!address || !migrator || !selected) return;
+    if (!address || !migrator || !selected || wrongNetwork) return;
     if (!approved) {
-      approve({address: UNISWAP_V3_NPM, abi: uniswapV3NpmAbi, functionName: "approve", args: [migrator, selected.tokenId]});
+      shadow.request({token: UNISWAP_V3_NPM, spender: migrator, amount: 0n, id: selected.tokenId});
+      approve({chainId: robinhood.id, address: UNISWAP_V3_NPM, abi: uniswapV3NpmAbi, functionName: "approve", args: [migrator, selected.tokenId]});
       return;
     }
-    if (!shares) return;
+    if (!shares || !estimateReady) return;
     migrate({
+      chainId: robinhood.id,
       address: migrator,
       abi: v3MigratorAbi,
       functionName: "migrate",
@@ -116,7 +139,7 @@ export function MigrateMode({
         amount0Min: (principal?.[0] ?? 0n) * 9_900n / 10_000n,
         amount1Min: (principal?.[1] ?? 0n) * 9_900n / 10_000n,
         minShares: shares * 9_900n / 10_000n,
-        deadline: BigInt(Math.floor(Date.now() / 1_000) + 20 * 60),
+        deadline: deadlineIn(20),
         recipient: address,
       }],
     });
@@ -175,6 +198,8 @@ export function MigrateMode({
       <button type="button" disabled={!canAct} onClick={submit} className={btnCls(!canAct)}>
         {!address
           ? "Connect wallet"
+          : wrongNetwork
+            ? "Wrong network"
           : !migrator
             ? "Migrator not deployed"
             : !selected
@@ -185,7 +210,11 @@ export function MigrateMode({
                   ? approving || approveReceipt.isLoading ? "Approving position…" : `Approve position #${selected.tokenId}`
                   : migrating || migrateReceipt.isLoading
                     ? "Migrating…"
-                    : "Migrate to WoolFi"}
+                    : !estimateReady
+                      ? estimate.isError ? "Cannot estimate position" : "Estimating position…"
+                      : !shares
+                        ? "Estimating shares…"
+                        : "Migrate to WoolFi"}
       </button>
       <TxStatus hash={migrateHash ?? approveHash} />
       <p className="font-mono text-[10px] leading-relaxed text-muted">

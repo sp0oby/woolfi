@@ -188,11 +188,21 @@ contract WoolFiBreakInvariantsTest is Deployers {
     }
 
     /// (f) No staker completes an unstake while the pool has a detected but unconfirmed break, and the
-    ///     hook view the vault relies on agrees with the break state.
+    ///     hook view the vault relies on agrees with the break state: a flagged pool is pending until
+    ///     confirmed; an unflagged one only while an unflaggable gap is on chain (fault reads false).
     function invariant_noUnstakeDuringPendingBreak() public view {
         assertEq(handler.unstakeDuringPendingBreak(), 0, "unstake paid out during a pending break");
         (bool broken, bool confirmed,,) = hook.breakStatus(poolKey);
-        assertEq(hook.isBreakPendingForVault(address(vault)), broken && !confirmed, "pending view mismatch");
+        bool expected = broken ? !confirmed : _unflaggedGap();
+        assertEq(hook.isBreakPendingForVault(address(vault)), expected, "pending view mismatch");
+    }
+
+    function _unflaggedGap() internal view returns (bool) {
+        try hook.hasUnflaggedBreakGap(poolKey.toId()) returns (bool gap) {
+            return gap;
+        } catch {
+            return false;
+        }
     }
 
     /// A confirmed break is always a broken pool, and a broken pool always has a recovery target.

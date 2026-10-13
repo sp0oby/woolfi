@@ -1,10 +1,12 @@
 "use client";
 
 import {useEffect, useState} from "react";
-import {useChainId, usePublicClient} from "wagmi";
+import {usePublicClient} from "wagmi";
 
 import {swapRouterAbi} from "@/lib/abis";
 import {type PoolKey} from "@/lib/poolKey";
+import {inputsKey, readKeyed, type Keyed} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 
 const ZERO_BYTES = "0x" as const;
 
@@ -31,11 +33,13 @@ export function useSwapQuote({
   amountIn: bigint | undefined;
   account: `0x${string}` | undefined;
 }) {
-  const chainId = useChainId();
-  const publicClient = usePublicClient({chainId});
-  const [quote, setQuote] = useState<bigint | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
+  // Reads stay pinned to Robinhood Chain whatever chain the wallet is on.
+  const publicClient = usePublicClient({chainId: robinhood.id});
+  // The quote is stored with the inputs that produced it and only exposed while they still match
+  // the current inputs. Without this, the previous quote survived the debounce + RPC round trip
+  // after an input change (or a direction flip, where it is in the other token's decimals), so a
+  // min-out could be built from stale inputs.
+  const [result, setResult] = useState<Keyed<bigint> | undefined>(undefined);
 
   // CRITICAL: poolKey is a fresh object literal on every parent render, so it can't go into
   // the dep array directly - the effect would re-run on every render, perpetually clearing the
@@ -44,24 +48,16 @@ export function useSwapQuote({
   const poolKeyId = poolKey
     ? `${poolKey.currency0}|${poolKey.currency1}|${poolKey.fee}|${poolKey.tickSpacing}|${poolKey.hooks}`
     : "";
+  const active = !!publicClient && !!router && !!poolKey && !!account && !!amountIn && amountIn > 0n;
+  const key = swapQuoteKey({router, poolKeyId, zeroForOne, amountIn, account});
 
   useEffect(() => {
-    if (!publicClient || !router || !poolKey || !account) {
-      setQuote(undefined);
-      setError(undefined);
-      return;
-    }
-    if (!amountIn || amountIn === 0n) {
-      setQuote(undefined);
-      setError(undefined);
-      return;
-    }
+    if (!active || !publicClient || !router || !poolKey || !account || !amountIn) return;
 
     let cancelled = false;
     // Debounce: wait 400ms after the last input change before firing the simulate. Stops the
     // RPC flood that used to happen when the user typed an amount character-by-character.
     const timer = setTimeout(() => {
-      setLoading(true);
       publicClient
         .simulateContract({
           address: router,
@@ -71,17 +67,10 @@ export function useSwapQuote({
           account,
         })
         .then((res) => {
-          if (cancelled) return;
-          setQuote(res.result as bigint);
-          setError(undefined);
+          if (!cancelled) setResult({key, value: res.result as bigint});
         })
         .catch((e) => {
-          if (cancelled) return;
-          setQuote(undefined);
-          setError(extractRevertReason(e));
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
+          if (!cancelled) setResult({key, error: extractRevertReason(e)});
         });
     }, 400);
 
@@ -90,9 +79,32 @@ export function useSwapQuote({
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicClient, router, poolKeyId, zeroForOne, amountIn, account]);
+  }, [active, key]);
 
-  return {quote, error, loading};
+  const current = readKeyed(result, key);
+  return {
+    quote: active ? current.value : undefined,
+    error: active ? current.error : undefined,
+    // Loading from the moment inputs change, not only once the debounce fires.
+    loading: active && !current.fresh,
+  };
+}
+
+/** Everything a swap quote depends on. A quote is only valid for the exact key it was made for. */
+export function swapQuoteKey({
+  router,
+  poolKeyId,
+  zeroForOne,
+  amountIn,
+  account,
+}: {
+  router: string | undefined;
+  poolKeyId: string;
+  zeroForOne: boolean;
+  amountIn: bigint | undefined;
+  account: string | undefined;
+}): string {
+  return inputsKey(router, poolKeyId, zeroForOne, amountIn, account);
 }
 
 function extractRevertReason(e: unknown): string {

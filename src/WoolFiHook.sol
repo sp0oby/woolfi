@@ -96,10 +96,16 @@ contract WoolFiHook is BaseHook {
     ///         the frontend and indexer decode stays unchanged.
     /// @dev `confirmSeconds` is governance config (zero means {DEFAULT_BREAK_CONFIRM_SECONDS});
     ///      `detectedAt` and `confirmed` are per-break state reset when a break is cleared or resolved.
+    ///      `lastBreakSwapAt` is the timestamp of the latest swap executed in break mode, written only
+    ///      on that path so ordinary swaps pay no extra storage write. `resolvedAt` is the timestamp
+    ///      of the latest governor {resolveStructuralBreak}. Both are compared against
+    ///      `block.timestamp` only, so neither needs resetting. All fields share one slot.
     struct BreakState {
         uint64 detectedAt;
         uint32 confirmSeconds;
         bool confirmed;
+        uint64 lastBreakSwapAt;
+        uint64 resolvedAt;
     }
 
     /// @notice Wait between a break being flagged and the vault drawdown becoming confirmable, when a
@@ -107,6 +113,15 @@ contract WoolFiHook is BaseHook {
     uint32 public constant DEFAULT_BREAK_CONFIRM_SECONDS = 1 hours;
     /// @notice Upper bound governance may set for a pool's confirmation window.
     uint32 public constant MAX_BREAK_CONFIRM_SECONDS = 1 days;
+    /// @notice Upper bound on `effective confirmSeconds + stabilizationSeconds` for equity-hours pools
+    ///         (`marketHours != address(0)`): the NYSE early-close session (09:30-13:00 ET). The
+    ///         window restarts at every session open, so a longer one could never ripen and would keep
+    ///         unstakes locked indefinitely. Always-open pools keep {MAX_BREAK_CONFIRM_SECONDS}.
+    uint32 public constant MAX_EQUITY_BREAK_WINDOW = 12_600;
+
+    /// @dev Snapshot modes stored in the "armed" transient slot (see {PRE_DRIFT_NAMESPACE}).
+    uint256 private constant GUARD_SINGLE_SWAP = 1;
+    uint256 private constant GUARD_BREAK_SWAP = 2;
 
     /// @notice Governance address authorized to manage pools and pause. Updatable so control can be
     ///         handed from the v1 multisig/`WoolFiGovernor` to on-chain governance later (spec §7.4).
@@ -167,10 +182,24 @@ contract WoolFiHook is BaseHook {
     error BreakConfirmationPending(uint256 readyAt);
     error BreakAlreadyConfirmed();
     error BreakNotConfirmed();
+    /// @notice A break-mode swap would leave |drift| against the cached break fair larger than both
+    ///         its pre-swap |drift| and the tolerance band (an overshoot past the recovery target).
+    error BreakSwapOvershoot(int256 preDriftBps, int256 postDriftBps);
+    /// @notice A break-mode swap already ran on this pool at the current timestamp, so the price
+    ///         confirm/clear would read may be one that same block's swaps will undo.
+    error BreakSwapThisBlock();
+    /// @notice Governance config change refused while the pool has a detected but unconfirmed break
+    ///         (stakers are locked), or in the same block as a governor resolution.
+    error BreakPendingForPool();
+    /// @notice The vault is already wired to a different pool.
+    error VaultAlreadyMapped(PoolId otherPool);
+    /// @notice The initial pool price is outside `toleranceBps` of the oracle fair price.
+    error InitialPriceOutOfBand(int256 driftBps);
 
     /// @dev Transient-storage namespace for the pre-swap drift snapshot (EIP-1153). Slot for a pool
-    ///      is keccak256(id, PRE_DRIFT_NAMESPACE); the "armed" flag lives at slot + 1 and the fair
-    ///      price the drift was measured against at slot + 2.
+    ///      is keccak256(id, PRE_DRIFT_NAMESPACE); the guard mode ({GUARD_SINGLE_SWAP} or
+    ///      {GUARD_BREAK_SWAP}, zero when unarmed) lives at slot + 1 and the fair price the drift was
+    ///      measured against at slot + 2.
     bytes32 private constant PRE_DRIFT_NAMESPACE = keccak256("woolfi.hook.preSwapDrift");
     /// @dev Transient-storage namespace for the LP fee (bps) applied to the latest swap of a pool.
     bytes32 private constant SWAP_FEE_NAMESPACE = keccak256("woolfi.hook.swapFeeBps");
@@ -248,6 +277,7 @@ contract WoolFiHook is BaseHook {
             configured: true,
             structuralBreak: false
         });
+        _validateBreakWindow(id);
 
         emit PoolAuthorized(id, address(p.oracle0), address(p.oracle1), address(p.marketHours));
         if (safety.stabilizationSeconds != 0 || safety.maxOracleSkew != 0) {
@@ -256,20 +286,26 @@ contract WoolFiHook is BaseHook {
     }
 
     /// @notice Update an authorized pool's tunable parameters.
+    /// @dev Refused while a break is pending ({BreakPendingForPool}); see {_requireNoPendingBreak}.
     function updatePoolConfig(PoolKey calldata key, AuthParams calldata p) external onlyGovernor {
         _updatePoolConfig(key, p);
+        _validateBreakWindow(key.toId());
     }
 
     /// @notice Update core and safety parameters atomically.
+    /// @dev Refused while a break is pending ({BreakPendingForPool}); see {_requireNoPendingBreak}.
     function updatePoolConfigV2(PoolKey calldata key, AuthParamsV2 calldata p) external onlyGovernor {
+        PoolId id = key.toId();
         _updatePoolConfig(key, p.core);
-        _setPoolSafety(key.toId(), p.safety);
+        _setPoolSafety(id, p.safety);
+        _validateBreakWindow(id);
     }
 
     function _updatePoolConfig(PoolKey calldata key, AuthParams calldata p) private {
         PoolId id = key.toId();
         WoolFiConfig storage c = _config[id];
         if (!c.configured) revert PoolNotConfigured();
+        _requireNoPendingBreak(id);
         _validateParams(p);
 
         c.oracle0 = p.oracle0;
@@ -284,10 +320,13 @@ contract WoolFiHook is BaseHook {
     }
 
     /// @notice Update only post-open stabilization and dual-leg timestamp synchronization.
+    /// @dev Refused while a break is pending ({BreakPendingForPool}); see {_requireNoPendingBreak}.
     function setPoolSafety(PoolKey calldata key, SafetyParams calldata safety) external onlyGovernor {
         PoolId id = key.toId();
         if (!_config[id].configured) revert PoolNotConfigured();
+        _requireNoPendingBreak(id);
         _setPoolSafety(id, safety);
+        _validateBreakWindow(id);
     }
 
     function _setPoolSafety(PoolId id, SafetyParams memory safety) private {
@@ -307,16 +346,23 @@ contract WoolFiHook is BaseHook {
         c.structuralBreak = false;
         c.cachedFairPriceWad = 0;
         _resetBreakState(id);
+        // Config changes are refused in this same block (see {_requireNoPendingBreak}), so a batch
+        // cannot resolve, rewire and re-flag before locked stakers get a chance to leave.
+        _breakState[id].resolvedAt = uint64(block.timestamp);
         emit StructuralBreakResolved(id);
     }
 
     /// @notice Set how long a flagged break must persist before {confirmStructuralBreak} may draw
     ///         down the vault. Zero selects {DEFAULT_BREAK_CONFIRM_SECONDS}.
+    /// @dev Equity-hours pools must also satisfy {MAX_EQUITY_BREAK_WINDOW} (see {_validateBreakWindow}).
     function setBreakConfirmSeconds(PoolKey calldata key, uint32 confirmSeconds) external onlyGovernor {
         PoolId id = key.toId();
         if (!_config[id].configured) revert PoolNotConfigured();
+        // Changing the window mid-break would retime a drawdown that locked stakers cannot exit.
+        _requireNoPendingBreak(id);
         if (confirmSeconds > MAX_BREAK_CONFIRM_SECONDS) revert InvalidConfig();
         _breakState[id].confirmSeconds = confirmSeconds;
+        _validateBreakWindow(id);
         emit BreakConfirmSecondsSet(id, confirmSeconds);
     }
 
@@ -359,11 +405,21 @@ contract WoolFiHook is BaseHook {
     /// @param drawdownBps Fraction of the vault to seize on a structural break. Must be strictly
     ///        below 10_000: a full seizure would leave `totalStaked == 0` with shares outstanding
     ///        and brick every future `stake` in the vault.
+    /// @dev Refused while a break is pending ({BreakPendingForPool}), so a drawdown increase cannot
+    ///      land on stakers the break has locked in. A vault already wired to another pool is
+    ///      rejected ({VaultAlreadyMapped}): the reverse index serves one pool per vault.
     function setVault(PoolKey calldata key, address vault, uint16 drawdownBps) external onlyGovernor {
         PoolId id = key.toId();
         WoolFiConfig storage c = _config[id];
         if (!c.configured) revert PoolNotConfigured();
+        _requireNoPendingBreak(id);
         if (drawdownBps >= 10_000) revert InvalidConfig();
+        if (vault != address(0)) {
+            PoolId mapped = _poolIdByVault[vault];
+            if (PoolId.unwrap(mapped) != bytes32(0) && PoolId.unwrap(mapped) != PoolId.unwrap(id)) {
+                revert VaultAlreadyMapped(mapped);
+            }
+        }
         address previous = c.vault;
         if (previous != address(0) && PoolId.unwrap(_poolIdByVault[previous]) == PoolId.unwrap(id)) {
             _poolIdByVault[previous] = PoolId.wrap(bytes32(0));
@@ -436,16 +492,44 @@ contract WoolFiHook is BaseHook {
     ///         yet confirmed. {WoolFiUnderwritingVault.unstake} refuses to pay out during that window,
     ///         so stakers cannot exit between detection and the drawdown it may lead to (a break flagged
     ///         before a long weekend can take days to confirm, longer than the unstake cooldown).
+    ///         Also true while the pool is not flagged but cannot be flagged right now (market closed,
+    ///         post-open stabilization, or legs skewed) and its drift against the last valid fair
+    ///         already reaches the hard threshold ({hasUnflaggedBreakGap}): a gap visible on chain
+    ///         must not be an exit window just because detection is suppressed.
     /// @dev Never reverts: an unknown vault, or one no longer wired to its pool, reads false. Once a
     ///      break is confirmed this returns false even if the drawdown itself failed (DrawdownFailed):
     ///      confirmation is the point at which underwriters were charged or not, and a vault that
-    ///      cannot be drawn down must not also trap its stakers with no exit.
+    ///      cannot be drawn down must not also trap its stakers with no exit. The unflagged-gap probe
+    ///      runs through a self-call in try/catch; any fault there (reverting or malformed oracle or
+    ///      market-hours reply) reads false, matching the vault's fail-open handling.
     function isBreakPendingForVault(address vault) external view returns (bool) {
         if (vault == address(0)) return false;
         PoolId id = _poolIdByVault[vault];
         WoolFiConfig storage c = _config[id];
         if (c.vault != vault) return false;
-        return c.structuralBreak && !_breakState[id].confirmed;
+        if (c.structuralBreak) return !_breakState[id].confirmed;
+        try this.hasUnflaggedBreakGap(id) returns (bool gap) {
+            return gap;
+        } catch {
+            return false;
+        }
+    }
+
+    /// @notice True when an unflagged pool cannot currently be flagged (market closed, stabilization
+    ///         window active, or legs skewed) and its drift against `getLastValidPrice()` of both
+    ///         legs is at or past `hardThresholdBps`. False when the pool is flaggable right now
+    ///         (the normal detection paths apply) or already flagged.
+    /// @dev May revert on an oracle or market-hours fault; {isBreakPendingForVault} wraps it.
+    function hasUnflaggedBreakGap(PoolId id) external view returns (bool) {
+        WoolFiConfig memory c = _config[id];
+        if (!c.configured || c.structuralBreak) return false;
+        if (!_marketClosed(c) && _stabilizationWindow(c) == 0) {
+            if (c.maxOracleSkew == 0) return false;
+            (,,, bool skewed) = _oracleFair(c);
+            if (!skewed) return false;
+        }
+        uint256 lastFair = SpreadMath.fairPrice(c.oracle0.getLastValidPrice(), c.oracle1.getLastValidPrice());
+        return SpreadMath.isStructuralBreak(_driftFromFair(c, id, lastFair), c.hardThresholdBps);
     }
 
     /// @notice LP fee (bps) the hook applied to the most recent swap of `id` in the current
@@ -484,6 +568,13 @@ contract WoolFiHook is BaseHook {
     ///      a pool parked just under the threshold, or a stale-print discontinuity at the open) before
     ///      underwriters are charged. The drawdown is isolated in try/catch so a reverting vault
     ///      cannot block confirmation.
+    ///
+    ///      Refused ({BreakSwapThisBlock}) when a break-mode swap ran on the pool at the current
+    ///      timestamp, so the price read here cannot be one pushed in the same block and swapped back
+    ///      right after (forcing or dodging the drawdown for the cost of fees). The check uses
+    ///      `block.timestamp` rather than `block.number` because on Arbitrum chains `block.number`
+    ///      returns the parent-chain block, which stays the same across many L2 blocks; the L2
+    ///      timestamp is the stricter, monotonic per-block clock.
     function confirmStructuralBreak(PoolKey calldata key) external {
         if (paused) revert Paused();
         PoolId id = key.toId();
@@ -492,6 +583,7 @@ contract WoolFiHook is BaseHook {
         if (!c.structuralBreak) revert NotStructurallyBroken();
         BreakState storage b = _breakState[id];
         if (b.confirmed) revert BreakAlreadyConfirmed();
+        if (b.lastBreakSwapAt == block.timestamp) revert BreakSwapThisBlock();
         if (_marketClosed(c)) revert MarketClosed();
         // No confirmation while the session is still settling: corrective traders get first access to
         // a post-gap price before underwriters can be charged for it.
@@ -528,14 +620,17 @@ contract WoolFiHook is BaseHook {
     ///         shows drift back inside the tolerance band, without waiting for a (possibly
     ///         timelocked) governor {resolveStructuralBreak}.
     /// @dev Requires the market to be open and settled (no stabilization window), fresh oracle data
-    ///      with the normal guards, and unskewed legs. The governor path still works.
+    ///      with the normal guards, and unskewed legs. The governor path still works. Like
+    ///      {confirmStructuralBreak}, refused in the same block (timestamp) as a break-mode swap.
     function clearRecoveredBreak(PoolKey calldata key) external {
         if (paused) revert Paused();
         PoolId id = key.toId();
         WoolFiConfig memory c = _config[id];
         if (!c.configured) revert PoolNotConfigured();
         if (!c.structuralBreak) revert NotStructurallyBroken();
-        if (!_breakState[id].confirmed) revert BreakNotConfirmed();
+        BreakState memory b = _breakState[id];
+        if (!b.confirmed) revert BreakNotConfirmed();
+        if (b.lastBreakSwapAt == block.timestamp) revert BreakSwapThisBlock();
         if (_marketClosed(c)) revert MarketClosed();
         uint256 stabilizationEndsAt = _stabilizationWindow(c);
         if (stabilizationEndsAt != 0) {
@@ -560,8 +655,21 @@ contract WoolFiHook is BaseHook {
     /// @dev Only authorized pools may initialize against this hook. The dynamic-fee requirement is
     ///      already guaranteed: {authorizePool} rejects non-dynamic fees, and the poolId (which keys
     ///      the config) includes the fee - so any `configured` pool is necessarily a dynamic-fee pool.
-    function _beforeInitialize(address, PoolKey calldata key, uint160) internal view override returns (bytes4) {
-        if (!_config[key.toId()].configured) revert PoolNotConfigured();
+    ///      Initialization is permissionless in the PoolManager, so the initial price must also sit
+    ///      within `toleranceBps` of the oracle fair price ({InitialPriceOutOfBand}). Fair is taken
+    ///      from `getLastValidPrice()` of both legs, so a pool can be initialized while its market is
+    ///      closed; runtime guards (pause, sequencer, invalid print) still revert.
+    function _beforeInitialize(address, PoolKey calldata key, uint160 sqrtPriceX96)
+        internal
+        view
+        override
+        returns (bytes4)
+    {
+        WoolFiConfig memory c = _config[key.toId()];
+        if (!c.configured) revert PoolNotConfigured();
+        uint256 lastFair = SpreadMath.fairPrice(c.oracle0.getLastValidPrice(), c.oracle1.getLastValidPrice());
+        int256 drift = SpreadMath.computeDrift(SpreadMath.poolPrice(sqrtPriceX96, c.decimals0, c.decimals1), lastFair);
+        if (!SpreadMath.isInBand(drift, c.toleranceBps)) revert InitialPriceOutOfBand(drift);
         return IHooks.beforeInitialize.selector;
     }
 
@@ -571,6 +679,11 @@ contract WoolFiHook is BaseHook {
     ///      guard. Closed and stabilizing sessions measure against the last valid print (runtime
     ///      guards still apply, freshness does not); oracle-skew mode uses the fresh but skewed prints.
     ///      The applied fee is also written to transient storage for {lastSwapFeeBps}.
+    ///
+    ///      Break path: the swap must be corrective against the cached break fair (or start exactly at
+    ///      it), and the pre-swap drift against that cached fair is snapshotted so {_afterSwap} can
+    ///      bound the overshoot ({BreakSwapOvershoot}). The swap timestamp is recorded so
+    ///      {confirmStructuralBreak} and {clearRecoveredBreak} refuse to run in the same block.
     function _beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
         internal
         override
@@ -584,16 +697,19 @@ contract WoolFiHook is BaseHook {
         uint256 feeBps = c.baseFeeBps;
         if (c.structuralBreak) {
             _requireRuntimeGuards(c);
-            _requireCorrectiveBreakSwap(c, id, params.zeroForOne);
+            int256 breakDrift = _driftFromFair(c, id, c.cachedFairPriceWad);
+            _requireCorrectiveBreakSwap(breakDrift, params.zeroForOne);
+            _storePreDrift(id, breakDrift, c.cachedFairPriceWad, GUARD_BREAK_SWAP);
+            _breakState[id].lastBreakSwapAt = uint64(block.timestamp);
         } else if (_marketClosed(c) || _stabilizationWindow(c) != 0) {
             // No fresh print is required, but sequencer/pause/invalid-print failures still revert
             // inside getLastValidPrice, so flat-fee trading cannot bypass L2 safety.
             uint256 lastFair = SpreadMath.fairPrice(c.oracle0.getLastValidPrice(), c.oracle1.getLastValidPrice());
-            _storePreDrift(id, _driftFromFair(c, id, lastFair), lastFair);
+            _storePreDrift(id, _driftFromFair(c, id, lastFair), lastFair, GUARD_SINGLE_SWAP);
         } else {
             (uint256 fair,,, bool skewed) = _oracleFair(c);
             int256 drift = _driftFromFair(c, id, fair);
-            _storePreDrift(id, drift, fair);
+            _storePreDrift(id, drift, fair, GUARD_SINGLE_SWAP);
             if (!skewed && !SpreadMath.isInBand(drift, c.toleranceBps)) {
                 bool corrective = (drift > 0 && params.zeroForOne) || (drift < 0 && !params.zeroForOne);
                 feeBps = SpreadMath.asymmetricFee(c.baseFeeBps, drift, c.kScaled, corrective);
@@ -620,6 +736,11 @@ contract WoolFiHook is BaseHook {
     ///      before the swap (unflagged), a live-mode swap flags the break as before, and
     ///      {checkStructuralBreak} remains the permissionless detection path. Flagging only contains
     ///      the pool; the drawdown waits for {confirmStructuralBreak}. Always on.
+    ///
+    ///      Break-swap bound, on the break path: post-swap |drift| against the cached break fair must
+    ///      not exceed max(pre-swap |drift|, toleranceBps), or the swap reverts with
+    ///      {BreakSwapOvershoot}. The direction check in {_beforeSwap} alone would let a "corrective"
+    ///      swap overshoot far past the target (and a swap from exactly zero drift go anywhere).
     function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         internal
         override
@@ -726,6 +847,30 @@ contract WoolFiHook is BaseHook {
         b.confirmed = false;
     }
 
+    /// @dev Governance config changes (vault wiring, oracle/risk parameters, safety parameters) must
+    ///      not land while a detected break is unconfirmed: stakers cannot unstake then, so the
+    ///      timelock's exit window does not protect them. Also refused in the block of a governor
+    ///      {resolveStructuralBreak}, so a resolve-rewire-reflag batch cannot skip the exit window.
+    ///      Resolution and pause stay available.
+    function _requireNoPendingBreak(PoolId id) private view {
+        BreakState memory b = _breakState[id];
+        if ((_config[id].structuralBreak && !b.confirmed) || b.resolvedAt == block.timestamp) {
+            revert BreakPendingForPool();
+        }
+    }
+
+    /// @dev Equity-hours pools: the effective confirmation window plus stabilization must fit in the
+    ///      shortest session ({MAX_EQUITY_BREAK_WINDOW}), since both restart at every session open.
+    ///      Checked after every write that can change confirmSeconds, stabilizationSeconds or
+    ///      marketHours (the revert rolls the write back).
+    function _validateBreakWindow(PoolId id) private view {
+        WoolFiConfig storage c = _config[id];
+        if (address(c.marketHours) == address(0)) return;
+        if (_confirmWindow(_breakState[id].confirmSeconds) + c.stabilizationSeconds > MAX_EQUITY_BREAK_WINDOW) {
+            revert InvalidConfig();
+        }
+    }
+
     function _confirmWindow(uint32 configured) private pure returns (uint256) {
         return configured == 0 ? DEFAULT_BREAK_CONFIRM_SECONDS : configured;
     }
@@ -762,38 +907,45 @@ contract WoolFiHook is BaseHook {
         }
     }
 
-    function _storePreDrift(PoolId id, int256 drift, uint256 fair) private {
+    function _storePreDrift(PoolId id, int256 drift, uint256 fair, uint256 mode) private {
         bytes32 slot = _preDriftSlot(id);
         assembly ("memory-safe") {
             tstore(slot, drift)
-            tstore(add(slot, 1), 1)
+            tstore(add(slot, 1), mode)
             tstore(add(slot, 2), fair)
         }
     }
 
     /// @dev Reads and clears the snapshot so it can never leak into a later swap in the same tx.
-    function _takePreDrift(PoolId id) private returns (bool armed, int256 drift, uint256 fair) {
+    ///      `mode` is zero when unarmed.
+    function _takePreDrift(PoolId id) private returns (uint256 mode, int256 drift, uint256 fair) {
         bytes32 slot = _preDriftSlot(id);
-        uint256 flag;
         assembly ("memory-safe") {
-            flag := tload(add(slot, 1))
+            mode := tload(add(slot, 1))
             drift := tload(slot)
             fair := tload(add(slot, 2))
             tstore(slot, 0)
             tstore(add(slot, 1), 0)
             tstore(add(slot, 2), 0)
         }
-        armed = flag == 1;
     }
 
     /// @dev Always consumes the pre-swap snapshot so a stale value can never apply to a later swap in
     ///      the same transaction. When armed, measures post-swap drift against the snapshot's fair
-    ///      price and enforces the single-swap break guard. Returns that drift (zero when unarmed).
+    ///      price and enforces the guard for the snapshot's mode: the single-swap break guard on
+    ///      non-break paths, the break-swap overshoot bound on the break path. Returns that drift
+    ///      (zero when unarmed).
     function _consumeSnapshotAndGuard(WoolFiConfig memory c, PoolId id) private returns (int256 drift) {
-        (bool armed, int256 preDrift, uint256 refFair) = _takePreDrift(id);
-        if (!armed) return 0;
+        (uint256 mode, int256 preDrift, uint256 refFair) = _takePreDrift(id);
+        if (mode == 0) return 0;
         drift = _driftFromFair(c, id, refFair);
-        _enforceSingleSwapBreakGuard(c.hardThresholdBps, preDrift, drift);
+        if (mode == GUARD_BREAK_SWAP) {
+            uint256 bound = _absInt(preDrift);
+            if (bound < c.toleranceBps) bound = c.toleranceBps;
+            if (_absInt(drift) > bound) revert BreakSwapOvershoot(preDrift, drift);
+        } else {
+            _enforceSingleSwapBreakGuard(c.hardThresholdBps, preDrift, drift);
+        }
     }
 
     /// @dev Reverts if the pre-swap drift was inside the hard threshold and this swap alone moved
@@ -849,9 +1001,10 @@ contract WoolFiHook is BaseHook {
         c.oracle1.requireRuntimeGuards();
     }
 
-    function _requireCorrectiveBreakSwap(WoolFiConfig memory c, PoolId id, bool zeroForOne) internal view {
-        int256 drift = _driftFromFair(c, id, c.cachedFairPriceWad);
-        // At the exact target either direction is allowed so recovery cannot deadlock on rounding.
+    /// @param drift Pre-swap drift against the cached break fair.
+    function _requireCorrectiveBreakSwap(int256 drift, bool zeroForOne) internal pure {
+        // At the exact target either direction is allowed so recovery cannot deadlock on rounding;
+        // the overshoot bound in {_afterSwap} still caps such a swap at the tolerance band.
         if (drift == 0) return;
         bool corrective = (drift > 0 && zeroForOne) || (drift < 0 && !zeroForOne);
         if (!corrective) revert AdversarialSwapDuringBreak();

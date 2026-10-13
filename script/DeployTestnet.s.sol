@@ -160,7 +160,7 @@ contract DeployTestnet is Script {
             address(new WoolFiUnderwritingVault(dep.strand, dep.hook, dep.token0, dep.token1, multisig, 1_000_000e18));
         WoolFiGovernor(dep.governor).setVault(key, dep.vault, 2000);
         // The multisig applies treasury policy to its fee allocation.
-        WoolFiPositionManager(dep.pm).setFeeConfig(key, dep.vault, 2000, multisig, 1000);
+        WoolFiPositionManager(dep.pm).setFeeConfig(key, dep.vault, 2000, multisig, 1500);
 
         // Ownership handoff (two-step): this stages both transfers; the multisig must call
         // `acceptOwnership()` on the governor and on the PM to complete them.
@@ -204,64 +204,40 @@ contract DeployTestnet is Script {
                     : block.chainid == 4663 ? "robinhood-mainnet-mock" : "unknown";
         string memory path = string.concat("frontend/lib/deployments/", chainName, ".json");
 
-        string memory body = string.concat(
-            "{\n",
-            '  "chainId": ',
-            vm.toString(block.chainid),
-            ",\n",
-            '  "poolManager": "',
-            vm.toString(poolManagerAddr),
-            '",\n',
-            '  "hook": "',
-            vm.toString(dep.hook),
-            '",\n',
-            '  "positionManager": "',
-            vm.toString(dep.pm),
-            '",\n',
-            '  "governor": "',
-            vm.toString(dep.governor),
-            '",\n',
-            '  "strand": "',
-            vm.toString(dep.strand),
-            '",\n',
-            '  "vault": "',
-            vm.toString(dep.vault),
-            '",\n'
-        );
+        // Built a few fields at a time: one long string.concat is too deep for the unoptimized
+        // via-IR build that `forge coverage --ir-minimum` uses.
+        string memory body = string.concat("{\n", '  "chainId": ', vm.toString(block.chainid), ",\n");
+        body = string.concat(body, _jsonField("poolManager", vm.toString(poolManagerAddr)));
+        body = string.concat(body, _jsonField("hook", vm.toString(dep.hook)));
+        body = string.concat(body, _jsonField("positionManager", vm.toString(dep.pm)));
+        body = string.concat(body, _jsonField("governor", vm.toString(dep.governor)));
+        body = string.concat(body, _jsonField("strand", vm.toString(dep.strand)));
+        body = string.concat(body, _jsonField("vault", vm.toString(dep.vault)));
+        body = string.concat(body, _jsonField("token0", vm.toString(dep.token0)));
+        body = string.concat(body, _jsonField("token1", vm.toString(dep.token1)));
+        body = string.concat(body, _jsonField("oracle0", vm.toString(dep.oracle0)));
+        body = string.concat(body, _jsonField("oracle1", vm.toString(dep.oracle1)));
+        body = string.concat(body, _jsonField("marketHours", vm.toString(dep.marketHours)));
+        body = string.concat(body, _jsonField("strandFaucet", vm.toString(dep.strandFaucet)));
+        body = string.concat(body, _jsonField("poolId", vm.toString(dep.poolId)));
         body = string.concat(
             body,
-            '  "token0": "',
-            vm.toString(dep.token0),
-            '",\n',
-            '  "token1": "',
-            vm.toString(dep.token1),
-            '",\n',
-            '  "oracle0": "',
-            vm.toString(dep.oracle0),
-            '",\n',
-            '  "oracle1": "',
-            vm.toString(dep.oracle1),
-            '",\n',
-            '  "marketHours": "',
-            vm.toString(dep.marketHours),
-            '",\n',
-            '  "strandFaucet": "',
-            vm.toString(dep.strandFaucet),
-            '",\n',
-            '  "poolId": "',
-            vm.toString(dep.poolId),
-            '",\n',
             '  "tickSpacing": 60,\n',
             '  "baseFeeBps": 30,\n',
             '  "toleranceBps": 500,\n',
             '  "hardThresholdBps": 1500,\n',
             '  "drawdownBps": 2000,\n',
             '  "vaultFeeBps": 2000,\n',
-            '  "treasuryFeeBps": 1000\n',
+            '  "treasuryFeeBps": 1500\n',
             "}\n"
         );
 
         vm.writeFile(path, body);
         console2.log("Wrote deployment to", path);
+    }
+
+    /// @dev One `  "key": "value",` manifest line.
+    function _jsonField(string memory key, string memory value) private pure returns (string memory) {
+        return string.concat('  "', key, '": "', value, '",\n');
     }
 }

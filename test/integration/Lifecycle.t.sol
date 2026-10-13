@@ -251,8 +251,9 @@ contract LifecycleTest is Deployers {
         vault.claim();
         uint256 s1Got = _t0().balanceOf(staker1) - s1T0Before;
         uint256 s2Got = _t0().balanceOf(staker2) - s2T0Before;
-        // staker1 has 600/1000 = 1.5x staker2's 400 → reward ratio matches stake ratio
-        assertApproxEqAbs(s1Got * 400, s2Got * 600, 4);
+        // staker1 has 600/1000 = 1.5x staker2's 400 → reward ratio matches stake ratio (each payout
+        // may be 1 wei short: reward debts round up in the vault's favour, so allow 1 wei x 600)
+        assertApproxEqAbs(s1Got * 400, s2Got * 600, 600);
         assertGt(s1Got, 0);
 
         // =================================================================

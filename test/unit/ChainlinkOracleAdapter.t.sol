@@ -80,6 +80,28 @@ contract ChainlinkOracleAdapterTest is Test {
         adapter.getPrice();
     }
 
+    /// @dev L-3: a future-dated round used to pass the fresh path with an age of zero.
+    function testRevert_getPrice_futureTimestamp() public {
+        feed.setAnswer(100_000e8, block.timestamp + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(ChainlinkOracleAdapter.StalePrice.selector, block.timestamp + 1, MAX_STALENESS)
+        );
+        adapter.getPrice();
+        vm.expectRevert(
+            abi.encodeWithSelector(ChainlinkOracleAdapter.StalePrice.selector, block.timestamp + 1, MAX_STALENESS)
+        );
+        adapter.getPriceData();
+    }
+
+    /// @dev L-3: a zero `updatedAt` is rejected even when `block.timestamp` is within the staleness
+    ///      bound of zero (the age check alone would accept it).
+    function testRevert_getPrice_zeroTimestampWithinAgeBound() public {
+        vm.warp(MAX_STALENESS / 2);
+        feed.setAnswer(100_000e8, 0);
+        vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.StalePrice.selector, 0, MAX_STALENESS));
+        adapter.getPrice();
+    }
+
     function testRevert_getPrice_rejectsUnansweredRound() public {
         feed.setRoundIds(4, 3);
         vm.expectRevert(abi.encodeWithSelector(ChainlinkOracleAdapter.IncompleteRound.selector, uint80(4), uint80(3)));

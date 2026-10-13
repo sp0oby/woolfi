@@ -20,13 +20,22 @@
 | R2-3 indexer missed break transitions | Break-episode tracking for detected / confirmed / cleared / recovered / resolved and drawdown outcome |
 | R2-4 confirmed break never self-exits | Permissionless `clearRecoveredBreak` once fresh drift is back within tolerance |
 | R2-6 rebate on requested input | Router passes the settled input amount |
+| R3 H-1 break-swap overshoot forces or dodges a drawdown | Break-mode swaps bounded by `max(pre |drift|, toleranceBps)` (`BreakSwapOvershoot`); confirm/clear refused in the second of a break-mode swap (`BreakSwapThisBlock`) |
+| R3 V-1 matured unstake request as a free exit option | 1-day claim window (`UnstakeRequestExpired`); unflaggable gaps past the threshold also count as pending |
+| R3 V-2 governance change lands on locked stakers | Vault, pool config, safety and confirm-window changes refused while a break is pending (`BreakPendingForPool`) |
+| R3 V-3 USDG rewards truncated and stuck | Accumulator precision 1e36, debt rounds up |
+| R3 P-1 self-LP rebate wash | Rebate capped at the pool's treasury cut; default treasury cut 15% |
+| R3 M/L-2 confirm window longer than a session | Equity pools: confirm + stabilization ≤ 3.5 h |
+| R3 V-4, V-5, L-3, L-4, F8, P-3 | Replaceable requests; one vault per pool; future-dated rounds rejected; initial price within tolerance of fair; `burn`/`swap` overloads with minimums and deadlines; migrator deploy checks the PM |
+
+Full list, including the frontend findings: [`REVIEW-3.md`](./REVIEW-3.md).
 
 ## Operational requirements from fixes
 
-- **Off-chain keeper must learn the new paths.** `keeper/src/keep.ts` treats only
-  `NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed` as idle. It should also
-  treat `MarketClosed`, `StabilizationActive` and `OracleTimestampSkew` as idle, and call
-  `clearRecoveredBreak` for confirmed breaks (or route through `RebalanceKeeper.keep`, which does both).
+- **Off-chain keeper paths (done).** `keeper/src/keep.ts` treats `NotStructurallyBroken`,
+  `BreakConfirmationPending`, `BreakAlreadyConfirmed`, `BreakNotConfirmed`, `MarketClosed`,
+  `StabilizationActive`, `OracleTimestampSkew`, `OutOfBand` and `BreakSwapThisBlock` as idle,
+  aligns empty pools first, then calls `confirmStructuralBreak` and `clearRecoveredBreak`.
 - **Thin-pool residual (R2-5).** Two-phase breaks assume corrective flow arrives within the window.
   A pool with no active arbitrageur can still confirm and draw down on a genuine gap. Run an
   arbitrage keeper per pool.
@@ -38,7 +47,9 @@
   is permissionless, so anyone can also call it. `RebalanceKeeper.keep` swallows a confirmation
   that cannot run yet (market closed, skew, pause) and emits `BreakConfirmAttempted`.
 - **Break confirmation window.** Default 1 hour. Set per pool via
-  `WoolFiGovernor.setBreakConfirmSeconds(key, seconds)` (max 1 day; zero restores the default). It is
+  `WoolFiGovernor.setBreakConfirmSeconds(key, seconds)` (max 1 day for always-open pools; for
+  equity-hours pools confirmation plus stabilization ≤ 3.5 hours; zero restores the default; refused
+  while a break is pending). It is
   a separate governor call rather than a `SafetyParams` field so the `AuthParamsV2` ABI used by
   `CreatePool.s.sol`, the fork tests and the frontend stays unchanged.
 - **New oracle method.** Every `IPriceOracle` implementation must provide `getLastValidPrice()`.
@@ -102,7 +113,12 @@
   threshold). `WoolFiPoolAligner` resets it for free and the keeper aligns every tick; a determined
   griefer can still make a first deposit revert `OutOfBand` by re-pushing each block, at their own gas
   cost. The zapper and v3 migrator do not align internally because a zap's swap plan is priced at
-  quote time; the frontend sends `align` before a first deposit.
+  quote time; the frontend sends `align` before a first deposit. During a break the aligner only
+  moves an empty pool to within `toleranceBps` of the cached target (break-mode swaps may not
+  overshoot it); the next `align` after the break clears finishes the move to fair.
+- See [`REVIEW-3.md`](./REVIEW-3.md) "Accepted residuals": LP mint has no explicit price bound
+  (bounded by the in-band check), dust break-mode swaps can delay confirm/clear, a paused hook with
+  an unflagged gap does not lock unstakes, and a lapsed request during a lock must be renewed.
 - `SpreadMath.poolPrice` rounds the raw (smallest-unit) price to WAD before rescaling decimals, so
   prices below about 1e-12 token1-raw per token0-raw cannot be resolved to 1 bps (the aligner fuzz
   test bounds its range to match). Every Robinhood pair sits well above it; the lowest is about

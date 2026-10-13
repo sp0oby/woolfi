@@ -135,9 +135,12 @@ multisig-approved per-wallet weekly cap, and only against the hook's configured 
 distributor reserves funded assets as credits accrue, preventing unfunded liabilities. Its
 post-swap call is fail-open: rebate failure must never revert an otherwise valid swap. Rebate
 funding is a capped loyalty budget and is separate from LP principal and URU underwriting assets.
-The rebate is computed from the pool's configured base fee, not the fee actually charged, so a
-corrective swap that paid a discounted fee still receives the full base-fee rebate. This is
-bounded by funding and the weekly cap.
+The rebate is 15% of the fee actually charged, capped at the base fee: `min(charged, base fee)`.
+A corrective swap that paid a discounted fee earns a proportionally smaller rebate, and surcharges
+above the base fee are never rebated. The rebate rate is also capped at the pool's treasury cut
+(`min(15%, treasuryBps)`), so a trader who is also the pool's LP can never earn back more than the
+fee it paid; the default treasury cut is therefore 15%. This is bounded by funding and the weekly
+cap.
 
 ## 5. Market hours and oracle safety
 
@@ -209,8 +212,14 @@ model is:
 Breaks are two-phase. Detection (by a swap or the permissionless `checkStructuralBreak`) only
 contains the pool and records the detection time; no URU moves. A single swap may never cause a
 break: the hook rejects any swap that would carry a pool from inside the hard threshold to beyond
-it (`SwapWouldBreakPool`), in every mode. After a per-pool confirmation window (default 1 hour,
-maximum 1 day), the permissionless `confirmStructuralBreak` re-reads a fresh oracle: if the pool is
+it (`SwapWouldBreakPool`), in every mode. During containment a swap must point toward the cached
+target and may not end further from it than it started, or than `toleranceBps` when it started
+closer (`BreakSwapOvershoot`), so no swap can overshoot the target to manufacture a drawdown.
+`confirmStructuralBreak` and `clearRecoveredBreak` also refuse to run in the same second as a
+break-mode swap of that pool (`BreakSwapThisBlock`), so neither can be decided by a price set
+inside the same transaction. After a per-pool confirmation window (default 1 hour; maximum 1 day
+for always-open pools, and for equity-hours pools confirmation plus stabilization may not exceed
+3.5 hours, the shortest NYSE session), the permissionless `confirmStructuralBreak` re-reads a fresh oracle: if the pool is
 still past the threshold the vault is drawn down once; if it recovered, the break clears with no
 drawdown. For equity-hours pools the window counts from the later of detection and the current
 session open, and confirmation is refused during the post-open stabilization window, so a break
@@ -227,7 +236,9 @@ hours) unaffected.
 The hook implements this model: it caches `cachedFairPriceWad` when a break is flagged, admits
 only corrective swaps against that target, draws within the configured vault cap, and applies a
 configurable `stabilizationSeconds` interval after the market opens. A confirmed break is cleared
-by recovery or by governance. Runtime sequencer/pause guards remain in force during containment; a live fair-value
+by recovery or by governance. A pool can only be initialized at a price within `toleranceBps` of
+the oracle fair price (`InitialPriceOutOfBand`), so nobody can front-run initialization to seed a
+phantom break. Runtime sequencer/pause guards remain in force during containment; a live fair-value
 print is not required to classify corrective flow.
 
 ## 7. Contracts and off-chain services
@@ -235,9 +246,12 @@ print is not required to classify corrective flow.
 - `WoolFiHook`: shared v4 hook, pool authorization, fee logic, market-hours gating, break state.
 - `WoolFiPositionManager`: shared full-range position, ERC-6909 shares, fee realization/routing.
 - `WoolFiUnderwritingVault`: per-pool vault using an externally supplied standard ERC-20; URU in
-  Robinhood production. Unstaking takes a 2-day cooldown, requested shares stay exposed to
-  drawdown until paid out, and `unstake` is refused while the hook reports a detected but
-  unconfirmed break for the vault's pool (`isBreakPendingForVault`).
+  Robinhood production. Unstaking takes a 2-day cooldown, after which the request must be
+  completed within 1 day or it lapses (`UnstakeRequestExpired`; a new request replaces any earlier
+  one). Requested shares stay exposed to drawdown until paid out, and `unstake` is refused while
+  the hook reports a pending break for the vault's pool (`isBreakPendingForVault`): a detected but
+  unconfirmed break, or a gap past the hard threshold against the last valid prices that cannot be
+  flagged yet because the market is closed, stabilizing or skewed.
 - `WoolFiGovernor`: timelock-owned pool configuration surface with a guardian (the Safe) that can
   only engage the emergency pause.
 - `TimelockController` (OpenZeppelin): 3-day minimum delay (longer than the 2-day unstake
@@ -277,15 +291,21 @@ Stakers can always leave ahead of a governance change: the unstake cooldown (2 d
 than the timelock delay (3 days), and the deploy scripts refuse a delay that is not longer. They
 cannot leave ahead of a break: completing an unstake waits while a detected break is being
 confirmed, because a break flagged before a long market weekend can take longer than the cooldown
-to confirm.
+to confirm. While a break is pending, governance cannot change that pool's vault wiring,
+drawdown, oracle or risk parameters, safety settings or confirmation window
+(`BreakPendingForPool`), including in the same block as a `resolveStructuralBreak`, so a queued
+change can never land on stakers who are locked in. Each vault serves exactly one pool
+(`VaultAlreadyMapped`).
 
 Every vault has an explicit URU cap. Per-pool caps and the aggregate treasury allocation require
 multisig approval before funding. Vault rewards may receive a configured share of pool fees.
 No documentation or interface may imply that underwriting eliminates LP loss.
 
-The launch default for realized pool fees is 20% to active URU vault stakers, 10% to the
-multisig-controlled treasury policy, and 70% to LPs. If a configured vault has no stakers, its
-share folds back to LPs. The treasury allocation may fund approved rebates and protocol operations;
+The launch default for realized pool fees is 20% to active URU vault stakers, 15% to the
+multisig-controlled treasury policy, and 65% to LPs. If a configured vault has no stakers, its
+share folds back to LPs. The treasury cut is at least the 15% Urufu Gemu rebate rate, and each
+rebate is capped at the pool's treasury cut, so a holder who is also the pool's LP cannot profit by
+washing trades through their own liquidity. The treasury allocation may fund approved rebates and protocol operations;
 it is not an automatic STRAND or URU buyback. Any per-pool override requires launch-record approval.
 
 ## 9. Coordinated rollout

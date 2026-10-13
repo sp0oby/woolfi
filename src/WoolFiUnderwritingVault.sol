@@ -23,12 +23,24 @@ uint256 constant UNSTAKE_COOLDOWN = 2 days;
 ///      Completing an unstake is also refused while the bound hook reports a detected but unconfirmed
 ///      break for this vault's pool, because confirmation can take longer than the cooldown (a break
 ///      flagged before a long market weekend).
+///
+///      A matured request must be completed within {UNSTAKE_CLAIM_WINDOW} of `releaseAt`; after that
+///      it expires and the staker must request again (a fresh {COOLDOWN}). Without the expiry, a
+///      request made once and never completed would be a perpetual exit option that a staker could
+///      exercise the moment a price gap became visible on-chain but before a break could be flagged
+///      (market closed or stabilizing). A new request replaces any pending one and restarts the
+///      cooldown.
 contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     uint256 private constant BPS = 10_000;
-    uint256 private constant ACC_PRECISION = 1e18;
+    /// @dev Fixed-point scale for the reward-per-share accumulators. 1e36 (not 1e18) so a 6-decimal
+    ///      reward token (USDG) does not truncate to zero against an 18-decimal share supply: with
+    ///      1e27 shares (1B URU staked) a 1-unit deposit still moves the accumulator by 1e9.
+    uint256 private constant ACC_PRECISION = 1e36;
 
     /// @notice Cooldown between requesting and completing an unstake.
     uint256 public constant COOLDOWN = UNSTAKE_COOLDOWN;
+    /// @notice How long after `releaseAt` a matured request stays claimable before it expires.
+    uint256 public constant UNSTAKE_CLAIM_WINDOW = 1 days;
 
     /// @notice The staked asset.
     address public immutable stakingToken;
@@ -73,9 +85,9 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     error InvalidBps();
     error NoStakers();
     error InsufficientShares();
-    error UnstakeAlreadyPending();
     error NoPendingUnstake();
     error CooldownActive();
+    error UnstakeRequestExpired();
     error BreakPending();
     error ZeroAddress();
     error NotContract(address target);
@@ -139,25 +151,29 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     }
 
     /// @notice Begin unstaking `shares`. The shares stay staked (and exposed to drawdown) until the
-    ///         cooldown elapses and {unstake} is called.
+    ///         cooldown elapses and {unstake} is called within {UNSTAKE_CLAIM_WINDOW}.
+    /// @dev Replaces any existing request (pending, matured or expired): the new `shares` amount
+    ///      applies and the cooldown restarts from now. Requested shares keep earning rewards.
     function requestUnstake(uint256 shares) external {
         if (shares == 0) revert ZeroAmount();
         if (shares > sharesOf[msg.sender]) revert InsufficientShares();
-        if (pendingUnstake[msg.sender].shares != 0) revert UnstakeAlreadyPending();
 
         uint256 releaseAt = block.timestamp + COOLDOWN;
         pendingUnstake[msg.sender] = PendingUnstake({shares: shares, releaseAt: releaseAt});
         emit UnstakeRequested(msg.sender, shares, releaseAt);
     }
 
-    /// @notice Complete a pending unstake after the cooldown, redeeming shares for staking tokens at the
+    /// @notice Complete a pending unstake after the cooldown and before the request expires, redeeming shares for staking tokens at the
     ///         current (post-drawdown) per-share value.
     function unstake() external nonReentrant returns (uint256 amount) {
         PendingUnstake memory p = pendingUnstake[msg.sender];
         if (p.shares == 0) revert NoPendingUnstake();
         if (block.timestamp < p.releaseAt) revert CooldownActive();
         if (p.shares > sharesOf[msg.sender]) revert InsufficientShares();
+        // The break lock is reported first: while it holds, nothing the staker does can help.
         if (_breakPending()) revert BreakPending();
+        // A request blocked past its window by a pending break also expires: the staker requests again.
+        if (block.timestamp > p.releaseAt + UNSTAKE_CLAIM_WINDOW) revert UnstakeRequestExpired();
 
         _harvest(msg.sender);
 
@@ -200,8 +216,17 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
     /// @notice Rewards currently claimable by `user`.
     function pendingRewards(address user) external view returns (uint256 fee0, uint256 fee1) {
         uint256 s = sharesOf[user];
-        fee0 = s * accReward0 / ACC_PRECISION - rewardDebt0[user];
-        fee1 = s * accReward1 / ACC_PRECISION - rewardDebt1[user];
+        fee0 = _owed(_accrued(s, accReward0), rewardDebt0[user]);
+        fee1 = _owed(_accrued(s, accReward1), rewardDebt1[user]);
+    }
+
+    /// @notice The window in which `user`'s pending request can be completed: `unstake` succeeds
+    ///         for `releaseAt <= block.timestamp <= expiresAt` (absent a pending break). Both are zero
+    ///         when there is no request.
+    function unstakeWindow(address user) external view returns (uint256 releaseAt, uint256 expiresAt) {
+        PendingUnstake memory p = pendingUnstake[user];
+        if (p.shares == 0) return (0, 0);
+        return (p.releaseAt, p.releaseAt + UNSTAKE_CLAIM_WINDOW);
     }
 
     // --------------------------------------------------------------------
@@ -226,8 +251,8 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
 
     function _harvest(address user) private returns (uint256 fee0, uint256 fee1) {
         uint256 s = sharesOf[user];
-        fee0 = s * accReward0 / ACC_PRECISION - rewardDebt0[user];
-        fee1 = s * accReward1 / ACC_PRECISION - rewardDebt1[user];
+        fee0 = _owed(_accrued(s, accReward0), rewardDebt0[user]);
+        fee1 = _owed(_accrued(s, accReward1), rewardDebt1[user]);
         if (fee0 > 0) SafeTransferLib.safeTransfer(token0, user, fee0);
         if (fee1 > 0) SafeTransferLib.safeTransfer(token1, user, fee1);
         if (fee0 > 0 || fee1 > 0) emit RewardsClaimed(user, fee0, fee1);
@@ -235,8 +260,22 @@ contract WoolFiUnderwritingVault is IUnderwritingVault, ReentrancyGuard {
 
     function _checkpoint(address user) private {
         uint256 s = sharesOf[user];
-        rewardDebt0[user] = s * accReward0 / ACC_PRECISION;
-        rewardDebt1[user] = s * accReward1 / ACC_PRECISION;
+        rewardDebt0[user] = FixedPointMathLib.fullMulDivUp(s, accReward0, ACC_PRECISION);
+        rewardDebt1[user] = FixedPointMathLib.fullMulDivUp(s, accReward1, ACC_PRECISION);
+    }
+
+    /// @dev `shares * acc / ACC_PRECISION`, rounded down, with a 512-bit intermediate so a large share
+    ///      balance times an accumulator built while supply was small cannot overflow.
+    function _accrued(uint256 shares, uint256 acc) private pure returns (uint256) {
+        return FixedPointMathLib.fullMulDiv(shares, acc, ACC_PRECISION);
+    }
+
+    /// @dev Rounding in the vault's favour: accruals round down, debts ({_checkpoint}) round up, and
+    ///      every accumulator step rounds down, so each payout is at most `shares * Δacc / ACC_PRECISION`
+    ///      and the sum paid never exceeds the rewards deposited. Saturates at zero because a
+    ///      rounded-up debt can sit 1 wei above the rounded-down accrual until the accumulator moves.
+    function _owed(uint256 accrued, uint256 debt) private pure returns (uint256) {
+        return accrued > debt ? accrued - debt : 0;
     }
 
     /// @dev Asks the hook whether this vault's pool has a pending (unconfirmed) break. Fails open: if

@@ -3,11 +3,15 @@
 import {useEffect, useState} from "react";
 import {useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
+import {useApprovalShadow} from "@/hooks/useApprovalShadow";
 import {useLiquidityPreview} from "@/hooks/useLiquidityPreview";
 import {useAllowance, useUserReads} from "@/hooks/usePool";
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {erc20Abi, pmAbi, wethAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
 import {poolKeyFor} from "@/lib/poolKey";
+import {deadlineIn} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {Field, StatRow, TxStatus} from "../atoms";
@@ -44,6 +48,7 @@ export function DepositMode({
   price1: bigint | undefined;
 }) {
   const key = poolKeyFor(deployment);
+  const {wrongNetwork} = useWrongNetwork();
   const a0Wei = parseAmount(a0, deployment.token0Decimals);
   const a1Wei = parseAmount(a1, deployment.token1Decimals);
   const [fundingMode, setFundingMode] = useState<"balanced" | "single" | "migrate">("balanced");
@@ -61,26 +66,26 @@ export function DepositMode({
   const waitMint = useWaitForTransactionReceipt({hash: txMint});
   const waitWrap = useWaitForTransactionReceipt({hash: txWrap});
 
-  // Keep a local allowance shadow while RPC/react-query reads catch up to confirmed approvals.
-  const [optAllow0, setOptAllow0] = useState<bigint>(0n);
-  const [optAllow1, setOptAllow1] = useState<bigint>(0n);
+  // Optimistic allowance shadows while RPC/react-query reads catch up to confirmed approvals.
+  // Each only covers the exact token/spender/amount it approved; otherwise the on-chain read rules.
+  const shadow0 = useApprovalShadow(tx0, wait0.isSuccess, allow0.refetch);
+  const shadow1 = useApprovalShadow(tx1, wait1.isSuccess, allow1.refetch);
+  const clear0 = shadow0.clear;
+  const clear1 = shadow1.clear;
   useEffect(() => {
-    if (wait0.isSuccess && a0Wei !== undefined && a0Wei > optAllow0) {
-      setOptAllow0(a0Wei);
-      allow0.refetch();
-    }
-  }, [wait0.isSuccess, a0Wei, allow0, optAllow0]);
-  useEffect(() => {
-    if (wait1.isSuccess && a1Wei !== undefined && a1Wei > optAllow1) {
-      setOptAllow1(a1Wei);
-      allow1.refetch();
-    }
-  }, [wait1.isSuccess, a1Wei, allow1, optAllow1]);
+    if (!waitMint.isSuccess) return;
+    clear0();
+    clear1();
+  }, [waitMint.isSuccess, txMint, clear0, clear1]);
 
-  const eff0 = max(allow0.data ?? 0n, optAllow0);
-  const eff1 = max(allow1.data ?? 0n, optAllow1);
-  const needs0 = a0Wei !== undefined && eff0 < a0Wei;
-  const needs1 = a1Wei !== undefined && eff1 < a1Wei;
+  const needs0 =
+    a0Wei !== undefined &&
+    (allow0.data ?? 0n) < a0Wei &&
+    !shadow0.covers({token: deployment.token0, spender: deployment.positionManager, amount: a0Wei});
+  const needs1 =
+    a1Wei !== undefined &&
+    (allow1.data ?? 0n) < a1Wei &&
+    !shadow1.covers({token: deployment.token1, spender: deployment.positionManager, amount: a1Wei});
   const wethAmount = wethLeg === 0 ? a0Wei : wethLeg === 1 ? a1Wei : undefined;
   useEffect(() => {
     if (waitWrap.isSuccess && wethAmount && wethAmount > wrappedAmount) setWrappedAmount(wethAmount);
@@ -102,9 +107,10 @@ export function DepositMode({
   });
 
   function onClick() {
-    if (!a0Wei || !a1Wei || !address) return;
+    if (!a0Wei || !a1Wei || !address || wrongNetwork) return;
     if (needsWrap && wethAmount) {
       wrap({
+        chainId: robinhood.id,
         address: wethLeg === 0 ? deployment.token0 : deployment.token1,
         abi: wethAbi,
         functionName: "deposit",
@@ -113,7 +119,9 @@ export function DepositMode({
       return;
     }
     if (needs0) {
+      shadow0.request({token: deployment.token0, spender: deployment.positionManager, amount: a0Wei});
       approve0({
+        chainId: robinhood.id,
         address: deployment.token0,
         abi: erc20Abi,
         functionName: "approve",
@@ -122,7 +130,9 @@ export function DepositMode({
       return;
     }
     if (needs1) {
+      shadow1.request({token: deployment.token1, spender: deployment.positionManager, amount: a1Wei});
       approve1({
+        chainId: robinhood.id,
         address: deployment.token1,
         abi: erc20Abi,
         functionName: "approve",
@@ -130,10 +140,12 @@ export function DepositMode({
       });
       return;
     }
-    if (preview.shares === undefined) return;
+    // `preview.shares` only exists when it was computed for exactly these amounts.
+    if (preview.shares === undefined || preview.loading) return;
     const minShares = preview.shares * 9_900n / 10_000n;
-    const deadline = BigInt(Math.floor(Date.now() / 1_000) + 20 * 60);
+    const deadline = deadlineIn(20);
     mint({
+      chainId: robinhood.id,
       address: deployment.positionManager,
       abi: pmAbi,
       functionName: "mint",
@@ -141,8 +153,8 @@ export function DepositMode({
     });
   }
 
-  const ready = fundingMode === "balanced" && !!a0Wei && !!a1Wei && !!address && !busy &&
-    (needsWrap || needs0 || needs1 || preview.shares !== undefined);
+  const ready = fundingMode === "balanced" && !!a0Wei && !!a1Wei && !!address && !wrongNetwork && !busy &&
+    (needsWrap || needs0 || needs1 || (preview.shares !== undefined && !preview.loading));
   return (
     <>
       <div className="grid grid-cols-3 border border-line p-1 font-mono text-[10px] uppercase tracking-[0.18em]">
@@ -187,6 +199,8 @@ export function DepositMode({
           <button type="button" disabled={!ready} onClick={onClick} className={btnCls(!ready)}>
             {!address
           ? "Connect wallet"
+          : wrongNetwork
+            ? "Wrong network"
           : !a0Wei || !a1Wei
             ? "Enter amounts"
             : pendingWrap || waitWrap.isLoading
@@ -218,10 +232,6 @@ export function DepositMode({
       )}
     </>
   );
-}
-
-function max(a: bigint, b: bigint): bigint {
-  return a > b ? a : b;
 }
 
 function signedBps(bps: bigint): string {

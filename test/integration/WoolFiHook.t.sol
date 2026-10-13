@@ -11,6 +11,8 @@ import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "v4-core/src/types/BalanceDelta.sol";
 
 import {Currency} from "v4-core/src/types/Currency.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 
 import {WoolFiHook} from "../../src/WoolFiHook.sol";
 import {BaseHook} from "../../src/base/BaseHook.sol";
@@ -254,8 +256,16 @@ contract WoolFiHookTest is Deployers {
         swap(poolKey, true, EXACT_IN, ZERO_BYTES);
         assertLt(hook.currentDrift(poolKey), 0);
 
-        // A corrective trade may cross the cached target; recovery remains live in reverse.
-        swap(poolKey, false, -20e18, ZERO_BYTES);
+        // A corrective trade may cross the cached target (within max(pre-swap |drift|, tolerance));
+        // recovery remains live in reverse. Tick 2000 is ~1.2214, about +1.8% past the 1.2 target.
+        swapRouter.swap(
+            poolKey,
+            IPoolManager.SwapParams({
+                zeroForOne: false, amountSpecified: -20e18, sqrtPriceLimitX96: TickMath.getSqrtPriceAtTick(2000)
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ZERO_BYTES
+        );
         assertGt(hook.currentDrift(poolKey), 0);
         swap(poolKey, true, EXACT_IN, ZERO_BYTES);
 

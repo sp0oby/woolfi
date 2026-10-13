@@ -78,6 +78,7 @@ export const hookAbi = [
       {name: "maxSkew", type: "uint32"},
     ],
   },
+  {type: "error", name: "BreakSwapThisBlock", inputs: []},
 ] as const;
 
 /** WoolFiPoolAligner: moves an empty pool to its oracle fair price at zero cost. */

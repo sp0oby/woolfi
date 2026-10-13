@@ -450,8 +450,19 @@ contract WoolFiGapsForkTest is Test {
         deal(TOK_MSTR, trader, amount);
         vm.startPrank(trader);
         IERC20(TOK_MSTR).approve(address(router), type(uint256).max);
-        (bool ok, bytes memory reason) =
-            address(router).call(abi.encodeCall(WoolFiSwapRouter.swap, (key, false, amount, 1, trader, "")));
+        // `swap` is overloaded (with and without a deadline), so encode the 6-argument form by signature.
+        (bool ok, bytes memory reason) = address(router)
+            .call(
+                abi.encodeWithSignature(
+                    "swap((address,address,uint24,int24,address),bool,uint256,uint256,address,bytes)",
+                    key,
+                    false,
+                    amount,
+                    uint256(1),
+                    trader,
+                    bytes("")
+                )
+            );
         vm.stopPrank();
         assertFalse(ok, "threshold-crossing swap must revert");
         assertTrue(_containsSelector(reason, selector), "revert carries expected hook error");

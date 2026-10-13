@@ -135,11 +135,13 @@ export default function DocsPage() {
               governance voting token.
             </p>
             <p>
-              Unstaking takes 2 days, and your requested stake stays exposed until it is paid out.
-              Withdrawals also pause while a structural break is being confirmed, so nobody can
-              leave between a break being detected and the drawdown it may lead to. Governance
-              changes wait 3 days, longer than the unstake cooldown, so you can always exit before
-              a queued change takes effect.
+              Unstaking takes 2 days, then you have 1 day to withdraw before the request lapses and
+              must be made again. Your requested stake stays exposed until it is paid out.
+              Withdrawals also pause while a structural break is being confirmed, or while a price
+              gap past the hard threshold is waiting for the market to reopen, so nobody can leave
+              ahead of the drawdown it may lead to. Governance changes wait 3 days, longer than the
+              unstake cooldown, and cannot touch a pool while its break is pending, so a queued
+              change never lands on stakers who are locked in.
             </p>
           </Section>
 

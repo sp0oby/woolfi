@@ -219,20 +219,37 @@ contract WoolFiPoolAlignerTest is Deployers {
         assertTrue(confirmed);
 
         aligner.align(poolKey);
+        // The align swap ran in break mode; clearing waits for a later block.
+        vm.warp(block.timestamp + 1);
         hook.clearRecoveredBreak(poolKey);
         (bool broken,,,) = hook.breakStatus(poolKey);
         assertFalse(broken, "recovered");
         assertGt(_mint(), 0, "deposits reopen");
     }
 
-    function test_break_fairOnOtherSide_hopsThroughCachedTarget() public {
+    /// @dev The hook bounds break-mode swaps to max(pre-swap |drift|, tolerance) against the cached
+    ///      target, so the second leg of the hop (cached target 1.2 -> fresh fair 0.8, -33%) is an
+    ///      overshoot and the whole align reverts. The aligner can no longer carry an empty broken pool
+    ///      past the cached target's tolerance band; recovery goes through confirm/clear or resolution.
+    /// During a break no swap may end more than `toleranceBps` from the cached target, so the aligner
+    /// clamps its aim to the band edge on fair's side instead of reverting.
+    function test_break_fairOutsideBand_clampsToBandEdge() public {
         _flagBreak(1.2e18); // cached target 1.2, pool at 1.0
-        oracle0.setPrice(0.8e18); // fair now below the pool: direct move would be adversarial
+        oracle0.setPrice(0.8e18); // fair 0.8 is far below the band around 1.2
 
         assertTrue(aligner.align(poolKey));
         (uint160 sqrtP,,,) = manager.getSlot0(poolId);
-        int256 driftVsFresh = SpreadMath.computeDrift(SpreadMath.poolPrice(sqrtP, 18, 18), 0.8e18);
-        assertEq(driftVsFresh, 0, "landed on fresh fair");
+        int256 driftVsCached = SpreadMath.computeDrift(SpreadMath.poolPrice(sqrtP, 18, 18), 1.2e18);
+        // Lower band edge, one bps inside tolerance (500 bps).
+        assertLe(driftVsCached, -498, "at the lower band edge");
+        assertGe(driftVsCached, -499, "inside tolerance");
+    }
+
+    function test_clampToBand() public view {
+        assertEq(aligner.clampToBand(1e18, 1e18, 500), 1e18);
+        assertEq(aligner.clampToBand(2e18, 1e18, 500), 1.0499e18);
+        assertEq(aligner.clampToBand(0.5e18, 1e18, 500), 0.9501e18);
+        assertEq(aligner.clampToBand(1.03e18, 1e18, 500), 1.03e18);
     }
 
     // ------------------------------------------------------------------

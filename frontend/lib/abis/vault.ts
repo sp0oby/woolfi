@@ -42,6 +42,7 @@ export const vaultAbi = [
   },
   {type: "error", name: "BreakPending", inputs: []},
   {type: "error", name: "CooldownActive", inputs: []},
+  {type: "error", name: "UnstakeRequestExpired", inputs: []},
   {
     type: "function",
     name: "COOLDOWN",

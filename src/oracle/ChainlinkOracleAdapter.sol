@@ -83,10 +83,10 @@ contract ChainlinkOracleAdapter is IPriceOracleMetadata {
         if (roundId == 0 || answeredInRound < roundId) revert IncompleteRound(roundId, answeredInRound);
 
         uint256 maxStaleness = heartbeat * STALENESS_FACTOR;
-        if (enforceFreshness) {
-            uint256 age = block.timestamp > updatedAt ? block.timestamp - updatedAt : 0;
-            if (age > maxStaleness) revert StalePrice(updatedAt, maxStaleness);
-        } else if (updatedAt == 0 || updatedAt > block.timestamp) {
+        // A zero or future timestamp is never valid, on either path. Checked before the age so a
+        // future-dated round cannot pass the freshness check with an age of zero.
+        if (updatedAt == 0 || updatedAt > block.timestamp) revert StalePrice(updatedAt, maxStaleness);
+        if (enforceFreshness && block.timestamp - updatedAt > maxStaleness) {
             revert StalePrice(updatedAt, maxStaleness);
         }
 

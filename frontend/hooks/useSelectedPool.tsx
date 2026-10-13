@@ -1,15 +1,17 @@
 "use client";
 
 import {createContext, useCallback, useContext, useEffect, useMemo, useState} from "react";
-import {useChainId} from "wagmi";
-
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {defaultPool, findPoolBySlug, poolRegistry} from "@/lib/pools/registry";
 import type {CuratedPool} from "@/lib/pools/types";
-import {deploymentForPool, type WoolFiDeployment} from "@/lib/woolfi";
+import {deploymentForPool, preferredDeploymentChainId, type WoolFiDeployment} from "@/lib/woolfi";
 
 type SelectedPoolValue = {
   pool: CuratedPool;
+  /** Always the Robinhood Chain deployment: reads stay pinned there whatever the wallet is on. */
   deployment: WoolFiDeployment | null;
+  /** Wallet connected on another chain (from the account's real chain). Actions must stay off. */
+  wrongNetwork: boolean;
   pools: readonly CuratedPool[];
   selectPool: (slug: string) => void;
 };
@@ -17,7 +19,7 @@ type SelectedPoolValue = {
 const SelectedPoolContext = createContext<SelectedPoolValue | null>(null);
 
 export function SelectedPoolProvider({children}: {children: React.ReactNode}) {
-  const chainId = useChainId();
+  const {wrongNetwork} = useWrongNetwork();
   const [slug, setSlug] = useState(defaultPool.slug);
 
   const readUrl = useCallback(() => {
@@ -44,11 +46,12 @@ export function SelectedPoolProvider({children}: {children: React.ReactNode}) {
   const value = useMemo(
     () => ({
       pool,
-      deployment: deploymentForPool(chainId, pool),
+      deployment: deploymentForPool(preferredDeploymentChainId, pool),
+      wrongNetwork,
       pools: poolRegistry,
       selectPool,
     }),
-    [chainId, pool, selectPool],
+    [wrongNetwork, pool, selectPool],
   );
 
   return <SelectedPoolContext.Provider value={value}>{children}</SelectedPoolContext.Provider>;

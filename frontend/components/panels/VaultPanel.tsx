@@ -21,7 +21,7 @@ const modes: readonly {id: Mode; label: string}[] = [
 export function VaultPanel() {
   const {pool, deployment} = useSelectedPool();
   const {address} = useAccount();
-  const {vaultStaked} = usePoolReads();
+  const {vaultStaked, vaultShares} = usePoolReads();
   const user = useUserReads(address);
   const [mode, setMode] = useState<Mode>("stake");
   const [amount, setAmount] = useState("");
@@ -41,6 +41,7 @@ export function VaultPanel() {
           setAmount={setAmount}
           user={user}
           vaultStaked={vaultStaked}
+          vaultShares={vaultShares}
         />
       ) : mode === "unstake" ? (
         <UnstakeMode
@@ -49,9 +50,11 @@ export function VaultPanel() {
           amount={amount}
           setAmount={setAmount}
           user={user}
+          vaultStaked={vaultStaked}
+          vaultShares={vaultShares}
         />
       ) : (
-        <ClaimMode deployment={deployment} address={address} user={user} />
+        <ClaimMode deployment={deployment} address={address} user={user} vaultStaked={vaultStaked} vaultShares={vaultShares} />
       )}
       <PanelFootnote>
         {deployment.stakingSymbol} stakers underwrite structural-break risk: on a break the hook

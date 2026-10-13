@@ -37,6 +37,13 @@ Prepared 2026-10-06 as an internal pre-audit package. Not a substitute for an ex
 | src/oracle/MultisigMarketHours.sol | 48 |
 | src/interfaces/*.sol | 83 |
 | src/periphery/WoolFiPoolAligner.sol | 133 |
+| src/periphery/WoolFiV3Migrator.sol | (added 2026-10-13) |
+| src/periphery/WoolFiArbExecutor.sol | (added 2026-10-13) |
+
+**Added 2026-10-13 (Review 3):** `WoolFiV3Migrator` is in scope because migrating existing Uniswap
+v3 positions is how the 16 unseeded pools get their first liquidity, and it takes temporary custody
+of users' v3 position NFTs. `WoolFiArbExecutor` is in scope if it is deployed for the arbitrage
+agent. Line counts above predate the Review 3 fixes; re-measure at the frozen commit.
 
 Total in scope: about 3,200 lines, plus the OpenZeppelin `TimelockController` (v5.6.1, used
 unmodified) that owns the governor, position manager, rebate distributor and zapper in production.

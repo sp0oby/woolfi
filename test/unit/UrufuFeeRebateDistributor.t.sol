@@ -7,7 +7,7 @@ import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {UrufuFeeRebateDistributor} from "../../src/UrufuFeeRebateDistributor.sol";
 import {WoolFiHook} from "../../src/WoolFiHook.sol";
 import {MockERC20} from "../../src/mocks/MockERC20.sol";
-import {MockRebateHook, MockNftBalance} from "./mocks/RebateMocks.sol";
+import {MockRebateHook, MockNftBalance, MockFeeConfigPm} from "./mocks/RebateMocks.sol";
 
 /// @notice Branch-level unit tests for the rebate distributor: constructor and admin validation,
 ///         every early return in `recordSwap`, funding and cap clamps, week rollover, and the
@@ -15,6 +15,7 @@ import {MockRebateHook, MockNftBalance} from "./mocks/RebateMocks.sol";
 contract UrufuFeeRebateDistributorTest is Test {
     UrufuFeeRebateDistributor dist;
     MockRebateHook hook;
+    MockFeeConfigPm pm;
     MockNftBalance nft;
     MockERC20 token;
     address owner = makeAddr("owner");
@@ -37,6 +38,9 @@ contract UrufuFeeRebateDistributorTest is Test {
         vm.stopPrank();
         hook.setPool(POOL, true, 30);
         hook.setFee(POOL, 30);
+        pm = new MockFeeConfigPm();
+        pm.setTreasury(POOL, makeAddr("treasury"), 1500); // treasury cut covers the full 15% rebate
+        hook.setPositionManager(address(pm));
         nft.set(trader, 1);
         _fund(1_000e18);
     }
@@ -133,6 +137,40 @@ contract UrufuFeeRebateDistributorTest is Test {
         assertEq(dist.recordSwap(trader, POOL, address(token), AMOUNT_IN), FULL_REBATE);
         assertEq(dist.claimable(trader, address(token)), FULL_REBATE);
         assertEq(dist.totalLiability(address(token)), FULL_REBATE);
+    }
+
+    // ---------------------------------------------------------------- P-1: rate capped at treasury cut
+
+    function test_recordSwap_rateCappedAtTreasuryCut() public {
+        pm.setTreasury(POOL, makeAddr("treasury"), 1000); // 10% treasury cut < 15% REBATE_BPS
+        assertEq(dist.rebateBpsFor(POOL), 1000);
+        assertEq(dist.recordSwap(trader, POOL, address(token), AMOUNT_IN), 3e18); // 1e22 * 30/1e4 * 10%
+    }
+
+    function test_recordSwap_rateNeverAboveRebateBps() public {
+        pm.setTreasury(POOL, makeAddr("treasury"), 4000);
+        assertEq(dist.rebateBpsFor(POOL), dist.REBATE_BPS());
+        assertEq(dist.recordSwap(trader, POOL, address(token), AMOUNT_IN), FULL_REBATE);
+    }
+
+    function test_recordSwap_noTreasuryCutReturnsZero() public {
+        pm.setTreasury(POOL, makeAddr("treasury"), 0);
+        assertEq(dist.recordSwap(trader, POOL, address(token), AMOUNT_IN), 0);
+    }
+
+    function test_recordSwap_unsetTreasurySinkReturnsZero() public {
+        // The PM folds the treasury cut back to LPs when the sink is unset, so nothing leaves LPs.
+        pm.setTreasury(POOL, address(0), 1500);
+        assertEq(dist.rebateBpsFor(POOL), 0);
+        assertEq(dist.recordSwap(trader, POOL, address(token), AMOUNT_IN), 0);
+    }
+
+    function test_recordSwap_noPositionManagerReturnsZero() public {
+        // Without a PM, LPs add directly to the pool and no protocol cut exists.
+        hook.setPositionManager(address(0));
+        assertEq(dist.rebateBpsFor(POOL), 0);
+        assertEq(dist.recordSwap(trader, POOL, address(token), AMOUNT_IN), 0);
+        assertEq(dist.totalLiability(address(token)), 0);
     }
 
     function test_recordSwap_zeroCapReturnsZero() public {

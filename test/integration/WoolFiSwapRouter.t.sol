@@ -14,6 +14,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {WoolFiHook} from "../../src/WoolFiHook.sol";
 import {WoolFiSwapRouter} from "../../src/WoolFiSwapRouter.sol";
+import {WoolFiPositionManager} from "../../src/WoolFiPositionManager.sol";
 import {UrufuFeeRebateDistributor} from "../../src/UrufuFeeRebateDistributor.sol";
 import {MockPriceOracle} from "../../src/mocks/MockPriceOracle.sol";
 import {MockMarketHours} from "../../src/mocks/MockMarketHours.sol";
@@ -89,6 +90,13 @@ contract WoolFiSwapRouterTest is Deployers {
             }),
             ZERO_BYTES
         );
+
+        // Wire a PM whose fee config sends 15% of fees to the treasury: the rebate rate is capped at
+        // the treasury cut (P-1), so this keeps the full 15% rebate these tests expect. The PM holds
+        // no shares, so the hook's per-swap realize is a no-op.
+        WoolFiPositionManager pm = new WoolFiPositionManager(manager, address(this));
+        pm.setFeeConfig(poolKey, address(0), 0, makeAddr("treasury"), 1500);
+        hook.setPositionManager(address(pm));
 
         urufuNft = new MockUrufuNft();
         rebateDistributor = new UrufuFeeRebateDistributor(hook, address(urufuNft), address(this));

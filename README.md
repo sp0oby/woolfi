@@ -63,7 +63,7 @@ transaction. Full range, no range management. Earn the swap fees.
 </td>
 <td align="left" valign="top">
 Stake URU in a pool's vault for a share of its fees. In return, a confirmed structural break
-can draw down a capped portion of the stake. Unstaking takes 2 days.
+can draw down a capped portion of the stake. Unstaking takes 2 days, then 1 day to withdraw.
 </td>
 </tr>
 </table>
@@ -178,7 +178,8 @@ There is no token vote. URU is underwriting capital, not voting stake.
 </div>
 
 The 3-day delay is longer than the 2-day unstake cooldown, so a staker can always leave before a
-queued change runs. Drawn-down URU goes to a separate rebalancer, never the multisig or timelock.
+queued change runs, and while a break is pending governance cannot change that pool at all.
+Drawn-down URU goes to a separate rebalancer, never the multisig or timelock.
 Setup: [`docs/runbooks/multisig-setup.md`](./docs/runbooks/multisig-setup.md).
 
 ---

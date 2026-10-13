@@ -1,14 +1,18 @@
 "use client";
 
-import {useMemo, useState} from "react";
+import {useEffect, useMemo, useState} from "react";
 import {useWaitForTransactionReceipt, useWriteContract} from "wagmi";
 
+import {useApprovalShadow} from "@/hooks/useApprovalShadow";
 import {useZapQuote} from "@/hooks/useZapQuote";
 import {useAllowance} from "@/hooks/usePool";
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
 import {erc20Abi, liquidityZapperAbi} from "@/lib/abis";
 import {fmtAmount} from "@/lib/format";
 import {robinhoodAssets} from "@/lib/pools/assets";
 import {poolKeyFor} from "@/lib/poolKey";
+import {deadlineIn} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {Field, StatRow, TxStatus} from "../atoms";
@@ -31,6 +35,7 @@ export function SingleDepositMode({
   deployment: WoolFiDeployment;
   address: `0x${string}` | undefined;
 }) {
+  const {wrongNetwork} = useWrongNetwork();
   const options = useMemo(() => inputOptions(deployment), [deployment]);
   const [selected, setSelected] = useState(options[0].symbol);
   const [amount, setAmount] = useState("");
@@ -51,16 +56,27 @@ export function SingleDepositMode({
   const {writeContract: zap, data: zapHash, isPending: zapping, error: zapError} = useWriteContract();
   const approvalReceipt = useWaitForTransactionReceipt({hash: approvalHash});
   const zapReceipt = useWaitForTransactionReceipt({hash: zapHash});
-  const approved = option.native || (!!amountWei && (allowance.data ?? 0n) >= amountWei) || approvalReceipt.isSuccess;
+  // A confirmed approval only vouches for the exact token, spender and amount it approved.
+  const shadow = useApprovalShadow(approvalHash, approvalReceipt.isSuccess, allowance.refetch);
+  const clearApproval = shadow.clear;
+  useEffect(() => {
+    if (zapReceipt.isSuccess) clearApproval();
+  }, [zapReceipt.isSuccess, zapHash, clearApproval]);
+  const approved =
+    option.native ||
+    (!!amountWei && (allowance.data ?? 0n) >= amountWei) ||
+    (!!amountWei && !!zapper && shadow.covers({token: option.actualAddress, spender: zapper, amount: amountWei}));
   const busy = approving || zapping || approvalReceipt.isLoading || zapReceipt.isLoading;
-  const ready = !!address && !!zapper && !!amountWei && amountWei > 0n && !!quote && !loading && !busy;
-  const canApprove = !!address && !!zapper && !!amountWei && !option.native && !approved && !busy;
+  const ready = !!address && !wrongNetwork && !!zapper && !!amountWei && amountWei > 0n && !!quote && !loading && !busy;
+  const canApprove = !!address && !wrongNetwork && !!zapper && !!amountWei && !option.native && !approved && !busy;
   const canZap = ready && approved;
 
   function submit() {
-    if (!address || !zapper || !amountWei) return;
+    if (!address || !zapper || !amountWei || wrongNetwork) return;
     if (!approved) {
+      shadow.request({token: option.actualAddress, spender: zapper, amount: amountWei});
       approve({
+        chainId: robinhood.id,
         address: option.actualAddress,
         abi: erc20Abi,
         functionName: "approve",
@@ -68,8 +84,10 @@ export function SingleDepositMode({
       });
       return;
     }
-    if (!quote) return;
+    // `quote` only exists when it was built for exactly this token and amount.
+    if (!quote || loading) return;
     zap({
+      chainId: robinhood.id,
       address: zapper,
       abi: liquidityZapperAbi,
       functionName: "zap",
@@ -80,7 +98,7 @@ export function SingleDepositMode({
         swap0: quote.swap0,
         swap1: quote.swap1,
         minShares: quote.shares * 9_900n / 10_000n,
-        deadline: BigInt(Math.floor(Date.now() / 1_000) + 20 * 60),
+        deadline: deadlineIn(20),
         recipient: address,
       }],
       value: option.native ? amountWei : 0n,
@@ -129,6 +147,8 @@ export function SingleDepositMode({
       <button type="button" disabled={!canApprove && !canZap} onClick={submit} className={btnCls(!canApprove && !canZap)}>
         {!address
           ? "Connect wallet"
+          : wrongNetwork
+            ? "Wrong network"
           : !zapper
             ? "Zapper not deployed"
             : !amountWei

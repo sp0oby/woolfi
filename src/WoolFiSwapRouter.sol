@@ -29,6 +29,7 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
     error NotPoolManager();
     error ZeroAmount();
     error InsufficientOutput(uint256 received, uint256 minimum);
+    error DeadlineExpired(uint256 deadline);
 
     event Swap(address indexed payer, address indexed recipient, bool zeroForOne, uint256 amountIn, uint256 amountOut);
     event RebateRecorded(address indexed payer, address indexed tokenIn, uint256 amount);
@@ -65,6 +66,33 @@ contract WoolFiSwapRouter is IUnlockCallback, ReentrancyGuard {
         address recipient,
         bytes calldata hookData
     ) external nonReentrant returns (uint256 amountOut) {
+        return _swap(key, zeroForOne, amountIn, amountOutMinimum, recipient, hookData);
+    }
+
+    /// @notice {swap} with a transaction deadline: reverts {DeadlineExpired} once `block.timestamp`
+    ///         is past `deadline`, otherwise identical to the 6-argument {swap}.
+    /// @param deadline Latest `block.timestamp` at which the swap may execute.
+    function swap(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        address recipient,
+        bytes calldata hookData,
+        uint256 deadline
+    ) external nonReentrant returns (uint256 amountOut) {
+        if (block.timestamp > deadline) revert DeadlineExpired(deadline);
+        return _swap(key, zeroForOne, amountIn, amountOutMinimum, recipient, hookData);
+    }
+
+    function _swap(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        address recipient,
+        bytes calldata hookData
+    ) private returns (uint256 amountOut) {
         if (amountIn == 0) revert ZeroAmount();
 
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({

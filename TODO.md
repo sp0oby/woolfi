@@ -30,7 +30,13 @@ the spec.
 
 ## Shared production infrastructure
 
-- [ ] Freeze and audit the hook, position manager, vault, governor, router, adapters, and scripts.
+- [x] Internal adversarial Review 3 (2026-10-13): 3 High, 6 Medium and several Low findings fixed
+      with regression tests ([`docs/audit/REVIEW-3.md`](./docs/audit/REVIEW-3.md)).
+- [ ] Freeze and audit the hook, position manager, vault, governor, router, adapters, scripts, and
+      now also `WoolFiV3Migrator` (and `WoolFiArbExecutor` if deployed). Audit the code as fixed in
+      Review 3; the earlier internal audit package predates those fixes.
+- [ ] Manually test wallet connection (RainbowKit / WalletConnect) on a production build under the
+      new Content-Security-Policy, with a real WalletConnect project id.
 - [x] Wire and verify the position manager on the hook.
 - [x] Configure and test the swap router end to end.
 - [x] Configure the indexer for all 18 pools, vaults, and production start blocks.

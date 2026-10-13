@@ -1,7 +1,10 @@
 "use client";
 
 import {useChainId, useWaitForTransactionReceipt} from "wagmi";
-import {explorerTx} from "@/lib/wagmi";
+
+import {useWrongNetwork} from "@/hooks/useWrongNetwork";
+import {MAX_SLIPPAGE_BPS, parseSlippageBps, SLIPPAGE_WARN_BPS} from "@/lib/txGuards";
+import {chainNameById, explorerTx, robinhood} from "@/lib/wagmi";
 
 /**
  * Shared atoms for the trade / liquidity / vault panels. Mono labels, bordered boxes,
@@ -140,5 +143,58 @@ export function TxStatusInline({hash}: {hash: `0x${string}` | undefined}) {
     >
       {dot} {status} ↗
     </a>
+  );
+}
+
+/**
+ * Shown above the action panels while the wallet is on another chain. Every action button is
+ * disabled in that state; this is the one way forward.
+ */
+export function WrongNetworkNotice() {
+  const {wrongNetwork, switching, switchToRobinhood} = useWrongNetwork();
+  if (!wrongNetwork) return null;
+  return (
+    <div className="mb-5 space-y-3 border border-warn/30 bg-warn/[0.05] px-4 py-3 font-mono text-[12px] text-ink/90">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-warn">Wrong network</div>
+      <p className="normal-case">
+        Your wallet is on another chain. Actions are disabled until you switch to {chainNameById[robinhood.id]}.
+      </p>
+      <button
+        type="button"
+        disabled={switching}
+        onClick={switchToRobinhood}
+        className="look-btn block w-full py-3 border border-line font-mono text-[11px] uppercase tracking-[0.22em] text-white hover:bg-white/5 disabled:text-muted disabled:cursor-not-allowed"
+      >
+        {switching ? "Switching…" : `Switch to ${chainNameById[robinhood.id]}`}
+      </button>
+    </div>
+  );
+}
+
+/** Slippage tolerance input (%), capped at 5%, with a visible warning above 1%. */
+export function SlippageInput({value, onChange}: {value: string; onChange: (v: string) => void}) {
+  const bps = parseSlippageBps(value);
+  const capPct = Number(MAX_SLIPPAGE_BPS) / 100;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3 border border-line px-5 py-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted">Slippage (%, max {capPct})</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
+          aria-invalid={bps === undefined}
+          className="bg-transparent font-mono text-sm text-white outline-none text-right w-24"
+        />
+      </div>
+      {value && bps === undefined ? (
+        <p className="font-mono text-[11px] text-danger">Enter a slippage between 0 and {capPct}%.</p>
+      ) : bps !== undefined && bps > SLIPPAGE_WARN_BPS ? (
+        <p className="font-mono text-[11px] text-warn">
+          High slippage: you may receive up to {(Number(bps) / 100).toFixed(2)}% less than quoted.
+        </p>
+      ) : null}
+    </div>
   );
 }

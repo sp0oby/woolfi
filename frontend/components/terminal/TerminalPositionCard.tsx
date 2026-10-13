@@ -5,6 +5,7 @@ import {useAccount} from "wagmi";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 import {usePoolReads, useUserReads, useWalletUru} from "@/hooks/usePool";
 import {fmtAmount} from "@/lib/format";
+import {uruFromShares} from "@/lib/txGuards";
 
 /**
  * Bottom half of the right rail. Always visible. Answers "what do I have here right now?" -
@@ -14,14 +15,15 @@ import {fmtAmount} from "@/lib/format";
 export function TerminalPositionCard() {
   const {pool} = useSelectedPool();
   const {address} = useAccount();
-  const {deployment, totalShares, vaultStaked} = usePoolReads();
+  const {deployment, totalShares, vaultStaked, vaultShares} = usePoolReads();
   const user = useUserReads(address);
   const walletUru = useWalletUru(address);
 
   const bal0 = user.bal0;
   const bal1 = user.bal1;
   const lpShares = user.lpShares;
-  const vaultStake = user.vaultStake;
+  // sharesOf is vault shares; value them in URU (shares * totalStaked / totalShares).
+  const vaultStake = uruFromShares(user.vaultStake, vaultStaked, vaultShares);
   const pendingLp = user.pendingLpFees;
   const pendingRewards = user.pendingRewards;
 

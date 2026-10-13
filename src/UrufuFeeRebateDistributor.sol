@@ -14,19 +14,32 @@ interface IERC721Balance {
     function balanceOf(address owner) external view returns (uint256);
 }
 
+/// @dev The fee-routing getter of {WoolFiPositionManager}, declared inline to avoid importing the PM.
+interface IPositionManagerFeeConfig {
+    function feeConfig(uint256 id)
+        external
+        view
+        returns (address vault, uint16 vaultBps, address treasurySink, uint16 treasuryBps);
+}
+
 /// @title UrufuFeeRebateDistributor
 /// @notice Credits Urufu Gemu NFT holders with a capped rebate in each swap's input token.
 /// @dev The authorized WoolFi router records successful swaps after settlement. Rebates equal
-///      `amountIn * min(feeChargedBps, poolBaseFeeBps) * REBATE_BPS / 1e8`, where `feeChargedBps`
-///      is the LP fee the hook actually applied to that swap (read from the hook's transient
-///      `lastSwapFeeBps` in the same transaction). Directional surcharges are never rebated, and a
-///      discounted corrective swap earns a proportionally smaller rebate. Credits belong to the
+///      `amountIn * min(feeChargedBps, poolBaseFeeBps) * min(REBATE_BPS, treasuryBps) / 1e8`, where
+///      `feeChargedBps` is the LP fee the hook actually applied to that swap (read from the hook's
+///      transient `lastSwapFeeBps` in the same transaction). Directional surcharges are never
+///      rebated, and a discounted corrective swap earns a proportionally smaller rebate.
+///      `treasuryBps` is the pool's treasury cut in the hook's current position manager fee config
+///      (zero when no PM is wired or no treasury sink is set). Capping the rebate rate at the share
+///      of the fee that leaves LPs and stakers for the treasury means a trader who is also the
+///      pool's only LP (and staker) can never earn back more than the fee it paid: self-LP wash
+///      trading is never profitable. Credits belong to the
 ///      trading wallet and do not follow an NFT transfer. The weekly cap is per wallet: the Urufu
 ///      Gemu NFT is not ERC721Enumerable, so caps cannot be keyed by token id (accepted residual risk,
 ///      bounded by funding; see docs/audit/KNOWN-ISSUES.md).
 contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable2Step, ReentrancyGuard {
     uint256 public constant BPS = 10_000;
-    uint16 public constant REBATE_BPS = 1_500; // 15% of the base-fee portion
+    uint16 public constant REBATE_BPS = 1_500; // 15% of the base-fee portion, capped at the treasury cut
 
     struct WeeklyUsage {
         uint64 week;
@@ -107,15 +120,31 @@ contract UrufuFeeRebateDistributor is IFeeRebateDistributor, Ownable2Step, Reent
         WoolFiHook.WoolFiConfig memory config = hook.poolConfig(poolId);
         if (!config.configured) return 0;
 
+        uint256 rebateBps = rebateBpsFor(poolId);
+        if (rebateBps == 0) return 0;
+
         uint256 feeBps = hook.lastSwapFeeBps(poolId);
         if (feeBps > config.baseFeeBps) feeBps = config.baseFeeBps;
         uint256 rebatedFee = amountIn * feeBps / BPS;
-        rebate = rebatedFee * REBATE_BPS / BPS;
+        rebate = rebatedFee * rebateBps / BPS;
         if (rebate == 0) return 0;
 
         uint64 currentWeek;
         (rebate, currentWeek) = _reserveRebate(trader, tokenIn, rebate, cap);
         if (rebate > 0) emit RebateAccrued(trader, poolId, tokenIn, rebate, currentWeek);
+    }
+
+    /// @notice Effective rebate rate (bps of the rebated fee) for a pool:
+    ///         `min(REBATE_BPS, treasuryBps)` from the hook's current position manager fee config.
+    /// @dev Zero when the hook has no PM wired (LPs may then add directly, with no protocol cut) or
+    ///      the pool's treasury sink is unset (the PM folds the treasury cut back to LPs).
+    function rebateBpsFor(PoolId poolId) public view returns (uint256) {
+        address pm = hook.positionManager();
+        if (pm == address(0)) return 0;
+        (,, address treasurySink, uint16 treasuryBps) =
+            IPositionManagerFeeConfig(pm).feeConfig(uint256(PoolId.unwrap(poolId)));
+        if (treasurySink == address(0)) return 0;
+        return treasuryBps < REBATE_BPS ? treasuryBps : REBATE_BPS;
     }
 
     function _reserveRebate(address trader, address token, uint256 requested, uint256 cap)

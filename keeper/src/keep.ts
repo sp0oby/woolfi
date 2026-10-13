@@ -25,7 +25,8 @@ export type PoolOutcome = {
 // yet confirmed, market closed, opening stabilization, skewed legs, or drift still out of band.
 // These are the normal steady state, not keeper failures.
 const STEP_IDLE =
-  /NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed|BreakNotConfirmed|MarketClosed|StabilizationActive|OracleTimestampSkew|OutOfBand/;
+  // BreakSwapThisBlock: a break-mode swap landed this second; confirm/clear retry on the next tick.
+  /NotStructurallyBroken|BreakConfirmationPending|BreakAlreadyConfirmed|BreakNotConfirmed|MarketClosed|StabilizationActive|OracleTimestampSkew|OutOfBand|BreakSwapThisBlock/;
 
 // Align reverts that are the normal steady state: a seeded pool (PoolHasLiquidity) or a paused hook.
 // Hook reverts inside the PoolManager swap arrive as WrappedError carrying the hook selector, so the

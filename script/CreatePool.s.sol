@@ -34,7 +34,7 @@ import {RobinhoodDeploymentArtifact} from "./lib/RobinhoodDeploymentArtifact.sol
 ///        SQRT_PRICE_X96                — initial pool price (Q64.96)
 ///      Optional env (defaults per PROJECT_SPEC.md §3, §7.3):
 ///        TICK_SPACING (60), K_SCALED (40000), BASE_FEE_BPS (30), TOLERANCE_BPS (500),
-///        HARD_THRESHOLD_BPS (1500), DRAWDOWN_BPS (2000), VAULT_FEE_BPS (2000), TREASURY_FEE_BPS (1000),
+///        HARD_THRESHOLD_BPS (1500), DRAWDOWN_BPS (2000), VAULT_FEE_BPS (2000), TREASURY_FEE_BPS (1500),
 ///        STABILIZATION_SECONDS (0), MAX_ORACLE_SKEW (0)
 ///      Robinhood broadcast env:
 ///        POOL_SLUG, TOKEN0_SYMBOL, TOKEN1_SYMBOL
@@ -177,7 +177,7 @@ contract CreatePool is RobinhoodDeploymentArtifact {
         c.hardThresholdBps = uint16(vm.envOr("HARD_THRESHOLD_BPS", uint256(1500)));
         c.drawdownBps = uint16(vm.envOr("DRAWDOWN_BPS", uint256(2000)));
         c.vaultFeeBps = uint16(vm.envOr("VAULT_FEE_BPS", uint256(2000)));
-        c.treasuryFeeBps = uint16(vm.envOr("TREASURY_FEE_BPS", uint256(1000)));
+        c.treasuryFeeBps = uint16(vm.envOr("TREASURY_FEE_BPS", uint256(1500)));
         c.stabilizationSeconds = uint32(vm.envOr("STABILIZATION_SECONDS", uint256(0)));
         c.maxOracleSkew = uint32(vm.envOr("MAX_ORACLE_SKEW", uint256(0)));
     }

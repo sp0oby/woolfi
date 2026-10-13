@@ -37,7 +37,7 @@ function deployed(slug: string, a: `0x${string}`, b: `0x${string}`, id: number, 
     hardThresholdBps: 1500,
     drawdownBps: 2000,
     vaultFeeBps: 2000,
-    treasuryFeeBps: 1000,
+    treasuryFeeBps: 1500,
     startBlock: 123,
     seeded,
   };

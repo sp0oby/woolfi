@@ -15,7 +15,7 @@ export const conservativeLaunchRisk = {
   hardThresholdBps: 1500,
   drawdownBps: 2000,
   vaultFeeBps: 2000,
-  treasuryFeeBps: 1000,
+  treasuryFeeBps: 1500,
 } as const satisfies PoolRiskDefaults;
 
 type PairSpec = readonly [

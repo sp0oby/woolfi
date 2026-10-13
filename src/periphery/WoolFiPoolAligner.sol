@@ -31,9 +31,12 @@ import {SpreadMath} from "../lib/SpreadMath.sol";
 ///      - live: works; the hook needs fresh oracle prints, so a stale feed reverts the swap.
 ///      - market closed / stabilization: works against the last valid print (flat fee, zero input).
 ///      - oracle skew: works (flat fee).
-///      - structural break: the hook only allows swaps toward the cached break target. When the fresh
-///        fair price lies on the other side, the aligner first moves to the cached target (where either
-///        direction is allowed) and then to fair, in the same unlock.
+///      - structural break: the hook only allows swaps toward the cached break target, and no break-mode
+///        swap may end further than `toleranceBps` from that target unless it started further out
+///        ({WoolFiHook.BreakSwapOvershoot}). The aligner therefore aims at fair clamped to within
+///        `toleranceBps - 1` of the cached target; when that aim lies on the far side of the target it
+///        first moves to the target (where either direction is allowed) and then out to the aim, in the
+///        same unlock. Once the break clears, the next `align` finishes the move to fair.
 ///      - paused hook, oracle runtime guard failure (feed paused, invalid round): reverts.
 contract WoolFiPoolAligner is IUnlockCallback {
     using PoolIdLibrary for PoolKey;
@@ -65,16 +68,19 @@ contract WoolFiPoolAligner is IUnlockCallback {
         if (!c.configured) revert PoolNotConfigured();
 
         uint256 fair = SpreadMath.fairPrice(c.oracle0.getLastValidPrice(), c.oracle1.getLastValidPrice());
+        // During a break a swap may not end more than `toleranceBps` from the cached target, so aim at
+        // fair clamped to one bps inside that band (sqrt rounding stays within it).
+        uint256 aim = c.structuralBreak ? clampToBand(fair, c.cachedFairPriceWad, c.toleranceBps) : fair;
         (uint160 current,,,) = poolManager.getSlot0(id);
-        uint160 target = toSqrtPriceX96(fair, c.decimals0, c.decimals1);
+        uint160 target = toSqrtPriceX96(aim, c.decimals0, c.decimals1);
         if (
             target == current
-                || SpreadMath.computeDrift(SpreadMath.poolPrice(current, c.decimals0, c.decimals1), fair) == 0
+                || SpreadMath.computeDrift(SpreadMath.poolPrice(current, c.decimals0, c.decimals1), aim) == 0
         ) {
             return false;
         }
 
-        // During a break the hook only accepts swaps toward the cached target. If fair lies the other
+        // During a break the hook only accepts swaps toward the cached target. If the aim lies the other
         // way, hop through the cached target first (drift there is zero, so either direction passes).
         uint160 via;
         if (c.structuralBreak) {
@@ -87,7 +93,7 @@ contract WoolFiPoolAligner is IUnlockCallback {
         }
 
         poolManager.unlock(abi.encode(key, via, target));
-        emit PoolAligned(id, current, target, fair);
+        emit PoolAligned(id, current, target, aim);
         return true;
     }
 
@@ -98,6 +104,16 @@ contract WoolFiPoolAligner is IUnlockCallback {
         if (via != 0) _moveTo(key, via);
         _moveTo(key, target);
         return "";
+    }
+
+    /// @notice `fair` clamped to within `toleranceBps - 1` of `cachedTarget` (both WAD prices).
+    function clampToBand(uint256 fair, uint256 cachedTarget, uint16 toleranceBps) public pure returns (uint256) {
+        uint256 band = toleranceBps > 1 ? toleranceBps - 1 : 0;
+        uint256 hi = FixedPointMathLib.fullMulDiv(cachedTarget, 10_000 + band, 10_000);
+        uint256 lo = FixedPointMathLib.fullMulDiv(cachedTarget, 10_000 - band, 10_000);
+        if (fair > hi) return hi;
+        if (fair < lo) return lo;
+        return fair;
     }
 
     /// @notice Convert a WAD token1-per-token0 price into a v4 sqrtPriceX96, clamped to the swappable range.

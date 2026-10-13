@@ -12,6 +12,7 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {ERC6909} from "solady/tokens/ERC6909.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 import {LiquidityAmounts} from "./lib/LiquidityAmounts.sol";
 import {IUnderwritingVault} from "./interfaces/IUnderwritingVault.sol";
@@ -34,8 +35,11 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     using StateLibrary for IPoolManager;
     using BalanceDeltaLibrary for BalanceDelta;
 
-    /// @dev Fixed-point scale for the fee-per-share accumulator.
-    uint256 private constant ACC_PRECISION = 1e18;
+    /// @dev Fixed-point scale for the fee-per-share accumulator. 1e36 (not 1e18) because shares are
+    ///      liquidity units (up to ~1e30 for a deep pool) and a 6-decimal fee token (USDG) would
+    ///      otherwise truncate a realistic per-poke fee to zero per share. All products with the
+    ///      accumulator use a 512-bit intermediate ({FixedPointMathLib.fullMulDiv}).
+    uint256 private constant ACC_PRECISION = 1e36;
     uint256 private constant BPS = 10_000;
     /// @dev Max combined protocol cut (vault + treasury) that may be diverted from LP fees.
     uint256 private constant MAX_PROTOCOL_FEE_BPS = 5_000; // 50%
@@ -97,6 +101,7 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     error InvalidFeeConfig();
     error DeadlineExpired(uint256 deadline);
     error InsufficientShares(uint256 received, uint256 minimum);
+    error InsufficientOutput(uint256 amount0, uint256 amount1);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -228,6 +233,32 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         nonReentrant
         returns (uint256 amount0, uint256 amount1)
     {
+        return _burnPosition(key, shares, to);
+    }
+
+    /// @notice Burn LP shares with caller-enforced output minimums and a transaction deadline.
+    /// @dev Same semantics as the 3-argument {burn}. The minimums apply to principal only (fees paid
+    ///      alongside are not counted).
+    /// @param amount0Min Minimum token0 principal; reverts {InsufficientOutput} below it.
+    /// @param amount1Min Minimum token1 principal; reverts {InsufficientOutput} below it.
+    /// @param deadline Latest `block.timestamp` at which the burn may execute.
+    function burn(
+        PoolKey calldata key,
+        uint128 shares,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 deadline,
+        address to
+    ) external nonReentrant returns (uint256 amount0, uint256 amount1) {
+        if (block.timestamp > deadline) revert DeadlineExpired(deadline);
+        (amount0, amount1) = _burnPosition(key, shares, to);
+        if (amount0 < amount0Min || amount1 < amount1Min) revert InsufficientOutput(amount0, amount1);
+    }
+
+    function _burnPosition(PoolKey calldata key, uint128 shares, address to)
+        private
+        returns (uint256 amount0, uint256 amount1)
+    {
         uint256 id = _id(key);
 
         bytes memory ret = poolManager.unlock(abi.encode(CallbackData(Action.BURN, key, shares, msg.sender, to)));
@@ -311,8 +342,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
     function pendingFees(PoolKey calldata key, address account) external view returns (uint256 fee0, uint256 fee1) {
         uint256 id = _id(key);
         uint256 bal = balanceOf(account, id);
-        fee0 = bal * accFeePerShare0[id] / ACC_PRECISION - feeDebt0[account][id];
-        fee1 = bal * accFeePerShare1[id] / ACC_PRECISION - feeDebt1[account][id];
+        fee0 = _owed(_accrued(bal, accFeePerShare0[id]), feeDebt0[account][id]);
+        fee1 = _owed(_accrued(bal, accFeePerShare1[id]), feeDebt1[account][id]);
     }
 
     /// @notice Preview shares for the supplied token maxima at the pool's current price.
@@ -337,8 +368,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         uint256 fee0 = _takePrincipal(key.currency0, address(this), delta.amount0());
         uint256 fee1 = _takePrincipal(key.currency1, address(this), delta.amount1());
         (uint256 lp0, uint256 lp1) = _routeProtocolFees(key, id, fee0, fee1);
-        if (lp0 > 0) accFeePerShare0[id] += lp0 * ACC_PRECISION / supply;
-        if (lp1 > 0) accFeePerShare1[id] += lp1 * ACC_PRECISION / supply;
+        if (lp0 > 0) accFeePerShare0[id] += FixedPointMathLib.fullMulDiv(lp0, ACC_PRECISION, supply);
+        if (lp1 > 0) accFeePerShare1[id] += FixedPointMathLib.fullMulDiv(lp1, ACC_PRECISION, supply);
     }
 
     /// @dev Split realized fees per the pool's {FeeConfig}: vault cut -> staker rewards, treasury cut
@@ -391,8 +422,8 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
         returns (uint256 fee0, uint256 fee1)
     {
         uint256 bal = balanceOf(account, id);
-        fee0 = bal * accFeePerShare0[id] / ACC_PRECISION - feeDebt0[account][id];
-        fee1 = bal * accFeePerShare1[id] / ACC_PRECISION - feeDebt1[account][id];
+        fee0 = _owed(_accrued(bal, accFeePerShare0[id]), feeDebt0[account][id]);
+        fee1 = _owed(_accrued(bal, accFeePerShare1[id]), feeDebt1[account][id]);
         if (fee0 > 0) SafeTransferLib.safeTransfer(Currency.unwrap(key.currency0), to, fee0);
         if (fee1 > 0) SafeTransferLib.safeTransfer(Currency.unwrap(key.currency1), to, fee1);
         if (fee0 > 0 || fee1 > 0) emit FeesCollected(id, to, fee0, fee1);
@@ -400,8 +431,21 @@ contract WoolFiPositionManager is ERC6909, IUnlockCallback, ReentrancyGuard {
 
     function _checkpoint(address account, uint256 id) private {
         uint256 bal = balanceOf(account, id);
-        feeDebt0[account][id] = bal * accFeePerShare0[id] / ACC_PRECISION;
-        feeDebt1[account][id] = bal * accFeePerShare1[id] / ACC_PRECISION;
+        feeDebt0[account][id] = FixedPointMathLib.fullMulDivUp(bal, accFeePerShare0[id], ACC_PRECISION);
+        feeDebt1[account][id] = FixedPointMathLib.fullMulDivUp(bal, accFeePerShare1[id], ACC_PRECISION);
+    }
+
+    /// @dev `shares * acc / ACC_PRECISION`, rounded down, via a 512-bit intermediate.
+    function _accrued(uint256 shares, uint256 acc) private pure returns (uint256) {
+        return FixedPointMathLib.fullMulDiv(shares, acc, ACC_PRECISION);
+    }
+
+    /// @dev Rounding in the PM's favour: accruals round down, debts ({_checkpoint}) round up, and
+    ///      every accumulator step rounds down, so each payout is at most `shares * Δacc / ACC_PRECISION`
+    ///      and LPs are never paid more than was realized. Saturates at zero because a rounded-up debt
+    ///      can sit 1 wei above the rounded-down accrual until the accumulator moves.
+    function _owed(uint256 accrued, uint256 debt) private pure returns (uint256) {
+        return accrued > debt ? accrued - debt : 0;
     }
 
     // --------------------------------------------------------------------

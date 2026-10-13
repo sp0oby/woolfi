@@ -69,7 +69,9 @@ Fix: pass the settled amount.
   (`:692-704`). Each swap is guarded individually, so stepping just under the threshold and then
   across reverts. Pools do not share drift.
 - Swap plus confirm in the same block: no swap can flag a break (guard), and detection starts a
-  window of at least 1h. Impossible.
+  window of at least 1h. Impossible. **Superseded by Review 3 (H-1):** once a break is already
+  flagged and its window has elapsed, a break-mode swap could overshoot the target and confirm in
+  the same transaction. Fixed; see [`REVIEW-3.md`](./REVIEW-3.md).
 - Stale break state: `_flagBreakIfReached` resets `confirmed`; `Cleared` and `Resolved` reset
   `detectedAt` and `confirmed` (`:657`). Re-flagging is blocked while broken. A drawdown happens at
   most once per break.

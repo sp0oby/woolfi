@@ -1,6 +1,8 @@
-# Foundry build & sim artifacts
+# Foundry build & sim artifacts (incl. isolated FOUNDRY_OUT / FOUNDRY_CACHE_PATH dirs)
 out/
 cache/
+out-*/
+cache-*/
 broadcast/
 
 # Env / secrets — NEVER commit

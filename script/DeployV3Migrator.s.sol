@@ -31,6 +31,7 @@ contract DeployV3Migrator is RobinhoodBroadcastGuard {
         address woolfiPm = vm.envAddress("POSITION_MANAGER");
         address v3Npm = vm.envOr("V3_POSITION_MANAGER", ROBINHOOD_V3_NPM);
         require(woolfiPm.code.length > 0, "DeployV3Migrator: POSITION_MANAGER has no code");
+        _requireManifestPositionManager(MANIFEST, woolfiPm);
         require(v3Npm.code.length > 0, "DeployV3Migrator: V3_POSITION_MANAGER has no code");
         if (block.chainid == ROBINHOOD_CHAIN_ID) {
             require(INpmIdentity(v3Npm).factory() == ROBINHOOD_V3_FACTORY, "DeployV3Migrator: wrong v3 factory");
@@ -47,5 +48,18 @@ contract DeployV3Migrator is RobinhoodBroadcastGuard {
         }
         console2.log("WoolFiV3Migrator", address(migrator));
         console2.log("Uniswap v3 NPM  ", v3Npm);
+    }
+
+    /// @dev The migrator mints into whatever PM it is given, and the frontend routes users to the
+    ///      migrator recorded in the manifest. Once the manifest names the deployed WoolFi PM, refuse
+    ///      a POSITION_MANAGER that differs, so a typo cannot ship a migrator that mints into the
+    ///      wrong PM. A missing manifest or a zero entry (pre-launch) skips the check.
+    function _requireManifestPositionManager(string memory manifest, address woolfiPm) internal view {
+        if (!vm.exists(manifest)) return;
+        string memory json = vm.readFile(manifest);
+        if (!vm.keyExistsJson(json, ".positionManager")) return;
+        address manifestPm = vm.parseJsonAddress(json, ".positionManager");
+        if (manifestPm == address(0)) return;
+        require(manifestPm == woolfiPm, "DeployV3Migrator: POSITION_MANAGER != manifest positionManager");
     }
 }

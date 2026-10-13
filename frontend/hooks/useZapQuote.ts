@@ -9,11 +9,13 @@ import {
   type Hex,
   type PublicClient,
 } from "viem";
-import {useChainId, usePublicClient} from "wagmi";
+import {usePublicClient} from "wagmi";
 
 import {pmAbi, uniswapV3QuoterAbi, uniswapV3RouterAbi} from "@/lib/abis";
 import {robinhoodAssets} from "@/lib/pools/assets";
 import type {PoolKey} from "@/lib/poolKey";
+import {inputsKey, readKeyed, type Keyed} from "@/lib/txGuards";
+import {robinhood} from "@/lib/wagmi";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 const QUOTER = "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7" as const;
@@ -46,48 +48,44 @@ type Args = {
 };
 
 export function useZapQuote({deployment, key, tokenIn, amountIn, account, enabled}: Args) {
-  const chainId = useChainId();
-  const client = usePublicClient({chainId});
-  const [quote, setQuote] = useState<ZapQuote>();
-  const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
+  // Reads stay pinned to Robinhood Chain whatever chain the wallet is on.
+  const client = usePublicClient({chainId: robinhood.id});
+  // Keyed to its inputs like the swap quote: a route built for an older amount or token is never
+  // exposed as the current quote.
+  const [result, setResult] = useState<Keyed<ZapQuote>>();
   const keyId = `${key.currency0}|${key.currency1}|${key.fee}|${key.tickSpacing}|${key.hooks}`;
+  const active =
+    !!client && !!account && !!amountIn && enabled && !!deployment.externalSwapExecutor && !!deployment.liquidityZapper;
+  const inputs = inputsKey(deployment.liquidityZapper, deployment.externalSwapExecutor, keyId, tokenIn, amountIn, account);
 
   useEffect(() => {
-    if (!client || !account || !amountIn || !enabled || !deployment.externalSwapExecutor || !deployment.liquidityZapper) {
-      setQuote(undefined);
-      setError(undefined);
-      setLoading(false);
-      return;
-    }
+    if (!active || !client || !account || !amountIn) return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      setLoading(true);
       buildQuote(client, deployment, key, tokenIn, amountIn, account)
-        .then((result) => {
-          if (!cancelled) {
-            setQuote(result);
-            setError(undefined);
-          }
+        .then((quote) => {
+          if (!cancelled) setResult({key: inputs, value: quote});
         })
         .catch((cause: unknown) => {
           if (!cancelled) {
             const failure = cause as {shortMessage?: string; message?: string};
-            setQuote(undefined);
-            setError(failure.shortMessage ?? failure.message ?? "No executable Uniswap route found");
+            setResult({key: inputs, error: failure.shortMessage ?? failure.message ?? "No executable Uniswap route found"});
           }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
         });
     }, 500);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [client, deployment, keyId, tokenIn, amountIn, account, enabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, inputs]);
 
-  return {quote, error, loading};
+  const current = readKeyed(result, inputs);
+  return {
+    quote: active ? current.value : undefined,
+    error: active ? current.error : undefined,
+    loading: active && !current.fresh,
+  };
 }
 
 async function buildQuote(
