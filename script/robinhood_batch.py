@@ -228,6 +228,14 @@ def validate(
         ):
             if str(core.get(field, ZERO)).lower() == ZERO:
                 errors.append(f"core.{field} is not deployed")
+        # Migrating existing Uniswap v3 positions is how the 16 unseeded pools get their first
+        # liquidity, so the migrator is a launch requirement. DeployV3Migrator writes it to the
+        # manifest; it is not part of the batch config.
+        migrator = str(manifest.get("v3Migrator", ZERO)).lower()
+        if migrator == ZERO:
+            errors.append("manifest.v3Migrator is not deployed (run script/DeployV3Migrator.s.sol)")
+        else:
+            contract_addresses.append(("manifest.v3Migrator", migrator))
         errors.extend(_validate_gates(config.get("gates", {})))
     if not config.get("nonAtomicTransactionsAcknowledged"):
         errors.append("nonAtomicTransactionsAcknowledged must be true")

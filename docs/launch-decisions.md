@@ -10,7 +10,7 @@ approval reference in `docs/runbooks/launch-gate-record.md` when it is made.
 | 1 | Production multisig | Safe on chain 4663, **3-of-5**, hardware-wallet signers, at least 2 outside the core team |
 | 2 | Vault rebalancer | A **second Safe**, 2-of-3, with signers not on the production Safe |
 | 3 | URU caps and funding | Size caps from expected pool value; fund **only the seed set's vaults** at launch |
-| 4 | Seed liquidity | A **small** seed you can afford in the two seed pools only; outside LPs bring depth. **100 bps** slippage; NVDA/USDG seeded 15+ min after the NYSE open |
+| 4 | Seed liquidity | **Both** WETH/USDG and NVDA/USDG with small team seeds (e.g. ~$1k and less), 100 bps slippage; the other 16 filled by LPs migrating ~$40M of existing v3 liquidity |
 | 5 | Market-hours source | **`NyseHoursOracle`** for all 17 equity pools, owned by the Safe |
 | 6 | `maxOracleSkew` outside spread pools | **Keep 0** (disabled) for stock/USDG and stock/WETH |
 | 7 | RPC provider | A paid **Dwellir or QuickNode** Robinhood Chain endpoint; public RPC as fallback only |
@@ -64,7 +64,7 @@ With `S` = the dollar value you seed into a pool (section 4):
 
 | Pool group | Cap (URU value) | Treasury funding at launch |
 |---|---|---|
-| WETH/USDG, NVDA/USDG (seeded) | ~0.4 × the value you expect the pool to reach, so outside stakers have room | **~0.4 × S** (small seed, small URU at risk) |
+| WETH/USDG, NVDA/USDG (seeded) | ~0.4 × the value you expect the pool to reach, so outside stakers have room | **~0.4 × S** (about $400 of URU for a $1,000 seed) |
 | Each of the 16 unseeded pools | ~0.4 × the value you expect it to reach | **None** until the pool has liquidity |
 | **Aggregate cap** (`totalTreasuryAllocationCap`) | sum of all 18 caps | |
 
@@ -81,22 +81,81 @@ is at risk.
 **Needs a person:** the URU launch price, the treasury's approval of the aggregate amount, and
 whether to raise the seed-pool caps above the funded amount so public stakers can join.
 
-## 4. Seed liquidity (WETH/USDG, NVDA/USDG)
+## 4. Seed liquidity and the liquidity plan
 
-The launch model exists because the team is **not** funding deep liquidity: only these two pools
-are seeded, and the other 16 open empty for outside LPs (one-click Uniswap v3 migration, Zap,
-or a plain deposit). The seed's job is to make the two pools tradable and to show the mechanism
-working, not to be the market's main depth.
+The team is **not** funding deep liquidity. The seed's job is to make one pool live and show the
+mechanism working; depth comes from outside LPs, mostly by migrating existing Uniswap v3
+positions (one transaction per position with `WoolFiV3Migrator`, uncollected fees included).
 
-**Recommend:** seed **whatever small amount you are comfortable losing to price moves**, split
-evenly by value at the launch price, with **`slippageBps: 100`**. There is no minimum: a pool
-with a few hundred dollars per side works correctly; it just has high price impact, so the first
-swaps will be small and arbitrage will be the main early flow.
+A Uniswap v4 hook is fixed when a pool is created, so WoolFi cannot attach to existing pools. It
+can attract their liquidity.
 
-- Expect depth to come from third-party LPs, not the seed. Point early LPs and Uniswap v3
-  holders at the migrate flow.
-- Fund the seed-pool URU vaults in proportion (section 3's rule scales with pool value), so a
-  small seed also means small URU at risk.
+**Decided:** keep the seed set as **WETH/USDG and NVDA/USDG**, both seeded with small amounts
+from the team's budget (for example about $1,000 in one and less in the other), split evenly by
+value at the launch price, `slippageBps: 100`. The other 16 open for the first LPs.
+
+- **What a small seed supports:** with about $500 a side, a ~$2.50 swap moves the price about 1%,
+  and swaps above ~$36 hit the hook's 15% per-swap guard and revert. With about $50 a side, the
+  limit is ~$3.60. It is a working demonstration, not a market; arbitrage will be the main early
+  flow.
+- NVDA/USDG has a deep v3 pool (~$2.7M at 0.05%) that the zero-capital arbitrage agent can trade
+  against to keep the WoolFi pool priced. WETH/USDG's v3 pool charges 0.01% on ~$20M, so few
+  swaps will route to WoolFi's 0.3% base fee there; it is still useful as the one pool open on
+  weekends.
+- **Other users seed the rest from the terminal:** Liquidity → Deposit → **Migrate** lists the
+  connected wallet's v3 positions for that pair and moves one in a single transaction (Zap and a
+  plain two-token deposit work too). An empty pool first shows "Sync to Chainlink price", which
+  the keeper normally does already. Deposits into equity pools need the market open and past the
+  opening window.
+- **The migrator must be deployed for this to work.** It is a separate step
+  (`script/DeployV3Migrator.s.sol`); until `v3Migrator` is in the manifest the Migrate tab stays
+  disabled. The `readiness` gate now requires it.
+
+### Existing Uniswap v3 liquidity per catalog pair
+
+Read on chain 4663 on 2026-10-13 (Uniswap v3 factory `0x1f7d…2EfA`). Values are approximate:
+everything the pool contract holds, uncollected fees included, priced from the deepest USDG
+pool. SLV has no USDG pool, so GLD/SLV is only partly valued.
+
+| WoolFi pair | v3 liquidity (all fee tiers) | Deepest tier |
+|---|---|---|
+| WETH/USDG | ~$27M | 0.01% (~$20M) |
+| GLD/USDG | ~$3.8M | 0.3% |
+| NVDA/USDG | ~$2.7M | 0.05% |
+| CRCL/USDG | ~$2.4M | 0.3% |
+| NVDA/WETH | ~$1.2M | 0.05% |
+| COIN/WETH | ~$800k | 0.3% |
+| MSTR/USDG | ~$560k | 1% |
+| MSTR/WETH | ~$540k | 1% |
+| TSLA/USDG | ~$430k | 0.3% |
+| AAPL/USDG | ~$390k | 0.05% |
+| QQQ/WETH | ~$280k | 0.3% |
+| SPY/USDG | ~$270k | 0.05% |
+| SPY/QQQ | ~$51k | 0.05% |
+| PLTR/WETH | ~$28k | 0.3% |
+| GLD/SLV | GLD side ~$15k; SLV not priced | 0.05% |
+| SPY/NVDA | ~$5k | 0.05% |
+| COIN/USDG | ~$2k | 0.05% |
+| AAPL/MSFT | no v3 pool | none |
+
+About **$40M** across the catalog. Outreach order: GLD/USDG, NVDA/USDG, CRCL/USDG, NVDA/WETH and
+COIN/WETH hold the most stock-pair liquidity. Most v3 LPs run concentrated ranges, while WoolFi
+positions are full range, so the pitch is fee quality and protection (asymmetric fees, market-hours
+handling, break underwriting, the Urufu Gemu rebate), not capital efficiency.
+
+### URU
+
+- **Stake** about **0.4 × each seed's value** (~$400 of URU for a $1,000 seed) in the seeded pools'
+  vaults (section 3). Staked URU earns a share of that pool's fees and can lose up to the
+  configured 20% in a confirmed break.
+- **Keep the rest as an incentive for early LPs**, for example a monthly URU distribution
+  proportional to WoolFi LP shares held. WoolFi has no on-chain LP-reward contract, so this would
+  be a manual or Merkle-claim distribution from the treasury. Announce the rule before launch so
+  v3 LPs can price it in.
+- Do not stake treasury URU in an unseeded pool's vault until it has liquidity (section 3).
+
+### Seeding mechanics
+
 - **Slippage is now enforced against the approved launch price.** `SeedInitialLiquidity.s.sol`
   computes the shares the approved amounts would mint at the config's `sqrtPriceX96` and requires
   at least that minus `slippageBps` (capped at 10%). Before this change, `slippageBps` was

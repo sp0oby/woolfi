@@ -133,6 +133,9 @@ price, initial liquidity, indexer metadata, and smoke tests.
       the aligner fork test against chain ID 4663 as a launch gate.
 - [x] Frontend: call `align` before a first deposit into an empty pool (`frontend/lib/poolAligner.ts`
       `needsAlign`, ABI in `frontend/lib/abis/poolAligner.ts`).
+- [ ] Deploy `WoolFiV3Migrator` (`script/DeployV3Migrator.s.sol`) so the Migrate tab works: it is
+      how the 16 unseeded pools get their first liquidity. `readiness` now requires
+      `manifest.v3Migrator`.
 - [ ] Decide URU vault funding policy for unseeded pools (phantom-break drawdown risk, spec 9.1).
       Recommended: no treasury funding until first liquidity
       ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #3).

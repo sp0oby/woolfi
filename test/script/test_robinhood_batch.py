@@ -128,6 +128,7 @@ class RobinhoodBatchTest(unittest.TestCase):
                 "timelock": self.config["core"]["timelock"],
                 "externalSwapExecutor": self.config["core"]["externalSwapExecutor"],
                 "urufuNft": URUFU_NFT,
+                "v3Migrator": "0x" + "7" * 40,
                 "startBlocks": {
                     field: 123
                     for field in (
@@ -141,6 +142,14 @@ class RobinhoodBatchTest(unittest.TestCase):
             }
         )
         self.assertEqual(validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True), [])
+
+    def test_readiness_requires_v3_migrator(self):
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=True)
+        self.assertIn("manifest.v3Migrator is not deployed (run script/DeployV3Migrator.s.sol)", errors)
+        # Pre-launch validation does not require it.
+        self.assertFalse(
+            any("v3Migrator" in error for error in validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False))
+        )
 
     def test_readiness_requires_pool_aligner(self):
         self.config["core"]["poolAligner"] = ZERO
