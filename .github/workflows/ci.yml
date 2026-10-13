@@ -37,8 +37,11 @@ jobs:
       - name: Test (ci profile, heavy fuzz/invariant runs)
         run: forge test -vvv
 
-      - name: Gas snapshot check (deterministic tests only; fuzz/invariant gas is not reproducible across runs; fork tests skip without RPC)
-        run: forge snapshot --check --no-match-test "(testFuzz|invariant|test_dryRunDeploysRouter)" --no-match-path "test/fork/*"
+      # Deterministic tests only: fuzz/invariant gas is not reproducible across runs, fork tests skip
+      # without RPC, and test_liveManifestIsReadable reads a file whose absolute path (and so gas)
+      # differs between machines.
+      - name: Gas snapshot check
+        run: forge snapshot --check --no-match-test "(testFuzz|invariant|test_dryRunDeploysRouter|test_liveManifestIsReadable)" --no-match-path "test/fork/*"
 
       - name: Robinhood fork checks
         if: env.ROBINHOOD_RPC_URL != ''
