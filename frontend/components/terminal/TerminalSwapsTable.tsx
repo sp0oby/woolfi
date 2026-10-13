@@ -17,8 +17,10 @@ export function TerminalSwapsTable() {
       <div className="flex items-center justify-between border-b border-line px-5 py-2">
         <div className="flex items-baseline gap-3">
           <h2 className="font-mono text-2xs uppercase tracking-[0.22em] text-muted">Recent swaps</h2>
-          {stale ? (
-            <span className="font-mono text-micro uppercase tracking-[0.18em] text-warn">indexer stale</span>
+          {error ? (
+            <span className="font-mono text-micro uppercase tracking-[0.18em] text-warn">indexer offline</span>
+          ) : stale ? (
+            <span className="font-mono text-micro uppercase tracking-[0.18em] text-warn">indexer behind</span>
           ) : null}
         </div>
         <span className="font-mono text-micro uppercase tracking-[0.18em] text-subtle">
@@ -27,13 +29,16 @@ export function TerminalSwapsTable() {
       </div>
 
       {!deployment ? (
-        <EmptyRow msg="No deployment for this chain." />
+        <EmptyRow msg="Swap history starts at launch." />
       ) : error ? (
-        <EmptyRow msg={error.message.slice(0, 120)} tone="warn" />
+        <EmptyRow msg={`Swap history unavailable: the indexer could not be reached (${error.message.slice(0, 80)}).`} tone="warn" />
       ) : !rows ? (
         <EmptyRow msg={loading ? "Loading…" : "-"} spinning={loading} />
       ) : rows.length === 0 ? (
-        <EmptyRow msg="No swaps in the scan window." />
+        <EmptyRow
+          msg={stale ? "No swaps indexed yet, and the indexer is behind, so recent swaps may be missing." : "No swaps in this pool yet."}
+          tone={stale ? "warn" : "muted"}
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] border-separate border-spacing-0 text-2xs">

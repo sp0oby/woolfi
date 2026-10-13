@@ -21,7 +21,6 @@ dist/
 indexer/ponder-env.d.ts
 indexer/generated/
 indexer/src/api/
-indexer/package-lock.json
 # Root-level package.json from local tooling (not the repo's source of truth)
 /package.json
 /package-lock.json

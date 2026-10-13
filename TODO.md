@@ -36,17 +36,22 @@ the spec.
 - [x] Configure the indexer for all 18 pools, vaults, and production start blocks.
 - [x] Configure, exercise, and monitor the permissionless keeper.
 - [ ] Create the production multisig; verify signers, threshold, recovery, and handoff.
-- [x] Build the governance timelock: `TimelockController` (24h, no admin), guardian-only instant pause
+      Recommended: 3-of-5 Safe ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #1).
+- [x] Build the governance timelock: `TimelockController` (3 days, no admin), guardian-only instant pause
       on `WoolFiGovernor`, `script/DeployTimelock.s.sol`, Safe handoff batches from
       `script/TimelockHandoff.s.sol`, tests in `test/integration/WoolFiTimelock.t.sol`.
-- [ ] Deploy the timelock after the Safe exists and execute both handoff batches (24h apart).
+- [ ] Deploy the timelock after the Safe exists and execute both handoff batches (3 days apart).
 - [ ] Choose the vault rebalancer: a second Safe with different signers or a rebalance executor
-      contract; never the production Safe or the timelock.
+      contract; never the production Safe or the timelock. Recommended: a second 2-of-3 Safe
+      ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #2).
 - [x] Publish monitoring, incident-response, and rollback/containment runbooks.
 - [ ] Establish the production security-reporting and bug-bounty process (paid bounty / Immunefi).
 - [ ] Name monitoring owners, alert destinations, and thresholds (runbooks are templates only).
-- [ ] Add keeper health/metrics, non-zero exit on failed simulations, and an alert path.
-- [ ] Add indexer health/lag alerts; do not rely on frontend 15-minute stale checks alone.
+- [x] Keeper exits non-zero on failed simulations (`KEEPER_FAIL_ON_ERROR`) and posts failures to
+      `KEEPER_ALERT_WEBHOOK`.
+- [ ] Add keeper health metrics (last successful tick) for uptime monitoring.
+- [ ] Add indexer health/lag alerts; do not rely on the frontend stale check alone (it now reads
+      Ponder `/status`, so lag is measurable).
 
 ## Oracle and feed verification
 
@@ -64,7 +69,8 @@ Chainlink is the official Robinhood Chain source. Do not invent feed addresses.
 - [ ] Document WETH ↔ ETH/USD alias in the launch record (`0x78F3...` is registered ETH/USD;
       WETH ↔ ETH is 1:1 by contract).
 - [ ] Decide the production market-hours source (`NyseHoursOracle` vs `MultisigMarketHours`) and
-      bind it for every equity pool.
+      bind it for every equity pool. Recommended: `NyseHoursOracle`, early-close days marked as
+      holidays ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #5).
 - [ ] Deploy one `RobinhoodStockOracleAdapter` per stock/ETF leg (with sequencer disabled) and
       one `ChainlinkOracleAdapter` per WETH/USDG leg, pointed at verified proxies.
 - [x] Add Robinhood fork tests that read each production feed through those adapters (price
@@ -77,7 +83,8 @@ Chainlink is the official Robinhood Chain source. Do not invent feed addresses.
       4663 for either adapter; both deploy with sequencer disabled and rely on the disclosed
       operator-trust assumption.
 - [ ] Decide whether stock/USDG and stock/WETH pools get a positive `maxOracleSkew` (today only
-      spread pools require it; default is 0).
+      spread pools require it; default is 0). Recommended: keep 0
+      ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #6).
 - [ ] Record the per-pool launch-record fields in `docs/oracles.md` (feeds, heartbeats, skew,
       hours, expected-value test vectors) - Chainlink inventory landed; per-pool orientation and
       test vectors still to fill.
@@ -109,19 +116,26 @@ price, initial liquidity, indexer metadata, and smoke tests.
 
 ## Capital and oracle approvals
 
-- [ ] Approve each per-vault URU cap and aggregate URU treasury cap.
+- [ ] Approve each per-vault URU cap and aggregate URU treasury cap (sizing rule in
+      [`docs/launch-decisions.md`](./docs/launch-decisions.md) #3).
 - [ ] Confirm approved URU is available without exceeding either cap.
 - [ ] Verify all stock-token pause behavior and all production feed metadata.
 - [ ] Verify WETH/USDG feeds and always-open designation.
 - [ ] Approve initial liquidity and slippage bounds for the seed set (`weth-usdg`, `nvda-usdg`).
+      Recommended: a small, affordable seed in the two seed pools only (outside LPs bring depth),
+      100 bps ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #4).
+- [x] Enforce seed `slippageBps` on-chain: `SeedInitialLiquidity.s.sol` requires the shares the
+      approved amounts mint at the launch `sqrtPriceX96`, less `slippageBps` (max 10%).
 - [x] Empty-pool re-peg: `src/periphery/WoolFiPoolAligner.sol` plus keeper align step;
       `test/fork/WoolFiPoolAligner.fork.t.sol` passes live (NVDA/USDG 10% off Chainlink: first mint
       reverts, align at zero cost, first mint succeeds).
 - [ ] Deploy `WoolFiPoolAligner` (`script/DeployPoolAligner.s.sol`), record `poolAligner`, and rerun
       the aligner fork test against chain ID 4663 as a launch gate.
-- [ ] Frontend: call `align` before a first deposit into an empty pool (`frontend/lib/poolAligner.ts`
+- [x] Frontend: call `align` before a first deposit into an empty pool (`frontend/lib/poolAligner.ts`
       `needsAlign`, ABI in `frontend/lib/abis/poolAligner.ts`).
 - [ ] Decide URU vault funding policy for unseeded pools (phantom-break drawdown risk, spec 9.1).
+      Recommended: no treasury funding until first liquidity
+      ([`docs/launch-decisions.md`](./docs/launch-decisions.md) #3).
 - [ ] Confirm no placeholder or unverified address is present in production configuration.
 
 ## Deploy automation and CI
@@ -129,14 +143,17 @@ price, initial liquidity, indexer metadata, and smoke tests.
 - [x] Pass `URU_CAP` from each pool's `vaultAllocationCap` in `robinhood_batch_deploy.py`
       (`CreatePool.s.sol` requires it; batch deploy currently omits it).
 - [x] Wire `SeedInitialLiquidity.s.sol` into the batch/orchestrator path with approved amounts.
-- [ ] Run `robinhood_batch.py readiness` in CI against a non-example approved config once filled.
+- [x] CI runs `robinhood_batch.py validate` (pre-launch) or `readiness` (once live) against the
+      approved config when the `ROBINHOOD_BATCH_CONFIG` and `ROBINHOOD_RPC_URL` secrets are set.
 - [ ] Wire receipt verify/reconcile into CI; check frontend/indexer/keeper manifest digest parity.
-- [ ] Make Robinhood fork tests required when `ROBINHOOD_RPC_URL` is available; keep them honest
-      when it is not.
-- [ ] Add indexer lockfile, smoke test, and rebate-distributor vars to `indexer/.env.example`.
-- [ ] Add `keeper/.env.example` and a keeper/manifest integration check.
-- [ ] Add frontend lint and production-env validation (`NEXT_PUBLIC_INDEXER_URL`, WalletConnect).
-- [ ] Lock `lib/v4-periphery` in `foundry.lock`.
+- [x] Robinhood fork tests run in CI whenever `ROBINHOOD_RPC_URL` is set and skip cleanly when it
+      is not.
+- [x] Add indexer lockfile (npm), smoke tests, and rebate-distributor vars to `indexer/.env.example`.
+- [x] Add `keeper/.env.example`.
+- [ ] Add a keeper/manifest integration check.
+- [x] Add frontend lint and production-env validation (`NEXT_PUBLIC_INDEXER_URL`, WalletConnect,
+      site URL): production builds warn, and fail once the manifest is live.
+- [x] Lock `lib/v4-periphery` in `foundry.lock`.
 - [ ] Import indexer ABIs from Foundry `out/` instead of hand-maintained copies.
 
 ## Deployment and launch
@@ -154,15 +171,16 @@ price, initial liquidity, indexer metadata, and smoke tests.
 
 ## Frontend accuracy (before public launch)
 
-- [ ] Make “Recent fees” a true rolling window; it currently sums cumulative routed fees.
-- [ ] Make deposit-pause copy distinguish market close vs structural break vs skew vs
-      stabilization (it always cites NYSE reopen today).
-- [ ] Label indexer/GraphQL failures as indexer errors, not “RPC error”.
-- [ ] Treat empty indexer history as stale/unavailable, not healthy.
-- [ ] Show Urufu Gemu NFT eligibility on the rebate panel before claim.
-- [ ] Soften splash/docs copy that implies live pool reads while every pool is pending.
-- [ ] Hide or qualify DeploymentPanel core addresses that are Uniswap infrastructure, not
-      WoolFi deployments.
+- [x] Remove the cumulative “Recent fees” stat (it lived in unused dashboard components, now deleted).
+- [x] Make deposit-pause copy distinguish market close vs structural break vs skew vs
+      stabilization.
+- [x] Label indexer/GraphQL failures as indexer errors, not “RPC error”.
+- [x] Judge indexer freshness from Ponder `/status`, not the newest swap; an unknown head counts as
+      stale, so empty history is never mistaken for healthy.
+- [x] Show Urufu Gemu NFT eligibility on the rebate panel before claim (also pre-launch).
+- [x] Soften splash/docs copy that implies live pool reads while every pool is pending.
+- [x] Separate DeploymentPanel’s WoolFi contracts from existing third-party contracts (Uniswap,
+      URU, Urufu Gemu NFT, tokens).
 
 ## Optional later (not launch-blocking)
 

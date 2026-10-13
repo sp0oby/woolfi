@@ -6,15 +6,25 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {WoolFiPositionManager} from "../src/WoolFiPositionManager.sol";
+import {LiquidityAmounts} from "../src/lib/LiquidityAmounts.sol";
 import {RobinhoodBroadcastGuard} from "./lib/RobinhoodBroadcastGuard.sol";
 
 /// @notice Seeds one receipt-tracked pool with approved, slippage-protected initial liquidity.
 /// @dev Run once per canonical pool. TOKEN0 must sort below TOKEN1. MIN_SHARES and DEADLINE are
 ///      mandatory so a stale simulation cannot silently accept a different pool ratio.
+///
+///      Slippage: shares equal full-range liquidity at the pool's price, and for fixed amounts that
+///      liquidity peaks at the price the amounts were sized for. So the script computes the shares
+///      the approved amounts would mint at REFERENCE_SQRT_PRICE_X96 (the approved launch price) and
+///      requires at least that minus SLIPPAGE_BPS. Seeding into a pool that has moved away from the
+///      approved price, before or during inclusion, mints fewer shares and reverts.
 contract SeedInitialLiquidity is RobinhoodBroadcastGuard {
+    uint256 internal constant MAX_SLIPPAGE_BPS = 1_000;
+
     struct SeedConfig {
         address provider;
         address recipient;
@@ -27,6 +37,8 @@ contract SeedInitialLiquidity is RobinhoodBroadcastGuard {
         uint128 minShares;
         uint256 deadline;
         int24 tickSpacing;
+        uint160 referenceSqrtPriceX96;
+        uint256 slippageBps;
     }
 
     function run() external returns (uint128 shares) {
@@ -34,6 +46,10 @@ contract SeedInitialLiquidity is RobinhoodBroadcastGuard {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         SeedConfig memory c = _load(pk);
         _validate(c);
+        uint128 slippageFloor =
+            minSharesForSlippage(c.referenceSqrtPriceX96, c.tickSpacing, c.amount0, c.amount1, c.slippageBps);
+        if (slippageFloor > c.minShares) c.minShares = slippageFloor;
+        console2.log("min LP shares", c.minShares);
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(c.token0),
@@ -69,6 +85,34 @@ contract SeedInitialLiquidity is RobinhoodBroadcastGuard {
         uint256 tickSpacing = vm.envUint("TICK_SPACING");
         require(tickSpacing <= uint256(uint24(type(int24).max)), "SeedInitialLiquidity: TICK_SPACING overflow");
         c.tickSpacing = int24(uint24(tickSpacing));
+        uint256 refPrice = vm.envUint("REFERENCE_SQRT_PRICE_X96");
+        require(refPrice <= type(uint160).max, "SeedInitialLiquidity: REFERENCE_SQRT_PRICE_X96 overflow");
+        c.referenceSqrtPriceX96 = uint160(refPrice);
+        c.slippageBps = vm.envUint("SLIPPAGE_BPS");
+    }
+
+    /// @notice Shares the approved amounts mint at the reference price, less `slippageBps`.
+    function minSharesForSlippage(
+        uint160 referenceSqrtPriceX96,
+        int24 tickSpacing,
+        uint256 amount0,
+        uint256 amount1,
+        uint256 slippageBps
+    ) public pure returns (uint128) {
+        require(slippageBps > 0 && slippageBps <= MAX_SLIPPAGE_BPS, "SeedInitialLiquidity: SLIPPAGE_BPS out of range");
+        require(
+            referenceSqrtPriceX96 > TickMath.MIN_SQRT_PRICE && referenceSqrtPriceX96 < TickMath.MAX_SQRT_PRICE,
+            "SeedInitialLiquidity: bad reference price"
+        );
+        uint128 expected = LiquidityAmounts.getLiquidityForAmounts(
+            referenceSqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(tickSpacing)),
+            TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(tickSpacing)),
+            amount0,
+            amount1
+        );
+        require(expected > 0, "SeedInitialLiquidity: zero expected shares");
+        return uint128((uint256(expected) * (10_000 - slippageBps)) / 10_000);
     }
 
     function _validate(SeedConfig memory c) private view {

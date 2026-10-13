@@ -2,7 +2,7 @@
 
 import {useEffect, useMemo, useState} from "react";
 
-import {indexerGraphql, items} from "@/lib/indexer/client";
+import {indexerGraphql, indexerHeadTimestamp, items} from "@/lib/indexer/client";
 import {classifySwaps, isIndexerStale, parseIndexedInt, txHashFromEventId, type IndexedSwap} from "@/lib/indexer/history";
 import {useSelectedPool} from "./useSelectedPool";
 
@@ -40,6 +40,7 @@ type SwapNode = {
 export function useHookSwaps({refetchMs = 30_000}: {refetchMs?: number} = {}) {
   const {deployment} = useSelectedPool();
   const [rows, setRows] = useState<SwapRow[] | null>(null);
+  const [head, setHead] = useState<number | undefined>(undefined);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -47,6 +48,7 @@ export function useHookSwaps({refetchMs = 30_000}: {refetchMs?: number} = {}) {
 
   useEffect(() => {
     setRows(null);
+    setHead(undefined);
     setError(null);
     if (!poolId) return;
     let cancelled = false;
@@ -54,7 +56,11 @@ export function useHookSwaps({refetchMs = 30_000}: {refetchMs?: number} = {}) {
     async function load() {
       setLoading(true);
       try {
-        const data = await indexerGraphql<{swaps?: {items?: SwapNode[]}}>(SWAPS_QUERY, {poolId});
+        const [data, headTimestamp] = await Promise.all([
+          indexerGraphql<{swaps?: {items?: SwapNode[]}}>(SWAPS_QUERY, {poolId}),
+          indexerHeadTimestamp(),
+        ]);
+        if (!cancelled) setHead(headTimestamp);
         const classified = classifySwaps(
           items(data.swaps).map((row) => ({
             id: row.id,
@@ -86,7 +92,8 @@ export function useHookSwaps({refetchMs = 30_000}: {refetchMs?: number} = {}) {
   }, [poolId, refetchMs]);
 
   const newest = useMemo(() => (rows ? [...rows].reverse() : null), [rows]);
-  const stale = isIndexerStale(newest?.[0]?.timestamp) || !!error;
+  // Only judge freshness once a load has finished; before that the table shows "Loading".
+  const stale = !!error || (rows !== null && isIndexerStale(head));
 
   return {rows, newest, loading, error, stale, deployment};
 }

@@ -28,5 +28,8 @@
       "name": "v4.0.0",
       "rev": "e50237c43811bd9b526eff40f26772152a42daba"
     }
+  },
+  "lib/v4-periphery": {
+    "rev": "363226d9e1e2180b67bf6857023dbaad751010c5"
   }
 }

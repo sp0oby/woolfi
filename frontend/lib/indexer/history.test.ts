@@ -23,7 +23,8 @@ describe("indexer freshness", () => {
   it("is stale only after the configured age", () => {
     expect(isIndexerStale(1_000n, 1_000 + 60, 120)).toBe(false);
     expect(isIndexerStale(1_000n, 1_000 + 121, 120)).toBe(true);
-    expect(isIndexerStale(undefined, 2_000, 120)).toBe(false);
+    // An indexer that reports no head is unavailable, not healthy.
+    expect(isIndexerStale(undefined, 2_000, 120)).toBe(true);
   });
 
   it("extracts the transaction hash from an event id", () => {

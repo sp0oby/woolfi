@@ -1,3 +1,19 @@
+import {readFileSync} from "node:fs";
+
+import {productionEnvProblems} from "./lib/envCheck.mjs";
+
+// Production-settings check (see lib/envCheck.mjs). Pre-launch builds only warn; once the
+// manifest is live, a public build with missing settings fails instead of shipping broken.
+if (process.env.NODE_ENV === "production") {
+  const problems = productionEnvProblems(process.env);
+  if (problems.length) {
+    const manifest = JSON.parse(readFileSync(new URL("./lib/deployments/robinhood.json", import.meta.url), "utf8"));
+    const message = `Production settings:\n  - ${problems.join("\n  - ")}`;
+    if (manifest.launchStatus === "live") throw new Error(message);
+    console.warn(`warning: ${message}`);
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

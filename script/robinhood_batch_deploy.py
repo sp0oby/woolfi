@@ -151,7 +151,10 @@ def seed_env(core: dict[str, Any], pool: dict[str, Any], default_risk: dict[str,
         "TOKEN1": ASSETS[ordered[1]],
         "INITIAL_LIQUIDITY_0": str(amounts[ordered[0]]),
         "INITIAL_LIQUIDITY_1": str(amounts[ordered[1]]),
+        # Explicit floor; the script raises it to the slippage-derived floor at the launch price.
         "MIN_SHARES": str(liquidity.get("minShares") or 1),
+        "SLIPPAGE_BPS": str(liquidity["slippageBps"]),
+        "REFERENCE_SQRT_PRICE_X96": str(pool["sqrtPriceX96"]),
         "DEADLINE": str(int(os.getenv("SEED_DEADLINE") or (time.time() + 20 * 60))),
         "TICK_SPACING": str(risk["tickSpacing"]),
     }

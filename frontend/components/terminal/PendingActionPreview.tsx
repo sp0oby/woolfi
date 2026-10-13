@@ -2,6 +2,7 @@
 
 import {useState} from "react";
 
+import {GemuEligibility} from "@/components/panels/GemuEligibility";
 import type {CuratedPool} from "@/lib/pools/types";
 
 /**
@@ -129,7 +130,7 @@ export function PreviewRebate({pool}: {pool: CuratedPool}) {
       title="Urufu Gemu rebate"
       hint="Hold an Urufu Gemu NFT and 15% of the fee you actually paid comes back to you (capped at the base fee), funded in advance, capped weekly per wallet."
     >
-      <MiniRow label="Eligibility" value="Connect wallet · check NFT" />
+      <MiniRow label="Eligibility" value={<GemuEligibility compact />} />
       <MiniRow label="Rebate rate" value="15% of fee paid · max base fee" />
       <MiniRow label="Pool" value={`${pool.base.symbol} / ${pool.quote.symbol}`} />
       <ActionButton>Claim unavailable · pre-launch</ActionButton>
@@ -246,7 +247,7 @@ function ActionButton({children}: {children: React.ReactNode}) {
   );
 }
 
-function MiniRow({label, value}: {label: string; value: string}) {
+function MiniRow({label, value}: {label: string; value: React.ReactNode}) {
   return (
     <div className="flex items-baseline justify-between border-b border-line/60 py-1.5 last:border-b-0">
       <span className="font-mono text-micro uppercase tracking-[0.2em] text-subtle">{label}</span>

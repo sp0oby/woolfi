@@ -155,10 +155,12 @@ Record the results in the launch gate record.
 ### Day-to-day after the handoff
 
 - **Any settings change:** in Transaction Builder, call `schedule(target, 0, data, 0x0, salt, 259200)`
-  on the timelock with the governor call as `data`; 24 hours later call `execute(target, 0, data,
+  on the timelock with the governor call as `data`; 3 days (259200 s) later call `execute(target, 0, data,
   0x0, salt)` with the same arguments. Announce the queued change publicly when you schedule it.
 - **Emergency:** call `WoolFiGovernor.pauseHook()` directly from the Safe. It takes effect
-  immediately. Unpausing is a scheduled `unpauseHook()` through the timelock.
+  immediately. Unpausing is a scheduled `unpauseHook()` through the timelock, so a pause lasts at
+  least 3 days: use it for emergencies only, never for calendar issues (mark those days on
+  `NyseHoursOracle` with `setHoliday` instead).
 - **Abort a queued change:** `cancel(id)` on the timelock from the Safe, where `id` is
   `hashOperation(target, 0, data, 0x0, salt)`.
 - **Changing the delay or roles:** only by scheduling `updateDelay` / `grantRole` / `revokeRole` on

@@ -123,6 +123,46 @@ export function derivePoolState(args: {
   };
 }
 
+export type DepositPause = {label: string; detail: string};
+
+/**
+ * Why new deposits are paused, and what reopens them. Same precedence as the hook's checks
+ * (break, then stabilization, then feed skew, then market hours); returns undefined when
+ * deposits are open.
+ */
+export function depositPause(args: {
+  structurallyBroken?: boolean;
+  stabilizing?: boolean;
+  oracleSkewed?: boolean;
+  marketOpen?: boolean;
+}): DepositPause | undefined {
+  if (args.structurallyBroken) {
+    return {
+      label: "Deposits paused · structural break",
+      detail: "Deposits reopen once the break clears or is confirmed and the price is back in range.",
+    };
+  }
+  if (args.stabilizing) {
+    return {
+      label: "Deposits paused · opening stabilization",
+      detail: "The market just opened. Deposits reopen in a few minutes, once prices settle.",
+    };
+  }
+  if (args.oracleSkewed) {
+    return {
+      label: "Deposits paused · feeds out of sync",
+      detail: "The two Chainlink feeds are too far apart in time. Deposits reopen when both report fresh prices.",
+    };
+  }
+  if (args.marketOpen === false) {
+    return {
+      label: "Deposits paused · market closed",
+      detail: "The stock market is closed. Deposits reopen at the next NYSE session.",
+    };
+  }
+  return undefined;
+}
+
 export function formatCountdown(seconds: number): string {
   if (seconds <= 0) return "ready now";
   const h = Math.floor(seconds / 3600);

@@ -113,6 +113,24 @@ export function useWalletUru(account: `0x${string}` | undefined) {
 }
 
 /**
+ * How many Urufu Gemu NFTs the wallet holds. The rebate distributor credits a swap only when this
+ * is non-zero at settlement, so the rebate panel shows it before anyone claims. The NFT is live
+ * independently of WoolFi, so this also works before launch.
+ */
+export function useGemuBalance(account: `0x${string}` | undefined) {
+  const nft = robinhoodDeployment.urufuNft;
+  const read = useReadContract({
+    address: nft,
+    abi: erc20Abi, // balanceOf(address) has the same shape on ERC-721
+    functionName: "balanceOf",
+    args: account ? [account] : undefined,
+    chainId: robinhoodDeployment.chainId,
+    query: {enabled: !!account && !!nft, refetchInterval: 30_000},
+  });
+  return {balance: read.data as bigint | undefined, isLoading: read.isLoading, isError: read.isError};
+}
+
+/**
  * Per-user reads: pool and staking-token balances, LP shares, vault stake, pending fees and rewards.
  * Returns sensible undefined values when wallet not connected.
  */

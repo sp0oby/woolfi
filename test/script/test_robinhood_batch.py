@@ -235,6 +235,15 @@ class RobinhoodBatchTest(unittest.TestCase):
             self.assertEqual(env["INITIAL_LIQUIDITY_0"], "22")
             self.assertEqual(env["INITIAL_LIQUIDITY_1"], "11")
         self.assertEqual(env["MIN_SHARES"], "7")
+        # Slippage reaches the seed script, measured against the approved launch price.
+        self.assertEqual(env["SLIPPAGE_BPS"], "100")
+        self.assertEqual(env["REFERENCE_SQRT_PRICE_X96"], str(pool["sqrtPriceX96"]))
+
+    def test_seed_slippage_above_ten_percent_fails(self):
+        pool = next(item for item in self.config["pools"] if item["slug"] == "weth-usdg")
+        pool["initialLiquidity"] = {"base": 11, "quote": 22, "slippageBps": 1_001}
+        errors = validate(self.config, self.manifest, CodeBearingRpc(), require_deployed=False)
+        self.assertIn("weth-usdg.initialLiquidity.slippageBps exceeds 1000 (10%)", errors)
 
     def test_manifest_mismatch_fails_closed(self):
         self.manifest["poolManager"] = "0x0000000000000000000000000000000000009999"

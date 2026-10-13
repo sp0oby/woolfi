@@ -4,6 +4,7 @@ import Link from "next/link";
 import {useState} from "react";
 import {useAccount} from "wagmi";
 
+import {depositPause, type DepositPause} from "@/components/poolState";
 import {usePoolReads, useUserReads} from "@/hooks/usePool";
 import {useSelectedPool} from "@/hooks/useSelectedPool";
 
@@ -24,11 +25,12 @@ export function LiquidityPanel() {
   const {address} = useAccount();
   const user = useUserReads(address);
   const {drift, totalShares, marketOpen, safety, price0, price1} = usePoolReads();
-  const depositsBlocked =
-    marketOpen === false ||
-    safety?.structurallyBroken === true ||
-    safety?.stabilizing === true ||
-    safety?.oracleSkewed === true;
+  const pause = depositPause({
+    structurallyBroken: safety?.structurallyBroken,
+    stabilizing: safety?.stabilizing,
+    oracleSkewed: safety?.oracleSkewed,
+    marketOpen,
+  });
   const [mode, setMode] = useState<Mode>("deposit");
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
@@ -45,18 +47,8 @@ export function LiquidityPanel() {
         <AlignNotice deployment={deployment} address={address} drift={drift} totalShares={totalShares} />
       ) : null}
       {mode === "deposit" ? (
-        depositsBlocked ? (
-          <ClosedDeposits
-            reason={
-              safety?.structurallyBroken
-                ? "Deposits paused · structural break"
-                : safety?.stabilizing
-                  ? "Deposits paused · opening stabilization"
-                  : safety?.oracleSkewed
-                    ? "Deposits paused · oracle skew"
-                    : "Deposits paused · market closed"
-            }
-          />
+        pause ? (
+          <ClosedDeposits pause={pause} />
         ) : (
           <DepositMode
             deployment={deployment}
@@ -83,22 +75,25 @@ export function LiquidityPanel() {
       )}
       <PanelFootnote>
         LP shares are non-transferable in v1 and back the pool position 1:1 with the v4 liquidity
-        you provide. Deposits are accepted only while the pool is in band and the equity market is
-        open; withdrawals are always allowed (even out of band).
+        you provide. Deposits are accepted only while the pool is in band and its market is open;
+        withdrawals are always allowed (even out of band).
       </PanelFootnote>
     </div>
   );
 }
 
-function ClosedDeposits({reason}: {reason: string}) {
+function ClosedDeposits({pause}: {pause: DepositPause}) {
   return (
     <div className="border border-amber-200/30 bg-amber-200/[0.04] px-5 py-4">
       <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-amber-200/85">
-        {reason}
+        {pause.label}
       </div>
       <p className="mt-2 text-[13px] leading-relaxed text-amber-50/85">
-        Reopens next NYSE session. Withdrawals stay open.{" "}
-        <Link href="/docs#market-hours" className="underline underline-offset-4 hover:text-white">
+        {pause.detail} Withdrawals stay open.{" "}
+        <Link
+          href={pause.label.endsWith("market closed") ? "/docs#hours" : "/docs#breaks"}
+          className="underline underline-offset-4 hover:text-white"
+        >
           Why →
         </Link>
       </p>

@@ -37,13 +37,18 @@ export function txHashFromEventId(id: string): `0x${string}` {
   return (hash ?? "0x") as `0x${string}`;
 }
 
+/**
+ * Whether the indexer is behind, judged by the newest block it has processed (see
+ * `indexerHeadTimestamp`). An unknown head counts as stale: an indexer that reports nothing
+ * must not read as healthy just because it also returned no swaps.
+ */
 export function isIndexerStale(
-  newestTimestamp: bigint | undefined,
+  headTimestamp: number | bigint | undefined,
   nowSeconds = Math.floor(Date.now() / 1000),
   maxAge = INDEXER_STALE_AFTER_SECONDS,
 ): boolean {
-  if (newestTimestamp === undefined) return false;
-  return nowSeconds - Number(newestTimestamp) > maxAge;
+  if (headTimestamp === undefined) return true;
+  return nowSeconds - Number(headTimestamp) > maxAge;
 }
 
 export function parseIndexedInt(value: string | number | bigint): bigint {

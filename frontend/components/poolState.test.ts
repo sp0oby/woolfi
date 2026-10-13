@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 
-import {derivePoolState, friendlySwapError, needsLiquidity, SWAP_TOO_LARGE_MESSAGE} from "./poolState";
+import {depositPause, derivePoolState, friendlySwapError, needsLiquidity, SWAP_TOO_LARGE_MESSAGE} from "./poolState";
 
 const live = {status: "live", seeded: true, tradingHours: "equity-hours"} as const;
 
@@ -51,6 +51,24 @@ describe("friendlySwapError", () => {
   it("leaves unrelated errors alone", () => {
     expect(friendlySwapError("ERC20: insufficient allowance")).toBeUndefined();
     expect(friendlySwapError(undefined)).toBeUndefined();
+  });
+});
+
+describe("depositPause", () => {
+  it("is undefined when deposits are open", () => {
+    expect(depositPause({marketOpen: true})).toBeUndefined();
+    expect(depositPause({})).toBeUndefined();
+  });
+
+  it("gives each reason its own reopen condition, break first", () => {
+    expect(depositPause({structurallyBroken: true, marketOpen: false})?.label).toBe("Deposits paused · structural break");
+    expect(depositPause({stabilizing: true})?.detail).toMatch(/few minutes/);
+    expect(depositPause({oracleSkewed: true})?.detail).toMatch(/fresh prices/);
+    expect(depositPause({marketOpen: false})?.detail).toMatch(/next NYSE session/);
+    // Only the market-closed case mentions the NYSE session.
+    for (const reason of [{structurallyBroken: true}, {stabilizing: true}, {oracleSkewed: true}]) {
+      expect(depositPause(reason)?.detail).not.toMatch(/NYSE/);
+    }
   });
 });
 

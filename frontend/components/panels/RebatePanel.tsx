@@ -8,6 +8,7 @@ import {fmtAmount} from "@/lib/format";
 import type {WoolFiDeployment} from "@/lib/woolfi";
 
 import {PanelFootnote, TxStatus} from "./atoms";
+import {GemuEligibility} from "./GemuEligibility";
 
 export function RebatePanel() {
   const {deployment, pool} = useSelectedPool();
@@ -65,6 +66,7 @@ function Live({
 
   return (
     <div className="space-y-5">
+      <GemuEligibility />
       <RebateRow
         symbol={deployment.token0Symbol}
         amount={amount0}

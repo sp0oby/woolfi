@@ -48,6 +48,9 @@ jobs:
   application-checks:
     name: frontend + indexer + keeper + Python
     runs-on: ubuntu-latest
+    env:
+      ROBINHOOD_BATCH_CONFIG: ${{ secrets.ROBINHOOD_BATCH_CONFIG }}
+      ROBINHOOD_RPC_URL: ${{ secrets.ROBINHOOD_RPC_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +61,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             keeper/package-lock.json
+            indexer/package-lock.json
 
       - name: Frontend
         working-directory: frontend
@@ -69,7 +73,7 @@ jobs:
 
       - name: Indexer
         working-directory: indexer
-        run: npm install --ignore-scripts && npm run typecheck
+        run: npm ci --ignore-scripts && npm test && npm run typecheck
 
       - uses: actions/setup-python@v5
         with:
@@ -80,3 +84,16 @@ jobs:
 
       - name: Validate disabled production plan
         run: python script/launch_orchestrator.py validate
+
+      # The approved batch config is gitignored; supply it as the ROBINHOOD_BATCH_CONFIG secret (the
+      # JSON file's contents) once the core contracts are deployed and their addresses are in it.
+      # Until the manifest says launchStatus "live", CI validates the config against chain state;
+      # after that it runs the full readiness gate (all 18 pools and every launch gate). Skips
+      # while either secret is unset.
+      - name: Robinhood batch config (validate pre-launch, readiness once live)
+        if: env.ROBINHOOD_BATCH_CONFIG != '' && env.ROBINHOOD_RPC_URL != ''
+        run: |
+          printf '%s' "$ROBINHOOD_BATCH_CONFIG" > script/config/robinhood-batch.json
+          status=$(python -c "import json;print(json.load(open('frontend/lib/deployments/robinhood.json')).get('launchStatus',''))")
+          if [ "$status" = "live" ]; then cmd=readiness; else cmd=validate; fi
+          python script/robinhood_batch.py "$cmd" --config script/config/robinhood-batch.json

@@ -144,7 +144,7 @@
           "properties": {
             "base": {"type": "integer", "minimum": 0},
             "quote": {"type": "integer", "minimum": 0},
-            "slippageBps": {"type": "integer", "minimum": 0, "maximum": 10000},
+            "slippageBps": {"type": "integer", "minimum": 0, "maximum": 1000},
             "minShares": {"type": "integer", "minimum": 0}
           }
         }

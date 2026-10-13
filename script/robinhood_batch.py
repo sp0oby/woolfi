@@ -274,8 +274,9 @@ def _validate_initial_liquidity(slug: str, liquidity: Any, seeded: bool, errors:
         _positive(liquidity.get("base"), f"{slug}.initialLiquidity.base", errors)
         _positive(liquidity.get("quote"), f"{slug}.initialLiquidity.quote", errors)
         slippage = _positive(liquidity.get("slippageBps"), f"{slug}.initialLiquidity.slippageBps", errors)
-        if slippage > 10_000:
-            errors.append(f"{slug}.initialLiquidity.slippageBps exceeds 10000")
+        # SeedInitialLiquidity.s.sol enforces the same 10% ceiling (MAX_SLIPPAGE_BPS).
+        if slippage > 1_000:
+            errors.append(f"{slug}.initialLiquidity.slippageBps exceeds 1000 (10%)")
         return
     for field in ("base", "quote"):
         amount = liquidity.get(field, 0)
@@ -420,7 +421,10 @@ def _load(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("readiness", "deploy", "seed"))
+    # validate: the approved config (core addresses filled in after the core deploy) is well formed
+    # and its addresses have code, without requiring all pools or launch gates (CI runs this before
+    # launch). readiness adds all 18 deployed pools, the aligner, the timelock and every gate.
+    parser.add_argument("command", choices=("validate", "readiness", "deploy", "seed"))
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--rpc-url", default=os.getenv("ROBINHOOD_RPC_URL", ""))
@@ -432,6 +436,9 @@ def main() -> int:
     if errors:
         print(json.dumps({"ready": False, "errors": errors}, indent=2))
         return 1
+    if args.command == "validate":
+        print(json.dumps({"valid": True, "seedSet": list(config["seedSet"])}))
+        return 0
     if args.command == "readiness":
         print(json.dumps({
             "ready": True,
