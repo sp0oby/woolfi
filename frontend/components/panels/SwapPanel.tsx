@@ -226,9 +226,10 @@ function Live({
           type="button"
           onClick={() => setZeroForOne((d) => !d)}
           aria-label="Flip swap direction"
+          title="Flip direction"
           className="font-mono text-muted hover:text-ink transition-colors text-lg leading-none px-3 py-1"
         >
-          ↓
+          ⇅
         </button>
       </div>
       <Field

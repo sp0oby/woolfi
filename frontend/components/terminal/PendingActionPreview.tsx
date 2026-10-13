@@ -12,8 +12,10 @@ import type {CuratedPool} from "@/lib/pools/types";
  */
 
 export function PreviewSwap({pool}: {pool: CuratedPool}) {
-  const from = pool.base.symbol;
-  const to = pool.quote.symbol;
+  // Swaps go both ways; the flip is live even pre-launch so the preview doesn't read one-way.
+  const [baseIn, setBaseIn] = useState(true);
+  const from = baseIn ? pool.base.symbol : pool.quote.symbol;
+  const to = baseIn ? pool.quote.symbol : pool.base.symbol;
   return (
     <Frame
       title="Trade"
@@ -21,7 +23,7 @@ export function PreviewSwap({pool}: {pool: CuratedPool}) {
     >
       <TokenInput label="From" symbol={from} />
       <SwapChips />
-      <SwapDirection />
+      <SwapDirection onFlip={() => setBaseIn((b) => !b)} />
       <TokenInput label="To (estimated)" symbol={to} readOnly />
       <QuickAmounts />
       <ActionButton>Swap unavailable · pre-launch</ActionButton>
@@ -199,12 +201,18 @@ function SwapChips() {
   );
 }
 
-function SwapDirection() {
+function SwapDirection({onFlip}: {onFlip: () => void}) {
   return (
     <div className="flex justify-center">
-      <div className="flex h-6 w-6 items-center justify-center border border-line bg-surface font-mono text-2xs text-muted">
-        ↓
-      </div>
+      <button
+        type="button"
+        onClick={onFlip}
+        aria-label="Flip swap direction"
+        title="Flip direction"
+        className="flex h-6 w-6 items-center justify-center border border-line bg-surface font-mono text-2xs text-muted transition-colors hover:border-line-strong hover:text-ink"
+      >
+        ⇅
+      </button>
     </div>
   );
 }
