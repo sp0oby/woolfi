@@ -10,7 +10,7 @@
 
 <br />
 
-[![ci](https://img.shields.io/github/actions/workflow/status/sp0oby/woolfi/ci.yml?branch=main&style=for-the-badge&label=ci&labelColor=0d0c0b&color=8fe6b3)](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml)
+[![ci](https://img.shields.io/github/actions/workflow/status/urufu-labs/woolfi/ci.yml?branch=main&style=for-the-badge&label=ci&labelColor=0d0c0b&color=8fe6b3)](https://github.com/urufu-labs/woolfi/actions/workflows/ci.yml)
 [![chain](https://img.shields.io/badge/chain-Robinhood-eadbc0?style=for-the-badge&labelColor=0d0c0b)](./docs/robinhood-deployment.md)
 [![status](https://img.shields.io/badge/status-pre--launch-f0b552?style=for-the-badge&labelColor=0d0c0b)](#-status)
 [![solidity](https://img.shields.io/badge/solidity-0.8.26-cdb88f?style=for-the-badge&labelColor=0d0c0b)](./foundry.toml)
@@ -193,7 +193,7 @@ Setup: [`docs/runbooks/multisig-setup.md`](./docs/runbooks/multisig-setup.md).
 | **network** | Robinhood Chain |
 | **deployment** | not deployed; every pool shows as pre-launch |
 | **audit** | not done; bug bounty pending audit |
-| **tests** | unit, integration, invariant, and live-fork suites against Robinhood Chain mainnet · [CI](https://github.com/sp0oby/woolfi/actions/workflows/ci.yml) |
+| **tests** | unit, integration, invariant, and live-fork suites against Robinhood Chain mainnet · [CI](https://github.com/urufu-labs/woolfi/actions/workflows/ci.yml) |
 | **spec** | [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) v1.0-draft |
 
 </div>
@@ -237,7 +237,7 @@ docs/
 Prerequisites: [Foundry](https://book.getfoundry.sh/), Node 20+, and a Robinhood Chain RPC URL.
 
 ```bash
-git clone https://github.com/sp0oby/woolfi.git
+git clone https://github.com/urufu-labs/woolfi.git
 cd woolfi
 forge install
 forge build

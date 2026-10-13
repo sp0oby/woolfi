@@ -147,7 +147,7 @@ export default function GovernancePage() {
             </Link>{" "}
             for architecture and{" "}
             <a
-              href="https://github.com/sp0oby/woolfi/blob/main/PROJECT_SPEC.md"
+              href="https://github.com/urufu-labs/woolfi/blob/main/PROJECT_SPEC.md"
               target="_blank"
               rel="noreferrer"
               className="text-signal underline underline-offset-4 hover:text-ink"

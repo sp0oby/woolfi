@@ -13,7 +13,7 @@ export const SITE_URL =
 export const SITE_NAME = "WoolFi";
 export const X_HANDLE = "@urugemu";
 export const X_URL = "https://x.com/urugemu";
-export const GITHUB_URL = "https://github.com/sp0oby/woolfi";
+export const GITHUB_URL = "https://github.com/urufu-labs/woolfi";
 const OG_ALT = "WoolFi - a market for the spread on Robinhood Chain";
 
 /**

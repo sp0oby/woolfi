@@ -1,34 +1,39 @@
 # Test Coverage
 
-`MULTISIG=0x...dEaD forge coverage --report summary --no-match-path "test/fork/*"` on 2026-10-07
-(invariant suites included at the default profile). Measured on the working tree, which includes
-uncommitted `src/` changes to `WoolFiHook`, `RebalanceKeeper` and `WoolFiSwapRouter` made in
-parallel; the Hook and Keeper drops below are new code that was not yet tested when the run was taken.
+`MULTISIG=0x...dEaD forge coverage --ir-minimum --report summary --no-match-path "test/fork/**"` on
+2026-10-13, after the Review 3 fixes (invariant suites included at the default profile).
+`--ir-minimum` is needed because coverage disables the optimizer. Under it, the legacy
+`STRANDMainnet.test_votes_historicalSnapshotAtPastBlock` fails (`ERC5805FutureLookup`, a via-IR
+`block.number` caching artifact); it passes in normal runs and STRAND is not in the launch path.
 
-| Contract | Lines | Branches | Branches (2026-10-06) |
+| Contract | Lines | Branches | Branches (2026-10-07) |
 |---|---|---|---|
-| UrufuFeeRebateDistributor | 100% (71/71) | **100% (23/23)** | 30.4% |
-| WoolFiLiquidityZapper | 100% (89/89) | **100% (29/29)** | 44.8% |
-| NyseHoursOracle | 100% (89/89) | **100% (18/18)** | 55.6% |
-| WoolFiSwapRouter | 100% (37/37) | **88.9% (8/9)** | 66.7% |
-| WoolFiHook | 93.5% (314/336) | 80.0% (68/85) | 86.3% (63/73) |
-| WoolFiPositionManager | 98.1% (156/159) | 87.9% (29/33) | 87.9% |
-| WoolFiUnderwritingVault | 100% (87/87) | 90.0% (18/20) | 90.0% |
-| WoolFiGovernor | 92.9% (26/28) | n/a | n/a |
-| RebalanceKeeper | 66.7% (12/18) | 50.0% (4/8) | 100% (4/4) |
-| SpreadMath | 100% | 100% | 100% |
-| LiquidityAmounts | 100% | 100% | 100% |
-| RobinhoodStockOracleAdapter | 100% (57/57) | 94.1% (16/17) | 94.1% |
-| ChainlinkOracleAdapter | 97.1% (34/35) | 75.0% (9/12) | 75.0% |
-| MultisigMarketHours | 100% | 100% | 100% |
-| DualOracleAdapter (legacy, not in launch path) | 59.6% | 53.3% | 53.3% |
+| UrufuFeeRebateDistributor | 100% (80/80) | 100% (26/26) | 100% (23/23) |
+| WoolFiLiquidityZapper | 100% (89/89) | 100% (29/29) | 100% (29/29) |
+| RebalanceKeeper | 100% (18/18) | **100% (8/8)** | 50.0% (4/8) |
+| WoolFiSwapRouter | 100% (42/42) | 90.0% (9/10) | 88.9% (8/9) |
+| WoolFiHook | 95.9% (378/394) | **88.0% (95/108)** | 80.0% (68/85) |
+| WoolFiPositionManager | 97.6% (165/169) | 88.6% (31/35) | 87.9% (29/33) |
+| WoolFiUnderwritingVault | 100% (100/100) | 90.9% (20/22) | 90.0% (18/20) |
+| WoolFiGovernor | 93.9% (31/33) | 100% (1/1) | n/a |
+| SpreadMath | 100% (30/30) | 100% (8/8) | 100% |
+| LiquidityAmounts | 100% (20/20) | 100% (8/8) | 100% |
+| RobinhoodStockOracleAdapter | 96.5% (55/57) | 94.1% (16/17) | 94.1% |
+| ChainlinkOracleAdapter | 100% (33/33) | 80.0% (8/10) | 75.0% (9/12) |
+| NyseHoursOracle | 100% (89/89) | 55.6% (10/18) | 100% (18/18) |
+| MultisigMarketHours | 100% (15/15) | 100% (2/2) | 100% |
+| WoolFiPoolAligner | 98.3% (57/58) | 61.1% (11/18) | n/a |
+| WoolFiV3Migrator | 98.1% (52/53) | 85.7% (12/14) | n/a |
+| WoolFiArbExecutor | 100% (37/37) | 55.6% (5/9) | n/a |
 | BaseHook | 33.3% | 0% (unused callbacks) | 0% |
 
-The one uncovered router branch is `_settle` with a non-negative input delta, which an exact-input
-swap cannot produce.
+The NyseHoursOracle branch figure differs from 2026-10-07 because that run used the optimized
+build, where some branches are merged; line coverage is unchanged at 100%. The one uncovered router
+branch is `_settle` with a non-negative input delta, which an exact-input swap cannot produce.
 
-Suites: 431 non-fork tests across 27 suites (348 on 2026-10-06), 3 invariant suites, plus fork
-tests against live 4663 under `test/fork/`.
+Suites: 583 non-fork tests across 38 suites, 3 invariant suites, plus fork tests against live 4663
+under `test/fork/`. Review 3 regression suites: `Review3HookFixes.t.sol`,
+`Review3VaultFixes.t.sol`, `Review3PeripheryFixes.t.sol`, `DeployV3MigratorManifest.t.sol`.
 
 ## Invariant suites
 
@@ -89,13 +94,13 @@ show corrective swaps are always allowed.
 | 6 | Permissionless detection | checkStructuralBreak_*; `RebalanceKeeper.t.sol` |
 | 7 | PM shares and fee realization | `WoolFiPositionManager.t.sol`; invariants pm*, feeRoutingConserved |
 | 7 | Zapper | `WoolFiLiquidityZapper.t.sol` (every branch: native ETH wrap and refund, third-token refund as ETH, fee-on-transfer input, plan validation, donations not swept); fork zapUsdgToMstrUsdgLp |
-| 8 | Fee routing 70/20/10, cooldown | `WoolFiPositionManager.t.sol`, `WoolFiUnderwritingVault.t.sol`; `feeRoutingConserved`; fork fullLifecycle |
+| 8 | Fee routing 65/20/15, cooldown, claim window | `WoolFiPositionManager.t.sol`, `WoolFiUnderwritingVault.t.sol`; `feeRoutingConserved`; fork fullLifecycle |
 | 8 | Two-step governance | `WoolFiGovernor.t.sol`, hook proposeGovernor_* |
 
 ## Gaps
 
 - Rebate farming across wallets (M-2) is bounded only per wallet by design; no test models a
   Sybil set beyond showing per-wallet caps hold.
-- New uncommitted `WoolFiHook` and `RebalanceKeeper` code (2026-10-07) needs its own tests; the
-  branch drop above comes from that code.
+- Aligner and arb-executor branch coverage (61% / 56%) is the lowest of the launch-path contracts;
+  their uncovered branches are mostly clamping and early-exit paths.
 - `DualOracleAdapter` is legacy and not in the launch path; coverage left as is.

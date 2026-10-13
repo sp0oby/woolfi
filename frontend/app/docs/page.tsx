@@ -270,7 +270,7 @@ export default function DocsPage() {
               Anyone can run it. An optional AI layer writes plain-English summaries of each
               opportunity; it never decides trades.{" "}
               <a
-                href="https://github.com/sp0oby/woolfi/tree/main/arb-agent"
+                href="https://github.com/urufu-labs/woolfi/tree/main/arb-agent"
                 target="_blank"
                 rel="noreferrer"
                 className="text-ink underline underline-offset-4 hover:text-signal"
@@ -381,17 +381,17 @@ export default function DocsPage() {
           <Section id="source" label="Source">
             <ul className="space-y-3">
               <SourceLink
-                href="https://github.com/sp0oby/woolfi/blob/main/PROJECT_SPEC.md"
+                href="https://github.com/urufu-labs/woolfi/blob/main/PROJECT_SPEC.md"
                 label="PROJECT_SPEC.md"
                 hint="canonical specification"
               />
               <SourceLink
-                href="https://github.com/sp0oby/woolfi"
+                href="https://github.com/urufu-labs/woolfi"
                 label="Source on GitHub"
                 hint="contracts + tests"
               />
               <SourceLink
-                href="https://github.com/sp0oby/woolfi/tree/main/arb-agent"
+                href="https://github.com/urufu-labs/woolfi/tree/main/arb-agent"
                 label="arb-agent"
                 hint="zero-capital arbitrage bot"
               />

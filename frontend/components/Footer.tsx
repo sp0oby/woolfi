@@ -14,7 +14,7 @@ export function Footer() {
           X ↗
         </a>
         <a
-          href="https://github.com/sp0oby/woolfi"
+          href="https://github.com/urufu-labs/woolfi"
           target="_blank"
           rel="noreferrer"
           className="hover:text-ink transition-colors"
@@ -22,7 +22,7 @@ export function Footer() {
           GitHub ↗
         </a>
         <a
-          href="https://github.com/sp0oby/woolfi/blob/main/PROJECT_SPEC.md"
+          href="https://github.com/urufu-labs/woolfi/blob/main/PROJECT_SPEC.md"
           target="_blank"
           rel="noreferrer"
           className="hover:text-ink transition-colors"
